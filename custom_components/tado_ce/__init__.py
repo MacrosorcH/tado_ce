@@ -585,18 +585,125 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         
         _LOGGER.info("Migration step -> v7 complete")
 
+    if initial_version < 8:
+        # Version 7 -> 8 (v1.9.0): Hub device identifier migration for multi-home support
+        _LOGGER.info("=== Migration: -> v8 ===")
+        _LOGGER.info("Migrating to v1.9.0 format (hub device identifier)")
+        
+        # Get home_id from config entry data or config.json
+        home_id = config_entry.data.get("home_id")
+        
+        if not home_id and CONFIG_FILE.exists():
+            try:
+                def _read_home_id():
+                    with open(CONFIG_FILE) as f:
+                        return json.load(f).get("home_id")
+                home_id = await hass.async_add_executor_job(_read_home_id)
+                _LOGGER.info(f"  Got home_id from config.json: {home_id}")
+            except Exception as e:
+                _LOGGER.warning(f"  Could not read home_id from config.json: {e}")
+        
+        if home_id:
+            # Set home_id for data_loader so load_zones_info_file() works correctly
+            from .data_loader import set_current_home_id
+            set_current_home_id(home_id)
+            
+            # Import device registry
+            from homeassistant.helpers import device_registry as dr
+            
+            device_registry = dr.async_get(hass)
+            
+            # Find old hub device with identifier "tado_ce_hub"
+            old_device = device_registry.async_get_device(
+                identifiers={(DOMAIN, "tado_ce_hub")}
+            )
+            
+            if old_device:
+                new_identifier = f"tado_ce_hub_{home_id}"
+                _LOGGER.info(f"  Found old hub device: {old_device.id}")
+                _LOGGER.info(f"  Updating identifier: tado_ce_hub -> {new_identifier}")
+                
+                # Update device identifier (preserves user customizations!)
+                device_registry.async_update_device(
+                    old_device.id,
+                    new_identifiers={(DOMAIN, new_identifier)}
+                )
+                _LOGGER.info(f"  Hub device identifier updated successfully")
+            else:
+                _LOGGER.info("  No old hub device found (new install or already migrated)")
+            
+            # Also migrate zone devices: tado_ce_zone_{zone_id} -> tado_ce_{home_id}_zone_{zone_id}
+            # Strategy: Try zones_info first, fallback to scanning device registry
+            from .data_loader import load_zones_info_file
+            zones_info = await hass.async_add_executor_job(load_zones_info_file)
+            
+            migrated_zones = 0
+            
+            if zones_info:
+                # Use zones_info to find zone IDs
+                for zone in zones_info:
+                    zone_id = str(zone.get('id'))
+                    old_zone_identifier = f"tado_ce_zone_{zone_id}"
+                    new_zone_identifier = f"tado_ce_{home_id}_zone_{zone_id}"
+                    
+                    old_zone_device = device_registry.async_get_device(
+                        identifiers={(DOMAIN, old_zone_identifier)}
+                    )
+                    
+                    if old_zone_device:
+                        _LOGGER.info(f"  Migrating zone device: {old_zone_identifier} -> {new_zone_identifier}")
+                        device_registry.async_update_device(
+                            old_zone_device.id,
+                            new_identifiers={(DOMAIN, new_zone_identifier)},
+                            via_device_id=None  # Will be re-linked when entities load
+                        )
+                        migrated_zones += 1
+            else:
+                # Fallback: Scan device registry for any tado_ce_zone_* devices
+                # This handles edge case where zones_info.json doesn't exist
+                _LOGGER.info("  zones_info not available, scanning device registry for zone devices")
+                
+                import re
+                zone_pattern = re.compile(r"tado_ce_zone_(\d+)")
+                
+                for device in device_registry.devices.values():
+                    for domain, identifier in device.identifiers:
+                        if domain == DOMAIN:
+                            match = zone_pattern.match(identifier)
+                            if match:
+                                zone_id = match.group(1)
+                                new_zone_identifier = f"tado_ce_{home_id}_zone_{zone_id}"
+                                
+                                _LOGGER.info(f"  Migrating zone device: {identifier} -> {new_zone_identifier}")
+                                device_registry.async_update_device(
+                                    device.id,
+                                    new_identifiers={(DOMAIN, new_zone_identifier)},
+                                    via_device_id=None
+                                )
+                                migrated_zones += 1
+            
+            if migrated_zones > 0:
+                _LOGGER.info(f"  Migrated {migrated_zones} zone devices")
+        else:
+            _LOGGER.warning(
+                "  Could not determine home_id for hub device migration. "
+                "Hub device will remain with old identifier until re-authentication."
+            )
+        
+        _LOGGER.info("Migration step -> v8 complete")
+
     # Update to final version (only once, at the end)
-    if initial_version < 7:
-        hass.config_entries.async_update_entry(config_entry, version=7)
+    if initial_version < 8:
+        hass.config_entries.async_update_entry(config_entry, version=8)
         _LOGGER.info(
             "=== Migration Complete ===\n"
             f"  Initial version: {initial_version}\n"
-            f"  Final version: 7\n"
+            f"  Final version: 8\n"
             f"  CONFIG_FILE exists: {CONFIG_FILE.exists()}\n"
             f"  DATA_DIR exists: {DATA_DIR.exists()}"
         )
     else:
-        _LOGGER.info("Config entry already at version 7, no migration needed")
+        _LOGGER.info("Config entry already at version 8, no migration needed")
     
     return True
 
@@ -738,6 +845,152 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from .device_manager import load_home_id, load_version
     await hass.async_add_executor_job(load_home_id)
     await hass.async_add_executor_job(load_version)
+    
+    # v1.9.0: Cleanup duplicate hub devices (migration safety net)
+    # If migration failed or was interrupted, we might have both old and new hub devices
+    if home_id:
+        from homeassistant.helpers import device_registry as dr
+        from homeassistant.helpers import entity_registry as er
+        
+        device_registry = dr.async_get(hass)
+        entity_registry = er.async_get(hass)
+        
+        def count_device_entities(device_id: str) -> int:
+            """Count entities linked to a device."""
+            return len([e for e in entity_registry.entities.values() if e.device_id == device_id])
+        
+        old_hub_identifier = "tado_ce_hub"
+        new_hub_identifier = f"tado_ce_hub_{home_id}"
+        
+        old_hub = device_registry.async_get_device(identifiers={(DOMAIN, old_hub_identifier)})
+        new_hub = device_registry.async_get_device(identifiers={(DOMAIN, new_hub_identifier)})
+        
+        if old_hub and new_hub:
+            # Both exist - need to merge safely to preserve entity links
+            # Strategy: Keep the device with MORE entities, migrate entities from the other, then remove it
+            old_entity_count = count_device_entities(old_hub.id)
+            new_entity_count = count_device_entities(new_hub.id)
+            
+            _LOGGER.warning(
+                f"Found duplicate hub devices: {old_hub_identifier} ({old_entity_count} entities) "
+                f"and {new_hub_identifier} ({new_entity_count} entities). Merging..."
+            )
+            
+            if old_entity_count >= new_entity_count:
+                # Keep old (has more or equal entities)
+                # First, migrate any entities from new to old
+                for entity in list(entity_registry.entities.values()):
+                    if entity.device_id == new_hub.id:
+                        _LOGGER.info(f"Moving entity {entity.entity_id} from new hub to old hub")
+                        entity_registry.async_update_entity(
+                            entity.entity_id,
+                            device_id=old_hub.id
+                        )
+                
+                # Now remove the empty new device
+                try:
+                    device_registry.async_remove_device(new_hub.id)
+                    _LOGGER.info(f"Removed empty new hub device: {new_hub_identifier}")
+                except Exception as e:
+                    _LOGGER.warning(f"Could not remove new hub device: {e}")
+                
+                # Update old device's identifier to new format
+                device_registry.async_update_device(
+                    old_hub.id,
+                    new_identifiers={(DOMAIN, new_hub_identifier)}
+                )
+                _LOGGER.info(f"Kept old hub ({old_entity_count} entities), updated identifier to {new_hub_identifier}")
+            else:
+                # Keep new (has more entities)
+                # First, migrate any entities from old to new
+                for entity in list(entity_registry.entities.values()):
+                    if entity.device_id == old_hub.id:
+                        _LOGGER.info(f"Moving entity {entity.entity_id} from old hub to new hub")
+                        entity_registry.async_update_entity(
+                            entity.entity_id,
+                            device_id=new_hub.id
+                        )
+                
+                # Now remove the empty old device
+                try:
+                    device_registry.async_remove_device(old_hub.id)
+                    _LOGGER.info(f"Removed empty old hub device: {old_hub_identifier}")
+                except Exception as e:
+                    _LOGGER.warning(f"Could not remove old hub device: {e}")
+                
+                _LOGGER.info(f"Kept new hub ({new_entity_count} entities)")
+        elif old_hub and not new_hub:
+            # Only old exists - migration didn't run, update it now
+            _LOGGER.info(f"Found old hub device without new one. Migrating: {old_hub_identifier} -> {new_hub_identifier}")
+            device_registry.async_update_device(
+                old_hub.id,
+                new_identifiers={(DOMAIN, new_hub_identifier)}
+            )
+        
+        # Also cleanup duplicate zone devices
+        import re
+        zone_pattern = re.compile(r"tado_ce_zone_(\d+)")
+        
+        for device in list(device_registry.devices.values()):
+            for domain, identifier in device.identifiers:
+                if domain == DOMAIN:
+                    match = zone_pattern.match(identifier)
+                    if match:
+                        zone_id = match.group(1)
+                        new_zone_identifier = f"tado_ce_{home_id}_zone_{zone_id}"
+                        
+                        # Check if new zone device exists
+                        new_zone = device_registry.async_get_device(
+                            identifiers={(DOMAIN, new_zone_identifier)}
+                        )
+                        
+                        if new_zone:
+                            # Both exist - keep the one with more entities
+                            old_count = count_device_entities(device.id)
+                            new_count = count_device_entities(new_zone.id)
+                            
+                            _LOGGER.warning(
+                                f"Found duplicate zone devices: {identifier} ({old_count} entities) "
+                                f"and {new_zone_identifier} ({new_count} entities). Merging..."
+                            )
+                            
+                            if old_count >= new_count:
+                                # Keep old, migrate entities from new, remove new, update old's identifier
+                                for entity in list(entity_registry.entities.values()):
+                                    if entity.device_id == new_zone.id:
+                                        entity_registry.async_update_entity(
+                                            entity.entity_id,
+                                            device_id=device.id
+                                        )
+                                try:
+                                    device_registry.async_remove_device(new_zone.id)
+                                except Exception as e:
+                                    _LOGGER.warning(f"Could not remove new zone device: {e}")
+                                device_registry.async_update_device(
+                                    device.id,
+                                    new_identifiers={(DOMAIN, new_zone_identifier)}
+                                )
+                                _LOGGER.info(f"Kept old zone ({old_count} entities), updated to {new_zone_identifier}")
+                            else:
+                                # Keep new, migrate entities from old, remove old
+                                for entity in list(entity_registry.entities.values()):
+                                    if entity.device_id == device.id:
+                                        entity_registry.async_update_entity(
+                                            entity.entity_id,
+                                            device_id=new_zone.id
+                                        )
+                                try:
+                                    device_registry.async_remove_device(device.id)
+                                except Exception as e:
+                                    _LOGGER.warning(f"Could not remove old zone device: {e}")
+                                _LOGGER.info(f"Kept new zone ({new_count} entities)")
+                        else:
+                            # Only old exists - migrate it
+                            _LOGGER.info(f"Migrating zone device: {identifier} -> {new_zone_identifier}")
+                            device_registry.async_update_device(
+                                device.id,
+                                new_identifiers={(DOMAIN, new_zone_identifier)}
+                            )
     
     # Check if config file exists
     if not CONFIG_FILE.exists():

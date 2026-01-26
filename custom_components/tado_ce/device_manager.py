@@ -111,17 +111,17 @@ def get_hub_device_info() -> DeviceInfo:
     The hub device contains global entities that apply to the entire Tado system,
     such as API usage sensors, weather sensors, and mobile device trackers.
     
-    IMPORTANT: Hub identifier is fixed to ensure device stability across versions
-    and configuration changes. This prevents duplicate hub devices when upgrading
-    or re-authenticating.
+    v1.9.0: Hub identifier now includes home_id for multi-home support.
+    Format: tado_ce_hub_{home_id}
     
     Returns:
         DeviceInfo: Device information for the Tado CE Hub.
     """
-    # Use fixed identifier to prevent duplicate devices during upgrades
-    # Previously used home_id which caused issues when config was missing
+    home_id = get_home_id()
+    identifier = f"tado_ce_hub_{home_id}" if home_id != "unknown" else "tado_ce_hub"
+    
     return DeviceInfo(
-        identifiers={(DOMAIN, "tado_ce_hub")},
+        identifiers={(DOMAIN, identifier)},
         name="Tado CE Hub",
         manufacturer=MANUFACTURER,
         model="Tado CE Integration",
@@ -135,6 +135,9 @@ def get_zone_device_info(zone_id: str, zone_name: str, zone_type: str) -> Device
     Each zone device represents a physical zone (room) in the Tado system and contains
     all entities specific to that zone (climate, sensors, switches, etc.).
     
+    v1.9.0: Zone identifier now includes home_id for multi-home support.
+    Format: tado_ce_{home_id}_zone_{zone_id}
+    
     Args:
         zone_id: The unique identifier for the zone (e.g., "1", "4", "9").
         zone_name: The human-readable name of the zone (e.g., "Living Room").
@@ -144,14 +147,22 @@ def get_zone_device_info(zone_id: str, zone_name: str, zone_type: str) -> Device
         DeviceInfo: Device information for the zone device.
     """
     model = get_zone_type_display(zone_type)
+    home_id = get_home_id()
     
-    # Use fixed hub identifier for via_device to match get_hub_device_info()
+    # v1.9.0: Include home_id in identifiers for multi-home support
+    if home_id != "unknown":
+        zone_identifier = f"tado_ce_{home_id}_zone_{zone_id}"
+        hub_identifier = f"tado_ce_hub_{home_id}"
+    else:
+        zone_identifier = f"tado_ce_zone_{zone_id}"
+        hub_identifier = "tado_ce_hub"
+    
     return DeviceInfo(
-        identifiers={(DOMAIN, f"tado_ce_zone_{zone_id}")},
+        identifiers={(DOMAIN, zone_identifier)},
         name=zone_name,
         manufacturer=MANUFACTURER,
         model=model,
-        via_device=(DOMAIN, "tado_ce_hub"),
+        via_device=(DOMAIN, hub_identifier),
     )
 
 

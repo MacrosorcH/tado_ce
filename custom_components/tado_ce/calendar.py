@@ -43,13 +43,21 @@ DAY_TYPE_TO_WEEKDAYS = {
 
 
 def get_schedule_device_info() -> DeviceInfo:
-    """Get device info for Heating Schedule device."""
+    """Get device info for Heating Schedule device.
+    
+    v1.9.0: Uses home_id in via_device for multi-home support.
+    """
+    from .device_manager import get_home_id
+    
+    home_id = get_home_id()
+    hub_identifier = f"tado_ce_hub_{home_id}" if home_id != "unknown" else "tado_ce_hub"
+    
     return DeviceInfo(
         identifiers={(DOMAIN, "tado_ce_heating_schedule")},
         name="Heating Schedule",
         manufacturer=MANUFACTURER,
         model="Zone Schedules",
-        via_device=(DOMAIN, "tado_ce_hub"),
+        via_device=(DOMAIN, hub_identifier),
     )
 
 
