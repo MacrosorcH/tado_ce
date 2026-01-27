@@ -6,14 +6,18 @@ Provides intelligent heating analytics including:
 - Comfort risk prediction
 - Weather compensation (Phase 3)
 - Recorder integration for historical data (Phase 3)
+- File persistence for data backup (Phase 3)
 
 This module can bootstrap from HA recorder history on startup,
 allowing immediate rate calculations without waiting for data collection.
+Data is also persisted to file as backup for when recorder is unavailable.
 """
+import json
 import logging
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -26,6 +30,7 @@ HISTORY_WINDOW_HOURS = 2  # Keep 2 hours of history for real-time tracking
 RECORDER_HISTORY_HOURS = 24  # Load 24 hours from recorder on startup
 MIN_DATA_POINTS = 3  # Minimum points needed for rate calculation
 MIN_TIME_SPAN_MINUTES = 15  # Minimum time span for meaningful rate
+CACHE_SAVE_INTERVAL_MINUTES = 15  # Save cache every 15 minutes
 
 # Weather compensation presets: (cold_threshold, cold_factor, warm_threshold, warm_factor)
 WEATHER_COMPENSATION_PRESETS = {
@@ -43,6 +48,25 @@ class TemperatureReading:
     temperature: float
     is_heating: bool  # True if HVAC is actively heating/cooling
     target_temperature: Optional[float] = None
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "timestamp": self.timestamp.isoformat(),
+            "temperature": self.temperature,
+            "is_heating": self.is_heating,
+            "target_temperature": self.target_temperature
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "TemperatureReading":
+        """Create from dictionary."""
+        return cls(
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+            temperature=data["temperature"],
+            is_heating=data["is_heating"],
+            target_temperature=data.get("target_temperature")
+        )
 
 
 class ZoneHistory:
@@ -55,6 +79,24 @@ class ZoneHistory:
         self._last_heating_rate: Optional[float] = None
         self._last_cooling_rate: Optional[float] = None
         self._rate_updated_at: Optional[datetime] = None
+        # Baseline rates from long-term statistics (Tier 3)
+        self._baseline_heating_rate: Optional[float] = None
+        self._baseline_cooling_rate: Optional[float] = None
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "zone_id": self.zone_id,
+            "zone_name": self.zone_name,
+            "readings": [r.to_dict() for r in self.readings]
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "ZoneHistory":
+        """Create from dictionary."""
+        zone = cls(data["zone_id"], data["zone_name"])
+        zone.readings = [TemperatureReading.from_dict(r) for r in data.get("readings", [])]
+        return zone
     
     def add_reading(self, reading: TemperatureReading) -> None:
         """Add a temperature reading and prune old data."""
@@ -70,19 +112,33 @@ class ZoneHistory:
         """Calculate heating rate (°C/hour) when HVAC is active.
         
         Uses linear regression on temperature readings where is_heating=True.
+        Falls back to baseline rate from long-term statistics if not enough data.
         Returns positive value for heating, negative for cooling (AC).
         """
         heating_readings = [r for r in self.readings if r.is_heating]
-        return self._calculate_rate(heating_readings)
+        rate = self._calculate_rate(heating_readings)
+        
+        # Fallback to baseline if no real-time rate available
+        if rate is None and self._baseline_heating_rate is not None:
+            return self._baseline_heating_rate
+        
+        return rate
     
     def get_cooling_rate(self) -> Optional[float]:
         """Calculate cooling rate (°C/hour) when HVAC is off.
         
         Uses linear regression on temperature readings where is_heating=False.
+        Falls back to baseline rate from long-term statistics if not enough data.
         Returns negative value (temperature dropping) typically.
         """
         cooling_readings = [r for r in self.readings if not r.is_heating]
-        return self._calculate_rate(cooling_readings)
+        rate = self._calculate_rate(cooling_readings)
+        
+        # Fallback to baseline if no real-time rate available
+        if rate is None and self._baseline_cooling_rate is not None:
+            return self._baseline_cooling_rate
+        
+        return rate
     
     def _calculate_rate(self, readings: list[TemperatureReading]) -> Optional[float]:
         """Calculate temperature rate using linear regression.
@@ -130,12 +186,13 @@ class ZoneHistory:
         # Round to 2 decimal places
         return round(slope, 2)
     
-    def get_time_to_target(self, current_temp: float, target_temp: float) -> Optional[int]:
+    def get_time_to_target(self, current_temp: float, target_temp: float, zone_type: str = "HEATING") -> Optional[int]:
         """Estimate time to reach target temperature in minutes.
         
         Args:
             current_temp: Current temperature
             target_temp: Target temperature
+            zone_type: "HEATING" or "AIR_CONDITIONING"
             
         Returns:
             Estimated minutes to reach target, or None if cannot estimate
@@ -145,10 +202,17 @@ class ZoneHistory:
         if abs(diff) < 0.1:
             return 0  # Already at target
         
-        # Use heating rate if we need to heat up, cooling rate if cooling down
-        if diff > 0:
+        # For HEATING zones: only calculate if we need to heat up (current < target)
+        # For AC zones: only calculate if we need to cool down (current > target)
+        if zone_type == "HEATING":
+            if diff <= 0:
+                # Current >= target, no heating needed
+                return 0
             rate = self.get_heating_rate()
-        else:
+        else:  # AIR_CONDITIONING
+            if diff >= 0:
+                # Current <= target, no cooling needed
+                return 0
             rate = self.get_cooling_rate()
         
         if rate is None or abs(rate) < 0.01:
@@ -189,14 +253,118 @@ class ZoneHistory:
 class SmartHeatingManager:
     """Manages smart heating analytics for all zones."""
     
-    def __init__(self, hass: "HomeAssistant" = None):
+    def __init__(self, hass: "HomeAssistant" = None, home_id: str = ""):
         self._zones: dict[str, ZoneHistory] = {}
         self._enabled = False
         self._hass = hass
+        self._home_id = home_id
+        self._last_save_time: Optional[datetime] = None
         # Weather compensation settings
         self._outdoor_temp_entity: str = ""
         self._weather_compensation: str = "none"
         self._use_feels_like: bool = False
+    
+    def _get_cache_file(self) -> Path:
+        """Get the cache file path."""
+        from .const import DATA_DIR
+        if self._home_id:
+            return DATA_DIR / f"smart_heating_cache_{self._home_id}.json"
+        return DATA_DIR / "smart_heating_cache.json"
+    
+    def save_to_file(self) -> bool:
+        """Save zone data to file for persistence.
+        
+        Returns:
+            True if save was successful
+        """
+        if not self._zones:
+            return True
+        
+        try:
+            from .const import DATA_DIR
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            
+            cache_file = self._get_cache_file()
+            data = {
+                "saved_at": datetime.now().isoformat(),
+                "zones": {zone_id: zone.to_dict() for zone_id, zone in self._zones.items()}
+            }
+            
+            # Atomic write using temp file
+            import tempfile
+            import shutil
+            
+            with tempfile.NamedTemporaryFile(
+                mode='w', dir=DATA_DIR, delete=False, suffix='.tmp'
+            ) as tmp:
+                json.dump(data, tmp, indent=2)
+                temp_path = tmp.name
+            
+            shutil.move(temp_path, cache_file)
+            self._last_save_time = datetime.now()
+            
+            total_readings = sum(len(z.readings) for z in self._zones.values())
+            _LOGGER.debug(
+                f"Smart Heating: Saved {len(self._zones)} zones, "
+                f"{total_readings} readings to {cache_file.name}"
+            )
+            return True
+            
+        except Exception as e:
+            _LOGGER.warning(f"Smart Heating: Failed to save cache: {e}")
+            return False
+    
+    def load_from_file(self) -> int:
+        """Load zone data from file.
+        
+        Returns:
+            Number of readings loaded
+        """
+        cache_file = self._get_cache_file()
+        
+        if not cache_file.exists():
+            _LOGGER.debug(f"Smart Heating: No cache file found at {cache_file}")
+            return 0
+        
+        try:
+            with open(cache_file) as f:
+                data = json.load(f)
+            
+            zones_data = data.get("zones", {})
+            total_readings = 0
+            
+            for zone_id, zone_data in zones_data.items():
+                zone = ZoneHistory.from_dict(zone_data)
+                # Prune old readings
+                zone._prune_old_readings()
+                
+                if zone.readings:
+                    self._zones[zone_id] = zone
+                    total_readings += len(zone.readings)
+            
+            saved_at = data.get("saved_at", "unknown")
+            _LOGGER.info(
+                f"Smart Heating: Loaded {len(self._zones)} zones, "
+                f"{total_readings} readings from cache (saved at {saved_at})"
+            )
+            return total_readings
+            
+        except json.JSONDecodeError as e:
+            _LOGGER.warning(f"Smart Heating: Invalid cache file: {e}")
+            return 0
+        except Exception as e:
+            _LOGGER.warning(f"Smart Heating: Failed to load cache: {e}")
+            return 0
+    
+    def maybe_save(self) -> None:
+        """Save to file if enough time has passed since last save."""
+        if self._last_save_time is None:
+            self.save_to_file()
+            return
+        
+        elapsed = datetime.now() - self._last_save_time
+        if elapsed.total_seconds() >= CACHE_SAVE_INTERVAL_MINUTES * 60:
+            self.save_to_file()
     
     def configure_weather(
         self,
@@ -271,6 +439,9 @@ class SmartHeatingManager:
         )
         zone.add_reading(reading)
         
+        # Periodically save to file
+        self.maybe_save()
+        
         _LOGGER.debug(
             f"Smart Heating: Recorded {zone_name} temp={temperature}°C "
             f"heating={is_heating} target={target_temperature}"
@@ -292,12 +463,13 @@ class SmartHeatingManager:
         self,
         zone_id: str,
         current_temp: float,
-        target_temp: float
+        target_temp: float,
+        zone_type: str = "HEATING"
     ) -> Optional[int]:
         """Get estimated time to reach target in minutes."""
         if zone_id not in self._zones:
             return None
-        return self._zones[zone_id].get_time_to_target(current_temp, target_temp)
+        return self._zones[zone_id].get_time_to_target(current_temp, target_temp, zone_type)
     
     def is_comfort_at_risk(
         self,
@@ -305,7 +477,8 @@ class SmartHeatingManager:
         current_temp: float,
         target_temp: float,
         minutes_until_schedule: int,
-        is_currently_heating: bool
+        is_currently_heating: bool,
+        zone_type: str = "HEATING"
     ) -> Optional[bool]:
         """Check if comfort target is at risk of being missed.
         
@@ -315,12 +488,26 @@ class SmartHeatingManager:
             target_temp: Target temperature at schedule time
             minutes_until_schedule: Minutes until next schedule change
             is_currently_heating: Whether HVAC is currently active
+            zone_type: "HEATING" or "AIR_CONDITIONING"
             
         Returns:
             True if target will likely be missed, False if OK, None if unknown
         """
         if zone_id not in self._zones:
             return None
+        
+        diff = target_temp - current_temp
+        
+        # For HEATING zones: only at risk if we need to heat up (current < target)
+        # For AC zones: only at risk if we need to cool down (current > target)
+        if zone_type == "HEATING":
+            if diff <= 0:
+                # Current >= target, already comfortable, no risk
+                return False
+        else:  # AIR_CONDITIONING
+            if diff >= 0:
+                # Current <= target, already comfortable, no risk
+                return False
         
         zone = self._zones[zone_id]
         predicted = zone.predict_temperature(minutes_until_schedule, is_currently_heating)
@@ -330,11 +517,9 @@ class SmartHeatingManager:
         
         # For heating: at risk if predicted < target - 0.5°C
         # For cooling (AC): at risk if predicted > target + 0.5°C
-        if target_temp > current_temp:
-            # Heating scenario
+        if zone_type == "HEATING":
             return predicted < (target_temp - 0.5)
         else:
-            # Cooling scenario (AC)
             return predicted > (target_temp + 0.5)
     
     def get_stats(self) -> dict:
@@ -525,7 +710,8 @@ class SmartHeatingManager:
         self,
         zone_id: str,
         current_temp: float,
-        target_temp: float
+        target_temp: float,
+        zone_type: str = "HEATING"
     ) -> Optional[int]:
         """Get weather-compensated time to reach target in minutes.
         
@@ -533,6 +719,7 @@ class SmartHeatingManager:
             zone_id: Zone identifier
             current_temp: Current temperature
             target_temp: Target temperature
+            zone_type: "HEATING" or "AIR_CONDITIONING"
             
         Returns:
             Estimated minutes to reach target with weather compensation
@@ -546,11 +733,18 @@ class SmartHeatingManager:
         if abs(diff) < 0.1:
             return 0  # Already at target
         
-        # Get base rate
-        if diff > 0:
+        # For HEATING zones: only calculate if we need to heat up (current < target)
+        # For AC zones: only calculate if we need to cool down (current > target)
+        if zone_type == "HEATING":
+            if diff <= 0:
+                # Current >= target, no heating needed
+                return 0
             base_rate = zone.get_heating_rate()
             for_heating = True
-        else:
+        else:  # AIR_CONDITIONING
+            if diff >= 0:
+                # Current <= target, no cooling needed
+                return 0
             base_rate = zone.get_cooling_rate()
             for_heating = False
         
@@ -586,7 +780,8 @@ def get_smart_heating_manager() -> SmartHeatingManager:
 async def async_load_history_from_recorder(
     hass: "HomeAssistant",
     manager: SmartHeatingManager,
-    climate_entity_ids: list[str]
+    climate_entity_ids: list[str],
+    entity_to_zone_id: dict[str, str] = None
 ) -> int:
     """Load historical temperature data from HA recorder on startup.
     
@@ -597,11 +792,13 @@ async def async_load_history_from_recorder(
         hass: Home Assistant instance
         manager: SmartHeatingManager to populate
         climate_entity_ids: List of climate entity IDs to load history for
+        entity_to_zone_id: Mapping from entity name to numeric zone_id
+            e.g., {"master": "1", "dining": "2"}. Required for correct zone matching.
         
     Returns:
         Number of data points loaded
     """
-    if not climate_entity_ids:
+    if not climate_entity_ids or not entity_to_zone_id:
         return 0
     
     try:
@@ -639,11 +836,16 @@ async def async_load_history_from_recorder(
             if not history:
                 continue
             
-            # Extract zone_id from entity_id (e.g., climate.master -> master)
-            # The actual zone_id will be set when climate entity registers
-            zone_id = entity_id.replace("climate.", "")
-            zone_name = zone_id.replace("_", " ").title()
+            # Extract entity name from entity_id (e.g., climate.master -> master)
+            entity_name = entity_id.replace("climate.", "")
             
+            # Get numeric zone_id from mapping
+            zone_id = entity_to_zone_id.get(entity_name)
+            if not zone_id:
+                _LOGGER.debug(f"Smart Heating: No zone_id mapping for {entity_name}")
+                continue
+            
+            zone_name = entity_name.replace("_", " ").title()
             zone = manager.get_zone(zone_id, zone_name)
             points_added = 0
             
@@ -710,3 +912,142 @@ async def async_load_history_from_recorder(
     except Exception as e:
         _LOGGER.warning(f"Smart Heating: Failed to load history from recorder: {e}")
         return 0
+
+
+async def async_load_baseline_from_statistics(
+    hass: "HomeAssistant",
+    manager: SmartHeatingManager,
+    zone_sensor_mapping: dict[str, str]
+) -> dict[str, dict]:
+    """Load baseline heating/cooling rates from long-term statistics.
+    
+    Long-term statistics provide hourly averages over weeks/months, which can
+    be used to calculate more accurate baseline rates for each zone.
+    
+    This is Tier 3 of the 3-tier loading strategy:
+    - Tier 1: Cache file (2h detailed data)
+    - Tier 2: Recorder history (24h detailed states)
+    - Tier 3: Long-term statistics (weeks of hourly averages)
+    
+    Args:
+        hass: Home Assistant instance
+        manager: SmartHeatingManager to update with baseline rates
+        zone_sensor_mapping: Dict mapping zone_id to temperature sensor entity_id
+            e.g., {"master": "sensor.master_temperature"}
+            
+    Returns:
+        Dict of zone_id -> {"baseline_heating_rate": float, "baseline_cooling_rate": float}
+    """
+    if not zone_sensor_mapping:
+        return {}
+    
+    try:
+        from homeassistant.components.recorder.statistics import (
+            statistics_during_period,
+            get_last_statistics,
+        )
+        from homeassistant.components.recorder import get_instance
+        from homeassistant.util import dt as dt_util
+        
+        # Get last 7 days of hourly statistics
+        end_time = dt_util.utcnow()
+        start_time = end_time - timedelta(days=7)
+        
+        statistic_ids = list(zone_sensor_mapping.values())
+        
+        _LOGGER.info(
+            f"Smart Heating: Loading 7-day statistics for {len(statistic_ids)} sensors"
+        )
+        
+        # Query statistics (runs in executor)
+        def _get_statistics():
+            return statistics_during_period(
+                hass,
+                start_time,
+                end_time,
+                statistic_ids=statistic_ids,
+                period="hour",
+                units={"temperature": "°C"},
+                types={"mean", "min", "max"}
+            )
+        
+        stats = await get_instance(hass).async_add_executor_job(_get_statistics)
+        
+        if not stats:
+            _LOGGER.debug("Smart Heating: No long-term statistics found")
+            return {}
+        
+        results = {}
+        
+        for zone_id, sensor_id in zone_sensor_mapping.items():
+            if sensor_id not in stats:
+                continue
+            
+            sensor_stats = stats[sensor_id]
+            if len(sensor_stats) < 24:  # Need at least 24 hours
+                _LOGGER.debug(
+                    f"Smart Heating: Not enough statistics for {zone_id} "
+                    f"({len(sensor_stats)} points)"
+                )
+                continue
+            
+            # Calculate hourly temperature changes
+            temp_changes = []
+            for i in range(1, len(sensor_stats)):
+                prev = sensor_stats[i - 1]
+                curr = sensor_stats[i]
+                
+                prev_mean = prev.get("mean")
+                curr_mean = curr.get("mean")
+                
+                if prev_mean is not None and curr_mean is not None:
+                    change = curr_mean - prev_mean
+                    temp_changes.append(change)
+            
+            if not temp_changes:
+                continue
+            
+            # Separate positive (heating) and negative (cooling) changes
+            heating_changes = [c for c in temp_changes if c > 0.05]
+            cooling_changes = [c for c in temp_changes if c < -0.05]
+            
+            baseline_heating = None
+            baseline_cooling = None
+            
+            if heating_changes:
+                # Use median to avoid outliers
+                heating_changes.sort()
+                mid = len(heating_changes) // 2
+                baseline_heating = round(heating_changes[mid], 2)
+            
+            if cooling_changes:
+                cooling_changes.sort()
+                mid = len(cooling_changes) // 2
+                baseline_cooling = round(cooling_changes[mid], 2)
+            
+            results[zone_id] = {
+                "baseline_heating_rate": baseline_heating,
+                "baseline_cooling_rate": baseline_cooling,
+                "data_points": len(sensor_stats),
+                "heating_samples": len(heating_changes),
+                "cooling_samples": len(cooling_changes)
+            }
+            
+            # Store baseline in zone history for fallback
+            zone = manager.get_zone(zone_id)
+            zone._baseline_heating_rate = baseline_heating
+            zone._baseline_cooling_rate = baseline_cooling
+            
+            _LOGGER.info(
+                f"Smart Heating: {zone_id} baseline rates from {len(sensor_stats)} hours: "
+                f"heating={baseline_heating}°C/h, cooling={baseline_cooling}°C/h"
+            )
+        
+        return results
+        
+    except ImportError as e:
+        _LOGGER.debug(f"Smart Heating: Statistics API not available: {e}")
+        return {}
+    except Exception as e:
+        _LOGGER.warning(f"Smart Heating: Failed to load statistics: {e}")
+        return {}

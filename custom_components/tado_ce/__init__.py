@@ -1149,9 +1149,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # v1.9.0: Initialize Smart Heating Manager if enabled (opt-in)
     if config_manager.get_smart_heating_enabled():
-        from .smart_heating import get_smart_heating_manager, async_load_history_from_recorder
+        from .smart_heating import (
+            get_smart_heating_manager,
+            async_load_history_from_recorder,
+            async_load_baseline_from_statistics
+        )
         smart_heating_manager = get_smart_heating_manager()
         smart_heating_manager._hass = hass  # Set hass reference for weather entity access
+        smart_heating_manager._home_id = home_id  # Set home_id for per-home cache files
         smart_heating_manager.enable()
         
         # Configure weather compensation (Phase 3)
@@ -1168,18 +1173,51 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         hass.data[DOMAIN]['smart_heating_manager'] = smart_heating_manager
         
-        # Load historical data from recorder for immediate rate calculations
-        # Get climate entity IDs from zones_info
+        # 3-Tier Loading Strategy:
+        # Tier 1: Load from cache file (fastest, 2h detailed data)
+        cache_readings = await hass.async_add_executor_job(smart_heating_manager.load_from_file)
+        
+        # Get zones_info for entity ID mapping
         from .data_loader import load_zones_info_file
         zones_info = await hass.async_add_executor_job(load_zones_info_file)
+        
         if zones_info:
-            climate_entity_ids = [
-                f"climate.{zone.get('name', '').lower().replace(' ', '_')}"
+            # Build mapping: entity_name -> zone_id (numeric)
+            # e.g., "master" -> "1", "dining" -> "2"
+            entity_to_zone_id = {
+                zone.get('name', '').lower().replace(' ', '_'): str(zone.get('id'))
                 for zone in zones_info
-                if zone.get('name')
+                if zone.get('name') and zone.get('id')
+            }
+            
+            climate_entity_ids = [
+                f"climate.{entity_name}"
+                for entity_name in entity_to_zone_id.keys()
             ]
+            
+            # Tier 2: Load from recorder history (24h detailed states)
+            recorder_readings = 0
             if climate_entity_ids:
-                await async_load_history_from_recorder(hass, smart_heating_manager, climate_entity_ids)
+                recorder_readings = await async_load_history_from_recorder(
+                    hass, smart_heating_manager, climate_entity_ids, entity_to_zone_id
+                )
+            
+            # Tier 3: Load baseline rates from long-term statistics (7 days hourly)
+            zone_sensor_mapping = {
+                str(zone.get('id')): 
+                f"sensor.{zone.get('name', '').lower().replace(' ', '_')}_temperature"
+                for zone in zones_info
+                if zone.get('name') and zone.get('id')
+            }
+            baseline_stats = await async_load_baseline_from_statistics(
+                hass, smart_heating_manager, zone_sensor_mapping
+            )
+            
+            _LOGGER.info(
+                f"Tado CE: Smart Heating 3-tier loading complete - "
+                f"cache={cache_readings}, recorder={recorder_readings}, "
+                f"baseline_zones={len(baseline_stats)}"
+            )
         
         _LOGGER.info("Tado CE: Smart Heating Analytics enabled")
     

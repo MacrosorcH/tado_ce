@@ -1330,14 +1330,16 @@ class TadoTimeToTargetSensor(TadoBaseSensor):
                 minutes = manager.get_compensated_time_to_target(
                     self._zone_id,
                     self._current_temp,
-                    self._target_temp
+                    self._target_temp,
+                    self._zone_type
                 )
                 # Fallback to non-compensated if compensation not configured
                 if minutes is None:
                     minutes = manager.get_time_to_target(
                         self._zone_id,
                         self._current_temp,
-                        self._target_temp
+                        self._target_temp,
+                        self._zone_type
                     )
                 if minutes is not None:
                     self._attr_native_value = minutes

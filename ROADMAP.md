@@ -6,30 +6,60 @@ For completed features, see [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
-## v1.9.0 - Hub Device Migration + Smart Heating
+## v1.9.0 - Hub Device Migration + Smart Heating Analytics
 
-Hub device identifier migration plus intelligent heating features.
+Hub device identifier migration plus intelligent heating analytics.
 
 **Multi-Home Migration:**
-- [ ] **Change hub device identifier** - From `tado_ce_hub` to `tado_ce_hub_{home_id}`
-- [ ] **Device registry migration** - Existing hub device updated automatically
-- [ ] **Entity IDs stable** - No entity ID changes for existing users
+- [x] **Change hub device identifier** - From `tado_ce_hub` to `tado_ce_hub_{home_id}`
+- [x] **Zone device migration** - From `tado_ce_zone_X` to `tado_ce_{home_id}_zone_X`
+- [x] **Device registry migration** - Existing devices updated automatically
+- [x] **Entity IDs stable** - No entity ID changes for existing users
 
-**Smart Heating:**
-- [ ] **Room-aware Early Start** - Consider room thermal characteristics, not just outside temperature ([Discussion #33](https://github.com/hiall-fyi/tado_ce/discussions/33))
-- [ ] **Predictive Heating** - Use weather forecast to optimize heating schedule
-- [ ] **Heating Analytics** - Track heating patterns, efficiency metrics, cost estimates
-- [ ] **Smart Boost** - One-tap boost with intelligent duration based on current vs target temperature
+**Smart Heating Analytics (Phase 1+2):**
+- [x] **Heating Rate Sensor** - °C/hour when heating is active
+- [x] **Cooling Rate Sensor** - °C/hour when heating is off (heat loss rate)
+- [x] **Time to Target Sensor** - Estimated minutes to reach target temperature
+- [x] **Comfort at Risk Binary Sensor** - Alert when target may be missed
+- [x] **Weather Compensation** - Adjust predictions based on outdoor temperature
+- [x] **2-Tier Data Loading** - Cache file + Recorder history for instant bootstrap
+
+**Data Sources:**
+- Tier 1: Cache file (2h detailed data, survives restarts)
+- Tier 2: Recorder history (24h, for bootstrap after cache expires)
 
 ---
 
-## v2.0.0 - Multiple Homes Enabled + Polish
+## v1.10.0 - Smart Heating Insights
 
-Major release enabling full multi-home support.
+Leverage long-term statistics for predictive insights.
+
+**Smart Heating Insights Sensor:**
+- [ ] **Historical Temperature Comparison** - Compare current temp vs 7-day same-time average
+- [ ] **Rate Anomaly Detection** - Alert when heating rate deviates significantly from historical
+- [ ] **Preheat Advisor** - Suggest optimal preheat time based on historical warm-up patterns
+
+**Example Insights:**
+```
+"Past 7 days at this time: avg 18.5°C, today: 17.2°C (-1.3°C)"
+"Heating rate today: 1.2°C/h vs historical 2.5°C/h (-52% - possible issue?)"
+"Suggested preheat time: 06:15 (typical warm-up: 45 min)"
+```
+
+---
+
+## v2.0.0 - Multiple Homes Enabled + Smart Boost
+
+Major release enabling full multi-home support plus smart boost feature.
 
 **Multi-Home Support:**
 - [ ] **Allow multiple integration entries** - Each entry for a different home
 - [ ] **Multi-home setup guide** - Documentation for users with multiple properties
+
+**Smart Boost (Phase 4):**
+- [ ] **Smart Boost Button** - One-tap boost with intelligent duration
+- [ ] **Duration Calculation** - `(target - current) / heating_rate`
+- [ ] **Reasonable Caps** - Max 3 hours to prevent runaway heating
 
 **Setup & Polish:**
 - [ ] **Auto-assign Areas** - Suggest HA Areas based on zone names during setup ([#14](https://github.com/hiall-fyi/tado_ce/issues/14))

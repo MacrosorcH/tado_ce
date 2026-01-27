@@ -208,12 +208,11 @@ class TadoComfortAtRiskSensor(BinarySensorEntity):
             sensor_data = zone_data.get('sensorDataPoints') or {}
             self._current_temp = (sensor_data.get('insideTemperature') or {}).get('celsius')
             
-            # Target temperature
+            # Current target temperature (what we're trying to reach NOW)
             setting = zone_data.get('setting') or {}
+            current_target = None
             if setting.get('power') == 'ON':
-                self._target_temp = (setting.get('temperature') or {}).get('celsius')
-            else:
-                self._target_temp = None
+                current_target = (setting.get('temperature') or {}).get('celsius')
             
             # Is heating/cooling active?
             activity_data = zone_data.get('activityDataPoints') or {}
@@ -225,38 +224,56 @@ class TadoComfortAtRiskSensor(BinarySensorEntity):
                 ac_power = (activity_data.get('acPower') or {}).get('value')
                 self._is_heating = ac_power == 'ON'
             
-            # Next schedule change
+            # For HEATING zones: if current >= current_target, we're comfortable, no risk
+            # For AC zones: if current <= current_target, we're comfortable, no risk
+            if current_target is not None and self._current_temp is not None:
+                if self._zone_type == 'HEATING':
+                    if self._current_temp >= current_target:
+                        # Already at or above target, no risk
+                        self._target_temp = current_target
+                        self._minutes_until_schedule = None
+                        self._attr_is_on = False
+                        self._attr_available = True
+                        return
+                else:  # AC
+                    if self._current_temp <= current_target:
+                        # Already at or below target, no risk
+                        self._target_temp = current_target
+                        self._minutes_until_schedule = None
+                        self._attr_is_on = False
+                        self._attr_available = True
+                        return
+            
+            # We need to reach current_target - check if we can make it
+            self._target_temp = current_target
+            
+            # Next schedule change (for informational purposes only)
             next_change = zone_data.get('nextScheduleChange')
             if next_change and next_change.get('start'):
                 try:
                     next_time = datetime.fromisoformat(next_change['start'].replace('Z', '+00:00'))
                     now = datetime.now(next_time.tzinfo)
                     self._minutes_until_schedule = int((next_time - now).total_seconds() / 60)
-                    
-                    # Get target from next schedule
-                    next_setting = next_change.get('setting') or {}
-                    if next_setting.get('power') == 'ON':
-                        next_target = (next_setting.get('temperature') or {}).get('celsius')
-                        if next_target:
-                            self._target_temp = next_target
                 except Exception:
                     self._minutes_until_schedule = None
             else:
                 self._minutes_until_schedule = None
             
-            # Check if we have enough data to predict
-            if (self._current_temp is None or 
-                self._target_temp is None or 
-                self._minutes_until_schedule is None or
-                self._minutes_until_schedule <= 0):
+            # If no current target or already comfortable, no risk assessment needed
+            if self._target_temp is None:
                 self._attr_is_on = None
                 self._attr_available = False
                 return
             
+            # Check if we have enough data to predict
+            # Note: minutes_until_schedule may be None if no schedule change pending
+            # In that case, we use a default prediction window (e.g., 60 minutes)
+            prediction_minutes = self._minutes_until_schedule if self._minutes_until_schedule and self._minutes_until_schedule > 0 else 60
+            
             # Get prediction
             zone = manager.get_zone(self._zone_id)
             self._predicted_temp = zone.predict_temperature(
-                self._minutes_until_schedule, 
+                prediction_minutes, 
                 self._is_heating
             )
             
@@ -265,8 +282,9 @@ class TadoComfortAtRiskSensor(BinarySensorEntity):
                 self._zone_id,
                 self._current_temp,
                 self._target_temp,
-                self._minutes_until_schedule,
-                self._is_heating
+                prediction_minutes,
+                self._is_heating,
+                self._zone_type
             )
             
             if at_risk is not None:
