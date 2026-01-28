@@ -310,6 +310,23 @@ _auth_manager: Optional[AuthManager] = None
 _auth_manager_lock = Lock()
 
 
+def cleanup_auth_manager() -> bool:
+    """Clean up the global AuthManager instance.
+    
+    MUST be called in async_unload_entry() to ensure fresh auth state on reload.
+    
+    Returns:
+        True if manager was cleaned up, False if no manager existed
+    """
+    global _auth_manager
+    with _auth_manager_lock:
+        if _auth_manager is not None:
+            _auth_manager = None
+            _LOGGER.debug("Cleaned up AuthManager")
+            return True
+    return False
+
+
 def get_auth_manager(config_file: Path, client_id: str, auth_url: str) -> AuthManager:
     """Get or create global AuthManager instance (thread-safe).
     

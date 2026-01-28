@@ -29,6 +29,7 @@ Hub device identifier migration plus intelligent heating analytics.
 - [x] **AC turn-off debug logging** - Added detailed logging to diagnose intermittent restore-to-ON issue ([#44](https://github.com/hiall-fyi/tado_ce/issues/44))
 - [x] **Refresh AC Capabilities now tracked in call history** - API calls from button now recorded ([#61](https://github.com/hiall-fyi/tado_ce/issues/61))
 - [x] **Fixed temperature offset for multi-TRV rooms** - Offset now applied to ALL devices in a zone ([#66](https://github.com/hiall-fyi/tado_ce/issues/66))
+- [x] **Fixed device sensor assignment** - Battery/Connection sensors now assigned to HEATING zones over HOT_WATER ([#56](https://github.com/hiall-fyi/tado_ce/issues/56))
 
 **Data Sources:**
 - Tier 1: Cache file (2h detailed data, survives restarts)
@@ -60,6 +61,7 @@ Major release enabling full multi-home support plus smart boost feature.
 
 **Multi-Home Support:**
 - [ ] **Allow multiple integration entries** - Each entry for a different home
+- [ ] **Thread-safe home_id handling** - Add lock for `_current_home_id` in data_loader.py (required for concurrent multi-home)
 - [ ] **Multi-home setup guide** - Documentation for users with multiple properties
 
 **Smart Boost (Phase 4):**
@@ -89,6 +91,7 @@ Major release enabling full multi-home support plus smart boost feature.
 - [ ] **Auto-assign Areas** - Suggest HA Areas based on zone names during setup ([#14](https://github.com/hiall-fyi/tado_ce/issues/14))
 - [ ] **Setup wizard improvements** - Streamlined flow with better error messages
 - [ ] **Delete tado_api.py** - File deprecated in v1.6.0, now fully removed
+- [ ] **Delete error_handler.py** - Only used by tado_api.py, remove together
 
 **Local API (Experimental):**
 - [ ] **Local-first, cloud-fallback** - Use local API when available, fall back to cloud
@@ -101,7 +104,6 @@ Major release enabling full multi-home support plus smart boost feature.
 
 ## Considering (Need More Feedback)
 
-- Device assignment priority - assign sensors to HEATING zones over HOT_WATER when device serves multiple zones ([#56](https://github.com/hiall-fyi/tado_ce/issues/56))
 - Rate Trend indicator for UFH - detect "acceleration" when heating is catching up ([#33](https://github.com/hiall-fyi/tado_ce/discussions/33))
 - Air Comfort sensors (humidity comfort level)
 - Boost button entity

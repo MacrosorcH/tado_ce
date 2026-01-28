@@ -61,8 +61,8 @@ class ImmediateRefreshHandler:
                 from .config_manager import ConfigurationManager
                 config_manager = ConfigurationManager(entries[0])
                 return float(config_manager.get_refresh_debounce_seconds())
-        except Exception:
-            pass
+        except Exception as e:
+            _LOGGER.debug(f"Could not get debounce config, using default: {e}")
         return self._debounce_delay
     
     async def _get_rate_limit_info(self) -> dict:
@@ -273,15 +273,23 @@ class ImmediateRefreshHandler:
         Weather and home state are not needed for immediate entity refresh.
         """
         from .async_api import get_async_client
+        import tempfile
+        import shutil
         
         client = get_async_client(self.hass)
         zones_data = await client.api_call("zoneStates")
         
         if zones_data:
-            # Save to zones.json
+            # Save to zones.json using atomic write
             def write_file():
-                with open(ZONES_FILE, 'w') as f:
-                    json.dump(zones_data, f, indent=2)
+                DATA_DIR.mkdir(parents=True, exist_ok=True)
+                # Atomic write: write to temp file then move
+                with tempfile.NamedTemporaryFile(
+                    mode='w', dir=DATA_DIR, delete=False, suffix='.tmp'
+                ) as tmp:
+                    json.dump(zones_data, tmp, indent=2)
+                    temp_path = tmp.name
+                shutil.move(temp_path, ZONES_FILE)
             await self.hass.async_add_executor_job(write_file)
             _LOGGER.debug(f"Zone states refreshed ({len(zones_data.get('zoneStates', {}))} zones)")
             
@@ -321,12 +329,18 @@ def cleanup_handler() -> bool:
     """Clean up the global immediate refresh handler.
     
     MUST be called in async_unload_entry() to prevent memory leaks.
+    Cancels any pending debounce tasks.
     
     Returns:
         True if handler was cleaned up, False if no handler existed
     """
     global _handler
     if _handler is not None:
+        # Cancel pending debounce task to prevent orphaned coroutines
+        if _handler._debounce_task is not None:
+            _handler._debounce_task.cancel()
+            _handler._debounce_task = None
+            _LOGGER.debug("Cancelled pending debounce task")
         _handler = None
         _LOGGER.debug("Cleaned up ImmediateRefreshHandler")
         return True

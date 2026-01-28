@@ -101,8 +101,8 @@ class TadoAwayModeSwitch(SwitchEntity):
                     self._attr_is_on = (presence == 'AWAY')
                     self._attr_available = True
                     return
-            except Exception:
-                pass
+            except Exception as e:
+                _LOGGER.debug(f"Could not read home_state.json, trying mobile_devices: {e}")
             
             # Fallback: check mobile devices location (if geo tracking enabled)
             with open(MOBILE_DEVICES_FILE) as f:

@@ -117,11 +117,19 @@ async def async_setup_entry(
 
 
 async def _async_save_schedules(hass: HomeAssistant, schedules: dict) -> None:
-    """Save schedules to file."""
+    """Save schedules to file using atomic write."""
+    import tempfile
+    import shutil
+    
     def _save():
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        with open(SCHEDULES_FILE, 'w') as f:
-            json.dump(schedules, f, indent=2)
+        # Atomic write: write to temp file then move
+        with tempfile.NamedTemporaryFile(
+            mode='w', dir=DATA_DIR, delete=False, suffix='.tmp'
+        ) as tmp:
+            json.dump(schedules, tmp, indent=2)
+            temp_path = tmp.name
+        shutil.move(temp_path, SCHEDULES_FILE)
     
     await hass.async_add_executor_job(_save)
 

@@ -34,6 +34,9 @@ DEFAULT_SMART_HEATING_ENABLED = False  # v1.9.0: Smart Heating analytics (opt-in
 DEFAULT_OUTDOOR_TEMP_ENTITY = ""  # v1.9.0: Outdoor temperature entity for weather compensation
 DEFAULT_WEATHER_COMPENSATION = "none"  # v1.9.0: Weather compensation preset
 DEFAULT_USE_FEELS_LIKE = False  # v1.9.0: Use feels-like temperature instead of actual
+DEFAULT_COMFORT_THRESHOLD_HEATING = 18.0  # v1.9.0: Min comfort temp for zones without TRV (°C)
+DEFAULT_COMFORT_THRESHOLD_COOLING = 26.0  # v1.9.0: Max comfort temp for zones without TRV (°C)
+DEFAULT_SMART_HEATING_HISTORY_DAYS = 7  # v1.9.1: Days of temperature history to keep for rate calculation
 
 # WEATHER_COMPENSATION_PRESETS moved to const.py (v1.9.0)
 
@@ -46,6 +49,8 @@ MIN_RETENTION_DAYS = 0  # 0 = forever
 MAX_RETENTION_DAYS = 365
 MIN_TIMER_DURATION = 5  # minutes
 MAX_TIMER_DURATION = 1440  # 24 hours
+MIN_SMART_HEATING_HISTORY_DAYS = 1
+MAX_SMART_HEATING_HISTORY_DAYS = 30
 
 
 class ConfigurationManager:
@@ -431,6 +436,51 @@ class ConfigurationManager:
             True to use feels-like temperature, False for actual temperature
         """
         return self._options.get('use_feels_like', DEFAULT_USE_FEELS_LIKE)
+    
+    def get_comfort_threshold_heating(self) -> float:
+        """Get comfort threshold for heating zones without TRV.
+        
+        v1.9.0: For zones without TRV (e.g., SU02 thermostat only), this threshold
+        is used to determine "Comfort at Risk" when no explicit target is set.
+        If current temp < threshold, comfort is at risk.
+        
+        Returns:
+            Temperature in Celsius (default 18.0)
+        """
+        threshold = self._options.get('comfort_threshold_heating', DEFAULT_COMFORT_THRESHOLD_HEATING)
+        if isinstance(threshold, (int, float)) and 10.0 <= threshold <= 25.0:
+            return float(threshold)
+        return DEFAULT_COMFORT_THRESHOLD_HEATING
+    
+    def get_comfort_threshold_cooling(self) -> float:
+        """Get comfort threshold for cooling zones without TRV.
+        
+        v1.9.0: For AC zones, this threshold is used to determine "Comfort at Risk"
+        when no explicit target is set. If current temp > threshold, comfort is at risk.
+        
+        Returns:
+            Temperature in Celsius (default 26.0)
+        """
+        threshold = self._options.get('comfort_threshold_cooling', DEFAULT_COMFORT_THRESHOLD_COOLING)
+        if isinstance(threshold, (int, float)) and 20.0 <= threshold <= 35.0:
+            return float(threshold)
+        return DEFAULT_COMFORT_THRESHOLD_COOLING
+    
+    def get_smart_heating_history_days(self) -> int:
+        """Get Smart Heating temperature history retention in days.
+        
+        v1.9.1: Number of days of temperature readings to keep for rate calculation.
+        More days = more accurate rates but larger cache file.
+        
+        Returns:
+            Number of days (1-30, default 7)
+        """
+        days = self._options.get('smart_heating_history_days', DEFAULT_SMART_HEATING_HISTORY_DAYS)
+        if isinstance(days, float):
+            days = int(days)
+        if isinstance(days, int) and MIN_SMART_HEATING_HISTORY_DAYS <= days <= MAX_SMART_HEATING_HISTORY_DAYS:
+            return days
+        return DEFAULT_SMART_HEATING_HISTORY_DAYS
     
     def sync_all_to_config_json(self) -> None:
         """Sync all configuration values to config.json for tado_api.py to read.

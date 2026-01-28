@@ -161,8 +161,6 @@ class TadoRefreshACCapabilitiesButton(ButtonEntity):
             _LOGGER.info("AC capabilities refreshed successfully")
         except Exception as e:
             _LOGGER.error(f"Failed to refresh AC capabilities: {e}")
-        
-        _LOGGER.info("AC capabilities refreshed successfully")
 
 
 class TadoWaterHeaterTimerButton(ButtonEntity):
@@ -291,11 +289,19 @@ class TadoRefreshScheduleButton(ButtonEntity):
                 "blocks": schedule_data.get("blocks", {}),
             }
             
-            # Save back to file
+            # Save back to file using atomic write
             def _save_schedules():
+                import tempfile
+                import shutil
+                
                 SCHEDULES_FILE.parent.mkdir(parents=True, exist_ok=True)
-                with open(SCHEDULES_FILE, 'w') as f:
-                    json.dump(schedules, f, indent=2)
+                # Atomic write: write to temp file then move
+                with tempfile.NamedTemporaryFile(
+                    mode='w', dir=SCHEDULES_FILE.parent, delete=False, suffix='.tmp'
+                ) as tmp:
+                    json.dump(schedules, tmp, indent=2)
+                    temp_path = tmp.name
+                shutil.move(temp_path, SCHEDULES_FILE)
             
             await self.hass.async_add_executor_job(_save_schedules)
             

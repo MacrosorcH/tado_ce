@@ -20,6 +20,10 @@
 - Reported temperature offset only applying to first TRV in multi-TRV rooms
 - Identified that offset service needed to loop through all devices
 
+**[@ChrisMarriott38](https://github.com/ChrisMarriott38)** - [Issue #56](https://github.com/hiall-fyi/tado_ce/issues/56)
+- Reported Battery/Connection sensors assigned to wrong zone when device serves multiple zones
+- Helped identify that HEATING zones should be prioritized over HOT_WATER
+
 **[@hapklaar](https://github.com/hapklaar)**, **[@neonsp](https://github.com/neonsp)** - [Issue #44](https://github.com/hiall-fyi/tado_ce/issues/44)
 - Continued testing and feedback on AC turn-off behavior
 - Debug logging added to help diagnose intermittent restore-to-ON issue
@@ -29,6 +33,7 @@
 - ✅ **Issue #54**: API reset detection now uses dynamic threshold for both 5000 and 100 call limits
 - ✅ **Issue #61**: Refresh AC Capabilities button now tracked in call history (Code 8)
 - ✅ **Issue #66**: Temperature offset now applied to ALL devices in multi-TRV zones
+- ✅ **Issue #56**: Device sensors now assigned to HEATING zones over HOT_WATER when device serves multiple zones
 - ✅ **Issue #44**: Added detailed debug logging for AC turn-off diagnosis
 
 ---

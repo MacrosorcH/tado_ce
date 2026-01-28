@@ -255,10 +255,19 @@ class TadoCEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
     
     def _save_config_sync(self, config: dict):
-        """Save config synchronously (for executor)."""
+        """Save config synchronously (for executor) using atomic write."""
         import json
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(config, f, indent=2)
+        import tempfile
+        import shutil
+        
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        # Atomic write: write to temp file then move
+        with tempfile.NamedTemporaryFile(
+            mode='w', dir=DATA_DIR, delete=False, suffix='.tmp'
+        ) as tmp:
+            json.dump(config, tmp, indent=2)
+            temp_path = tmp.name
+        shutil.move(temp_path, CONFIG_FILE)
 
     # ========== Reconfigure Flow (Re-authenticate) ==========
     
@@ -419,7 +428,7 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
             # Flatten smart_heating_settings section
             if 'smart_heating_settings' in user_input:
                 smart_heating = user_input['smart_heating_settings']
-                for key in ['outdoor_temp_entity', 'weather_compensation', 'use_feels_like']:
+                for key in ['outdoor_temp_entity', 'weather_compensation', 'use_feels_like', 'comfort_threshold_heating', 'comfort_threshold_cooling']:
                     if key in smart_heating:
                         processed_input[key] = smart_heating[key]
             
@@ -515,6 +524,15 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                             )
                         ),
                         vol.Optional('use_feels_like', default=options.get('use_feels_like', False)): BooleanSelector(),
+                        vol.Optional('comfort_threshold_heating', default=options.get('comfort_threshold_heating', 18.0)): NumberSelector(
+                            NumberSelectorConfig(min=10, max=25, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")
+                        ),
+                        vol.Optional('comfort_threshold_cooling', default=options.get('comfort_threshold_cooling', 26.0)): NumberSelector(
+                            NumberSelectorConfig(min=20, max=35, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")
+                        ),
+                        vol.Optional('smart_heating_history_days', default=options.get('smart_heating_history_days', 7)): NumberSelector(
+                            NumberSelectorConfig(min=1, max=30, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="days")
+                        ),
                     }),
                     {"collapsed": True},
                 ),

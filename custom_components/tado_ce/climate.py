@@ -202,12 +202,19 @@ class TadoClimate(ClimateEntity):
 
     def update(self):
         """Update climate state from JSON file."""
-        # Skip update if within optimistic debounce window (default 15s)
+        # Skip update if within optimistic debounce window
         if self._optimistic_set_at is not None:
             import time
             elapsed = time.time() - self._optimistic_set_at
-            # Get debounce delay from config (default 15s) + 2s buffer
-            debounce_window = 17.0  # 15s debounce + 2s buffer
+            # Get debounce delay from config + 2s buffer for API response time
+            debounce_window = 17.0  # Default fallback
+            try:
+                config_manager = self.hass.data.get(DOMAIN, {}).get('config_manager')
+                if config_manager:
+                    debounce_window = float(config_manager.get_refresh_debounce_seconds()) + 2.0
+            except Exception:
+                pass  # Use default if config unavailable
+            
             if elapsed < debounce_window:
                 _LOGGER.debug(f"Skipping update for {self._zone_name} - optimistic update {elapsed:.1f}s ago (window: {debounce_window}s)")
                 return
@@ -350,13 +357,29 @@ class TadoClimate(ClimateEntity):
             await self._async_trigger_immediate_refresh("preset_mode_change")
 
     async def async_set_temperature(self, **kwargs):
-        """Set new target temperature."""
+        """Set new target temperature.
+        
+        Optimized to use single API call when both temperature and hvac_mode are provided.
+        This saves 1 API call (1% of 100-call limit) compared to calling set_hvac_mode first.
+        """
+        import time
         temperature = kwargs.get(ATTR_TEMPERATURE)
         hvac_mode = kwargs.get(ATTR_HVAC_MODE)
         
-        # If hvac_mode is provided, set it first
-        if hvac_mode is not None:
+        # Handle hvac_mode without temperature (delegate to set_hvac_mode)
+        if hvac_mode is not None and temperature is None:
             await self.async_set_hvac_mode(hvac_mode)
+            return
+        
+        # Handle OFF mode specially (no temperature needed)
+        if hvac_mode == HVACMode.OFF:
+            await self.async_set_hvac_mode(HVACMode.OFF)
+            return
+        
+        # Handle AUTO mode specially (delete overlay, no temperature)
+        if hvac_mode == HVACMode.AUTO:
+            await self.async_set_hvac_mode(HVACMode.AUTO)
+            return
         
         if temperature is None:
             return
@@ -367,11 +390,11 @@ class TadoClimate(ClimateEntity):
         self._attr_target_temperature = temperature
         self._attr_hvac_mode = HVACMode.HEAT
         self._overlay_type = "MANUAL"
-        import time
         self._optimistic_set_at = time.time()  # Track when optimistic state was set
         _LOGGER.debug(f"Optimistic update: {self._zone_name} target_temp={temperature}")
         self.async_write_ha_state()
         
+        # Single API call for both temperature and mode
         client = get_async_client(self.hass)
         setting = {
             "type": "HEATING",
@@ -581,9 +604,11 @@ class TadoACClimate(ClimateEntity):
         self._attr_supported_features = features
         
         # Build HVAC modes based on capabilities
-        # Always include OFF (no AUTO for AC - use HEAT_COOL instead)
-        # HVACMode.AUTO in HA means "follow schedule" which deletes overlay
-        # HVACMode.HEAT_COOL maps to Tado's AUTO mode (heat/cool as needed)
+        # v1.5.5: Removed HVACMode.AUTO from AC to avoid confusion
+        # - HVACMode.AUTO in HA means "follow schedule" (delete overlay)
+        # - Users confused it with Tado's AUTO mode (heat/cool as needed)
+        # - Tado's AUTO = HA's HEAT_COOL
+        # - AC users can still delete overlay via Resume Schedule button
         self._attr_hvac_modes = [HVACMode.OFF]
         
         # Add modes that exist in capabilities
@@ -675,12 +700,19 @@ class TadoACClimate(ClimateEntity):
 
     def update(self):
         """Update AC climate state from JSON file."""
-        # Skip update if within optimistic debounce window (default 15s)
+        # Skip update if within optimistic debounce window
         if self._optimistic_set_at is not None:
             import time
             elapsed = time.time() - self._optimistic_set_at
-            # Get debounce delay from config (default 15s) + 2s buffer
-            debounce_window = 17.0  # 15s debounce + 2s buffer
+            # Get debounce delay from config + 2s buffer for API response time
+            debounce_window = 17.0  # Default fallback
+            try:
+                config_manager = self.hass.data.get(DOMAIN, {}).get('config_manager')
+                if config_manager:
+                    debounce_window = float(config_manager.get_refresh_debounce_seconds()) + 2.0
+            except Exception:
+                pass  # Use default if config unavailable
+            
             if elapsed < debounce_window:
                 _LOGGER.debug(f"AC {self._zone_name}: [UPDATE-SKIP] Optimistic active ({elapsed:.1f}s < {debounce_window}s), current mode={self._attr_hvac_mode}")
                 return
@@ -788,31 +820,43 @@ class TadoACClimate(ClimateEntity):
             self._attr_available = False
 
     async def async_set_temperature(self, **kwargs):
-        """Set new target temperature."""
+        """Set new target temperature.
+        
+        Optimized to use single API call when both temperature and hvac_mode are provided.
+        This saves 1 API call (1% of 100-call limit) compared to calling set_hvac_mode first.
+        """
         import time
         temperature = kwargs.get(ATTR_TEMPERATURE)
         hvac_mode = kwargs.get(ATTR_HVAC_MODE)
         
-        # If hvac_mode is provided, convert to Tado mode and include in overlay
-        tado_mode = None
-        if hvac_mode is not None:
-            # Map HA hvac_mode to Tado mode
-            tado_mode = HA_TO_TADO_HVAC_MODE.get(hvac_mode)
-            if hvac_mode == HVACMode.OFF:
-                # If setting to OFF, just call set_hvac_mode
-                await self.async_set_hvac_mode(hvac_mode)
-                return
-        
-        if temperature is None and tado_mode is None:
+        # Handle hvac_mode without temperature (delegate to set_hvac_mode)
+        if hvac_mode is not None and temperature is None:
+            await self.async_set_hvac_mode(hvac_mode)
             return
+        
+        # Handle OFF mode specially (no temperature needed)
+        if hvac_mode == HVACMode.OFF:
+            await self.async_set_hvac_mode(HVACMode.OFF)
+            return
+        
+        # Handle AUTO mode specially (delete overlay, no temperature)
+        # Note: For AC, HVACMode.AUTO means "follow schedule" (delete overlay)
+        if hvac_mode == HVACMode.AUTO:
+            await self.async_set_hvac_mode(HVACMode.AUTO)
+            return
+        
+        if temperature is None:
+            return
+        
+        # Convert hvac_mode to Tado mode for the overlay
+        tado_mode = HA_TO_TADO_HVAC_MODE.get(hvac_mode) if hvac_mode else None
         
         # Optimistic update BEFORE API call
         old_temp = self._attr_target_temperature
         old_mode = self._attr_hvac_mode
         old_action = self._attr_hvac_action
         
-        if temperature is not None:
-            self._attr_target_temperature = temperature
+        self._attr_target_temperature = temperature
         if hvac_mode is not None:
             self._attr_hvac_mode = hvac_mode
         
@@ -828,6 +872,9 @@ class TadoACClimate(ClimateEntity):
                 self._attr_hvac_action = HVACAction.DRYING
             elif self._attr_hvac_mode == HVACMode.FAN_ONLY:
                 self._attr_hvac_action = HVACAction.FAN
+            elif self._attr_hvac_mode == HVACMode.HEAT_COOL:
+                # Tado AUTO mode - AC decides to heat or cool as needed
+                self._attr_hvac_action = HVACAction.IDLE
             else:
                 self._attr_hvac_action = HVACAction.COOLING  # Default fallback
         
@@ -836,6 +883,7 @@ class TadoACClimate(ClimateEntity):
         _LOGGER.debug(f"AC Optimistic update: {self._zone_name} target_temp={temperature}")
         self.async_write_ha_state()
         
+        # Single API call for both temperature and mode
         if await self._async_set_ac_overlay(temperature=temperature, mode=tado_mode):
             _LOGGER.info(f"AC Set {self._zone_name} to {temperature}°C")
             await self._async_trigger_immediate_refresh("temperature_change")
@@ -937,6 +985,10 @@ class TadoACClimate(ClimateEntity):
                 self._attr_hvac_action = HVACAction.DRYING
             elif hvac_mode == HVACMode.FAN_ONLY:
                 self._attr_hvac_action = HVACAction.FAN
+            elif hvac_mode == HVACMode.HEAT_COOL:
+                # Tado AUTO mode - AC decides to heat or cool as needed
+                # Set to IDLE initially; actual action determined by AC unit
+                self._attr_hvac_action = HVACAction.IDLE
             
             self._optimistic_set_at = time.time()
             self.async_write_ha_state()

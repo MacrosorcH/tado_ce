@@ -38,6 +38,20 @@ def get_current_home_id() -> Optional[str]:
     return _current_home_id
 
 
+def cleanup_data_loader() -> bool:
+    """Clean up data loader state.
+    
+    MUST be called in async_unload_entry() to reset home_id on reload.
+    
+    Returns:
+        True if state was cleaned up
+    """
+    global _current_home_id
+    _current_home_id = None
+    _LOGGER.debug("Cleaned up data loader home_id")
+    return True
+
+
 def _get_file_path(base_name: str) -> Path:
     """Get file path with home_id support and fallback.
     

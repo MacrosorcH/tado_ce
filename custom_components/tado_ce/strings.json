@@ -85,7 +85,10 @@
           "refresh_debounce_seconds": "Refresh Debounce (seconds)",
           "outdoor_temp_entity": "Outdoor Temperature Entity",
           "weather_compensation": "Weather Compensation",
-          "use_feels_like": "Use Feels-Like Temperature"
+          "use_feels_like": "Use Feels-Like Temperature",
+          "comfort_threshold_heating": "Comfort Threshold (Heating)",
+          "comfort_threshold_cooling": "Comfort Threshold (Cooling)",
+          "smart_heating_history_days": "Temperature History (days)"
         },
         "data_description": {
           "weather_enabled": "Get outside temperature and solar intensity (+1 API call per quick sync)",
@@ -104,7 +107,10 @@
           "hot_water_timer_duration": "Default duration when turning on hot water (5-1440 minutes, default: 60)",
           "outdoor_temp_entity": "Select a temperature sensor for weather compensation (e.g., weather.home, sensor.outdoor_temperature)",
           "weather_compensation": "Adjust heating rate predictions based on outdoor temperature. Light: subtle adjustment, Moderate: balanced, Aggressive: strong adjustment",
-          "use_feels_like": "Use feels-like (apparent) temperature instead of actual temperature for weather compensation"
+          "use_feels_like": "Use feels-like (apparent) temperature instead of actual temperature for weather compensation",
+          "comfort_threshold_heating": "Minimum comfortable temperature for heating zones without active target (°C)",
+          "comfort_threshold_cooling": "Maximum comfortable temperature for cooling zones without active target (°C)",
+          "smart_heating_history_days": "Days of temperature history to keep for rate calculation (1-30, default: 7). More days = more accurate rates but larger cache file"
         }
       }
     },

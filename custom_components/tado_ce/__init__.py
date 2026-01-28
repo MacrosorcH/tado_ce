@@ -288,8 +288,8 @@ def get_polling_interval(config_manager: ConfigurationManager, cached_ratelimit:
             # Use fastest for highest limits
             _, day_interval, night_interval = POLLING_INTERVALS[-1]
             return day_interval if daytime else night_interval
-    except Exception:
-        pass
+    except Exception as e:
+        _LOGGER.debug(f"Could not determine smart polling interval, using default: {e}")
     
     return DEFAULT_DAY_INTERVAL if daytime else DEFAULT_NIGHT_INTERVAL
 
@@ -1154,7 +1154,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             async_load_history_from_recorder,
             async_load_baseline_from_statistics
         )
-        smart_heating_manager = get_smart_heating_manager()
+        history_days = config_manager.get_smart_heating_history_days()
+        smart_heating_manager = get_smart_heating_manager(history_days=history_days)
         smart_heating_manager._hass = hass  # Set hass reference for weather entity access
         smart_heating_manager._home_id = home_id  # Set home_id for per-home cache files
         smart_heating_manager.enable()
@@ -1701,8 +1702,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.debug("Cancelled polling timer")
     
     # Clean up async client to prevent memory leak
-    from .async_api import cleanup_async_client
+    from .async_api import cleanup_async_client, cleanup_tracker
     cleanup_async_client(hass)
+    cleanup_tracker()
     
     # Clean up immediate refresh handler
     from .immediate_refresh_handler import cleanup_handler
@@ -1711,6 +1713,18 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Clean up API call tracker executor to prevent thread leaks
     from .api_call_tracker import cleanup_executor
     cleanup_executor()
+    
+    # Clean up Smart Heating manager (saves data before cleanup)
+    from .smart_heating import cleanup_smart_heating_manager
+    cleanup_smart_heating_manager()
+    
+    # Clean up data loader home_id
+    from .data_loader import cleanup_data_loader
+    cleanup_data_loader()
+    
+    # Clean up auth manager
+    from .auth_manager import cleanup_auth_manager
+    cleanup_auth_manager()
     
     # Build platform list to unload (same logic as setup)
     config_manager = hass.data.get(DOMAIN, {}).get('config_manager')

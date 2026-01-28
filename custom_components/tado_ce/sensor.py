@@ -97,6 +97,22 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
         if zones_info:
             zone_types = {str(z.get('id')): z.get('type', 'HEATING') for z in zones_info}
         
+        # Build zone TRV map - check if zone has TRV device (VA02, RU01, VA01)
+        # Only zones with TRVs should have Smart Heating sensors
+        zones_with_trv = set()
+        TRV_DEVICE_TYPES = {'VA02', 'VA01', 'RU01', 'RU02'}  # V3+ and V2 TRVs
+        if zones_info:
+            for zone in zones_info:
+                zone_id = str(zone.get('id'))
+                devices = zone.get('devices', [])
+                for device in devices:
+                    if device.get('deviceType') in TRV_DEVICE_TYPES:
+                        zones_with_trv.add(zone_id)
+                        break
+        
+        if zones_with_trv:
+            _LOGGER.debug(f"Zones with TRV devices: {zones_with_trv}")
+        
         if zones_data:
             # Use 'or {}' pattern for null safety
             zone_states = zones_data.get('zoneStates') or {}
@@ -120,11 +136,15 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                     ])
                     # v1.9.0: Smart Heating sensors (opt-in)
                     if config_manager.get_smart_heating_enabled():
+                        # Heating/Cooling Rate - useful for all zones with temperature sensor
                         sensors.extend([
                             TadoHeatingRateSensor(zone_id, zone_name, zone_type),
                             TadoCoolingRateSensor(zone_id, zone_name, zone_type),
-                            TadoTimeToTargetSensor(zone_id, zone_name, zone_type),
+                            TadoComfortLevelSensor(zone_id, zone_name, zone_type),
                         ])
+                        # Time to Target - only for zones with TRV (heating control)
+                        if zone_id in zones_with_trv:
+                            sensors.append(TadoTimeToTargetSensor(zone_id, zone_name, zone_type))
                 elif zone_type == 'AIR_CONDITIONING':
                     sensors.extend([
                         TadoTemperatureSensor(zone_id, zone_name, zone_type),
@@ -133,12 +153,13 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                         TadoTargetTempSensor(zone_id, zone_name, zone_type),
                         TadoOverlaySensor(zone_id, zone_name, zone_type),
                     ])
-                    # v1.9.0: Smart Heating sensors for AC (opt-in)
+                    # v1.9.0: Smart Heating sensors for AC (opt-in, always create for AC zones)
                     if config_manager.get_smart_heating_enabled():
                         sensors.extend([
                             TadoHeatingRateSensor(zone_id, zone_name, zone_type),
                             TadoCoolingRateSensor(zone_id, zone_name, zone_type),
                             TadoTimeToTargetSensor(zone_id, zone_name, zone_type),
+                            TadoComfortLevelSensor(zone_id, zone_name, zone_type),
                         ])
                 elif zone_type == 'HOT_WATER':
                     # Only create temperature sensor if zone has temperature data
@@ -151,24 +172,44 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
         _LOGGER.error(f"Failed to load zones: {e}")
     
     # Device sensors (battery + connection) - track seen serials to avoid duplicates
-    seen_serials = set()
+    # Prioritize HEATING zones over HOT_WATER/AIR_CONDITIONING for device assignment (#56)
     try:
         zones_info = await hass.async_add_executor_job(load_zones_info_file)
         if zones_info:
+            # Build mapping: serial -> list of (zone_id, zone_name, zone_type, device)
+            device_zones: dict[str, list[tuple]] = {}
             for zone in zones_info:
                 zone_id = str(zone.get('id'))
                 zone_name = zone.get('name', f"Zone {zone_id}")
                 zone_type = zone.get('type', 'HEATING')
                 for device in zone.get('devices', []):
                     serial = device.get('shortSerialNo')
-                    if serial and serial not in seen_serials:
-                        # Battery sensor (if device has battery)
-                        if 'batteryState' in device:
-                            sensors.append(TadoBatterySensor(zone_id, zone_name, zone_type, device, zones_info))
-                        # Connection sensor (all devices)
-                        if 'connectionState' in device:
-                            sensors.append(TadoDeviceConnectionSensor(zone_id, zone_name, zone_type, device, zones_info))
-                        seen_serials.add(serial)
+                    if serial:
+                        if serial not in device_zones:
+                            device_zones[serial] = []
+                        device_zones[serial].append((zone_id, zone_name, zone_type, device))
+            
+            # For each device, pick the best zone (HEATING > HOT_WATER > AIR_CONDITIONING)
+            for serial, zone_list in device_zones.items():
+                # Sort by zone type priority: HEATING first
+                def zone_priority(item):
+                    zone_type = item[2]
+                    if zone_type == 'HEATING':
+                        return 0
+                    elif zone_type == 'AIR_CONDITIONING':
+                        return 1
+                    else:  # HOT_WATER
+                        return 2
+                
+                zone_list.sort(key=zone_priority)
+                zone_id, zone_name, zone_type, device = zone_list[0]
+                
+                # Battery sensor (if device has battery)
+                if 'batteryState' in device:
+                    sensors.append(TadoBatterySensor(zone_id, zone_name, zone_type, device, zones_info))
+                # Connection sensor (all devices)
+                if 'connectionState' in device:
+                    sensors.append(TadoDeviceConnectionSensor(zone_id, zone_name, zone_type, device, zones_info))
     except Exception as e:
         _LOGGER.debug(f"Failed to load device info: {e}")
     
@@ -304,7 +345,7 @@ class TadoApiUsageSensor(SensorEntity):
                 try:
                     config_manager = ConfigurationManager(None)
                     retention_days = config_manager.get_api_history_retention_days()
-                except:
+                except (AttributeError, TypeError):
                     pass
                 
                 tracker = APICallTracker(DATA_DIR, retention_days=retention_days)
@@ -1195,10 +1236,10 @@ class TadoHeatingRateSensor(TadoBaseSensor):
     def update(self):
         """Update heating rate from SmartHeatingManager."""
         try:
-            from .smart_heating import get_smart_heating_manager
-            manager = get_smart_heating_manager()
+            # v1.9.0: Use hass.data instead of global singleton for multi-home support
+            manager = self.hass.data.get(DOMAIN, {}).get('smart_heating_manager') if self.hass else None
             
-            if not manager.is_enabled:
+            if not manager or not manager.is_enabled:
                 self._attr_available = False
                 return
             
@@ -1245,10 +1286,10 @@ class TadoCoolingRateSensor(TadoBaseSensor):
     def update(self):
         """Update cooling rate from SmartHeatingManager."""
         try:
-            from .smart_heating import get_smart_heating_manager
-            manager = get_smart_heating_manager()
+            # v1.9.0: Use hass.data instead of global singleton for multi-home support
+            manager = self.hass.data.get(DOMAIN, {}).get('smart_heating_manager') if self.hass else None
             
-            if not manager.is_enabled:
+            if not manager or not manager.is_enabled:
                 self._attr_available = False
                 return
             
@@ -1296,10 +1337,10 @@ class TadoTimeToTargetSensor(TadoBaseSensor):
     def update(self):
         """Update time to target from SmartHeatingManager."""
         try:
-            from .smart_heating import get_smart_heating_manager
-            manager = get_smart_heating_manager()
+            # v1.9.0: Use hass.data instead of global singleton for multi-home support
+            manager = self.hass.data.get(DOMAIN, {}).get('smart_heating_manager') if self.hass else None
             
-            if not manager.is_enabled:
+            if not manager or not manager.is_enabled:
                 self._attr_available = False
                 return
             
@@ -1354,3 +1395,101 @@ class TadoTimeToTargetSensor(TadoBaseSensor):
         except Exception as e:
             _LOGGER.debug(f"Failed to update time to target for zone {self._zone_id}: {e}")
             self._attr_available = False
+
+
+# ============ Comfort Level Sensor (v1.9.0) ============
+
+class TadoComfortLevelSensor(TadoBaseSensor):
+    """Sensor showing comfort level as readable text.
+    
+    Displays:
+    - "Comfortable" when temperature is within comfort range
+    - "Too Cold" when HEATING zone is below threshold
+    - "Too Hot" when AC zone is above threshold
+    """
+    
+    def __init__(self, zone_id: str, zone_name: str, zone_type: str = "HEATING"):
+        super().__init__(zone_id, zone_name, zone_type)
+        self._attr_name = f"{zone_name} Comfort Level"
+        self._attr_unique_id = f"tado_ce_zone_{zone_id}_comfort_level"
+        self._attr_icon = "mdi:thermometer-check"
+        self._current_temp = None
+        self._threshold = None
+        self._using_config_threshold = False
+    
+    @property
+    def extra_state_attributes(self):
+        return {
+            "current_temperature": self._current_temp,
+            "threshold": self._threshold,
+            "zone_type": self._zone_type,
+            "using_config_threshold": self._using_config_threshold,
+        }
+    
+    def update(self):
+        """Update comfort status based on temperature vs threshold."""
+        try:
+            zone_data = self._get_zone_data()
+            if not zone_data:
+                self._attr_available = False
+                return
+            
+            # Get current temperature
+            sensor_data = zone_data.get('sensorDataPoints') or {}
+            self._current_temp = (sensor_data.get('insideTemperature') or {}).get('celsius')
+            
+            if self._current_temp is None:
+                self._attr_available = False
+                return
+            
+            # Determine threshold: use active target if available, else config threshold
+            setting = zone_data.get('setting') or {}
+            self._using_config_threshold = False
+            self._threshold = None
+            
+            if setting.get('power') == 'ON':
+                self._threshold = (setting.get('temperature') or {}).get('celsius')
+            
+            if self._threshold is None:
+                self._using_config_threshold = True
+                self._threshold = self._get_config_threshold()
+            
+            # Determine comfort status
+            if self._zone_type == 'HEATING':
+                if self._current_temp < self._threshold:
+                    self._attr_native_value = "Too Cold"
+                    self._attr_icon = "mdi:snowflake-alert"
+                else:
+                    self._attr_native_value = "Comfortable"
+                    self._attr_icon = "mdi:thermometer-check"
+            else:  # AC
+                if self._current_temp > self._threshold:
+                    self._attr_native_value = "Too Hot"
+                    self._attr_icon = "mdi:fire-alert"
+                else:
+                    self._attr_native_value = "Comfortable"
+                    self._attr_icon = "mdi:thermometer-check"
+            
+            self._attr_available = True
+            
+        except Exception as e:
+            _LOGGER.debug(f"Failed to update comfort status for zone {self._zone_id}: {e}")
+            self._attr_available = False
+    
+    def _get_config_threshold(self) -> float:
+        """Get comfort threshold from config, with fallback defaults."""
+        try:
+            if self.hass:
+                from .config_manager import ConfigurationManager
+                entries = self.hass.config_entries.async_entries(DOMAIN)
+                if entries:
+                    config_manager = ConfigurationManager(entries[0])
+                    if self._zone_type == 'HEATING':
+                        return config_manager.get_comfort_threshold_heating()
+                    else:
+                        return config_manager.get_comfort_threshold_cooling()
+        except Exception as e:
+            _LOGGER.debug(f"Could not get comfort threshold from config, using default: {e}")
+        
+        # Fallback defaults
+        return 18.0 if self._zone_type == 'HEATING' else 26.0

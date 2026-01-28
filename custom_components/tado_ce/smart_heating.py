@@ -50,7 +50,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 # Configuration
-HISTORY_WINDOW_HOURS = 2  # Keep 2 hours of history for real-time tracking
+DEFAULT_HISTORY_DAYS = 7  # Default: keep 7 days of history
 RECORDER_HISTORY_HOURS = 24  # Load 24 hours from recorder on startup
 MIN_DATA_POINTS = 3  # Minimum points needed for rate calculation
 MIN_TIME_SPAN_MINUTES = 15  # Minimum time span for meaningful rate
@@ -90,10 +90,11 @@ class TemperatureReading:
 class ZoneHistory:
     """Temperature history for a single zone."""
     
-    def __init__(self, zone_id: str, zone_name: str):
+    def __init__(self, zone_id: str, zone_name: str, history_days: int = DEFAULT_HISTORY_DAYS):
         self.zone_id = zone_id
         self.zone_name = zone_name
         self.readings: list[TemperatureReading] = []
+        self._history_days = history_days
         self._last_heating_rate: Optional[float] = None
         self._last_cooling_rate: Optional[float] = None
         self._rate_updated_at: Optional[datetime] = None
@@ -106,15 +107,22 @@ class ZoneHistory:
         return {
             "zone_id": self.zone_id,
             "zone_name": self.zone_name,
-            "readings": [r.to_dict() for r in self.readings]
+            "readings": [r.to_dict() for r in self.readings],
+            "history_days": self._history_days
         }
     
     @classmethod
     def from_dict(cls, data: dict) -> "ZoneHistory":
         """Create from dictionary."""
-        zone = cls(data["zone_id"], data["zone_name"])
+        history_days = data.get("history_days", DEFAULT_HISTORY_DAYS)
+        zone = cls(data["zone_id"], data["zone_name"], history_days)
         zone.readings = [TemperatureReading.from_dict(r) for r in data.get("readings", [])]
         return zone
+    
+    def set_history_days(self, days: int) -> None:
+        """Update history retention period and prune old readings."""
+        self._history_days = days
+        self._prune_old_readings()
     
     def add_reading(self, reading: TemperatureReading) -> None:
         """Add a temperature reading and prune old data."""
@@ -122,8 +130,8 @@ class ZoneHistory:
         self._prune_old_readings()
     
     def _prune_old_readings(self) -> None:
-        """Remove readings older than HISTORY_WINDOW_HOURS."""
-        cutoff = datetime.now() - timedelta(hours=HISTORY_WINDOW_HOURS)
+        """Remove readings older than configured history_days."""
+        cutoff = datetime.now() - timedelta(days=self._history_days)
         self.readings = [r for r in self.readings if r.timestamp > cutoff]
     
     def get_heating_rate(self) -> Optional[float]:
@@ -271,16 +279,24 @@ class ZoneHistory:
 class SmartHeatingManager:
     """Manages smart heating analytics for all zones."""
     
-    def __init__(self, hass: "HomeAssistant" = None, home_id: str = ""):
+    def __init__(self, hass: "HomeAssistant" = None, home_id: str = "", history_days: int = DEFAULT_HISTORY_DAYS):
         self._zones: dict[str, ZoneHistory] = {}
         self._enabled = False
         self._hass = hass
         self._home_id = home_id
+        self._history_days = history_days
         self._last_save_time: Optional[datetime] = None
         # Weather compensation settings
         self._outdoor_temp_entity: str = ""
         self._weather_compensation: str = "none"
         self._use_feels_like: bool = False
+    
+    def set_history_days(self, days: int) -> None:
+        """Update history retention period for all zones."""
+        self._history_days = days
+        for zone in self._zones.values():
+            zone.set_history_days(days)
+        _LOGGER.info(f"Smart Heating: History retention set to {days} days")
     
     def _get_cache_file(self) -> Path:
         """Get the cache file path."""
@@ -305,6 +321,7 @@ class SmartHeatingManager:
             cache_file = self._get_cache_file()
             data = {
                 "saved_at": datetime.now().isoformat(),
+                "history_days": self._history_days,
                 "zones": {zone_id: zone.to_dict() for zone_id, zone in self._zones.items()}
             }
             
@@ -353,8 +370,8 @@ class SmartHeatingManager:
             
             for zone_id, zone_data in zones_data.items():
                 zone = ZoneHistory.from_dict(zone_data)
-                # Prune old readings
-                zone._prune_old_readings()
+                # Update history_days from current config
+                zone.set_history_days(self._history_days)
                 
                 if zone.readings:
                     self._zones[zone_id] = zone
@@ -423,7 +440,7 @@ class SmartHeatingManager:
     def get_zone(self, zone_id: str, zone_name: str = "") -> ZoneHistory:
         """Get or create zone history tracker."""
         if zone_id not in self._zones:
-            self._zones[zone_id] = ZoneHistory(zone_id, zone_name or f"Zone {zone_id}")
+            self._zones[zone_id] = ZoneHistory(zone_id, zone_name or f"Zone {zone_id}", self._history_days)
         return self._zones[zone_id]
     
     def record_temperature(
@@ -856,11 +873,34 @@ class SmartHeatingManager:
 _manager: Optional[SmartHeatingManager] = None
 
 
-def get_smart_heating_manager() -> SmartHeatingManager:
+def cleanup_smart_heating_manager() -> bool:
+    """Clean up the global SmartHeatingManager.
+    
+    MUST be called in async_unload_entry() to prevent memory leaks
+    when integration is reloaded or removed.
+    
+    Returns:
+        True if manager was cleaned up, False if no manager existed
+    """
+    global _manager
+    if _manager is not None:
+        # Save data before cleanup
+        _manager.save_to_file()
+        _manager = None
+        _LOGGER.debug("Cleaned up SmartHeatingManager")
+        return True
+    return False
+
+
+def get_smart_heating_manager(history_days: int = DEFAULT_HISTORY_DAYS) -> SmartHeatingManager:
     """Get the global SmartHeatingManager instance."""
     global _manager
     if _manager is None:
-        _manager = SmartHeatingManager()
+        _manager = SmartHeatingManager(history_days=history_days)
+    else:
+        # Update history_days if changed
+        if _manager._history_days != history_days:
+            _manager.set_history_days(history_days)
     return _manager
 
 

@@ -9,8 +9,9 @@ All notable changes to Tado CE will be documented in this file.
 ### Smart Heating Analytics
 - **Heating Rate Sensor** - °C/hour when heating is active
 - **Cooling Rate Sensor** - °C/hour when heating is off (heat loss rate)
-- **Time to Target Sensor** - Estimated minutes to reach target temperature
+- **Time to Target Sensor** - Estimated minutes to reach target temperature (zones with TRV only)
 - **Comfort at Risk Binary Sensor** - Alert when target may be missed
+- **Configurable Comfort Thresholds** - Set min/max comfort temperatures for zones without TRV
 - **Weather Compensation** - Adjust predictions based on outdoor temperature
 - **Unit Conversions** - Automatic conversion for Fahrenheit and various wind speed units
 
@@ -18,7 +19,13 @@ All notable changes to Tado CE will be documented in this file.
 - **Fixed API reset detection for 100-call limit** - Dynamic threshold now works with both 5000 and 100 call limits ([#54](https://github.com/hiall-fyi/tado_ce/issues/54))
 - **Fixed Refresh AC Capabilities not tracked** - Button API calls now recorded in call history ([#61](https://github.com/hiall-fyi/tado_ce/issues/61))
 - **Fixed temperature offset for multi-TRV rooms** - Offset now applied to ALL devices in a zone, not just the first one ([#66](https://github.com/hiall-fyi/tado_ce/issues/66))
+- **Fixed device sensor assignment** - Battery/Connection sensors now assigned to HEATING zones over HOT_WATER when device serves multiple zones ([#56](https://github.com/hiall-fyi/tado_ce/issues/56))
 - **AC turn-off debug logging** - Added detailed logging to diagnose intermittent restore-to-ON issue ([#44](https://github.com/hiall-fyi/tado_ce/issues/44))
+- **Optimized heating zone API calls** - Setting temperature with hvac_mode now uses single API call instead of two (saves 1% quota per action)
+- **Fixed AC HEAT_COOL mode hvac_action** - Optimistic updates now correctly set hvac_action to IDLE for HEAT_COOL mode (Tado AUTO)
+
+### Internal Improvements
+- **Smart Heating per-home isolation** - SmartHeatingManager now accessed via `hass.data` instead of global singleton, preparing for multi-home support
 
 ## [1.8.3] - 2026-01-26
 

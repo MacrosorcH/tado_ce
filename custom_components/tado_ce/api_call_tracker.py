@@ -74,12 +74,32 @@ class APICallTracker:
         return {}
     
     def _save_history_sync(self, data: Dict):
-        """Save call history to disk (sync, for executor)."""
+        """Save call history to disk (sync, for executor).
+        
+        Uses atomic write (temp file + rename) to prevent corruption
+        if HA crashes or restarts during write.
+        """
+        import tempfile
+        import shutil
+        
         try:
-            with open(self.history_file, 'w') as f:
-                json.dump(data, f, indent=2)
+            # Write to temp file first
+            with tempfile.NamedTemporaryFile(
+                mode='w', dir=self.data_dir, delete=False, suffix='.tmp'
+            ) as tmp:
+                json.dump(data, tmp, indent=2)
+                temp_path = tmp.name
+            
+            # Atomic rename (move) to final location
+            shutil.move(temp_path, self.history_file)
         except Exception as e:
             _LOGGER.error(f"Failed to save API call history: {e}")
+            # Clean up temp file if it exists
+            try:
+                if 'temp_path' in locals():
+                    Path(temp_path).unlink(missing_ok=True)
+            except Exception as cleanup_err:
+                _LOGGER.debug(f"Failed to clean up temp file: {cleanup_err}")
     
     async def async_init(self):
         """Initialize tracker asynchronously (load history from disk)."""

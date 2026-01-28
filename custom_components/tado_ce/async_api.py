@@ -39,6 +39,24 @@ _LOGGER = logging.getLogger(__name__)
 _tracker: Optional[APICallTracker] = None
 _tracker_initialized = False
 
+
+def cleanup_tracker() -> bool:
+    """Clean up the global API call tracker.
+    
+    MUST be called in async_unload_entry() to prevent stale state on reload.
+    
+    Returns:
+        True if tracker was cleaned up, False if no tracker existed
+    """
+    global _tracker, _tracker_initialized
+    if _tracker is not None:
+        _tracker = None
+        _tracker_initialized = False
+        _LOGGER.debug("Cleaned up API call tracker")
+        return True
+    return False
+
+
 def _get_tracker() -> Optional[APICallTracker]:
     """Get or create the global API call tracker (lazy init, no file I/O)."""
     global _tracker
@@ -47,7 +65,7 @@ def _get_tracker() -> Optional[APICallTracker]:
             from .config_manager import ConfigurationManager
             config_manager = ConfigurationManager(None)
             retention_days = config_manager.get_api_history_retention_days()
-        except:
+        except (ImportError, AttributeError, TypeError):
             retention_days = 14
         _tracker = APICallTracker(DATA_DIR, retention_days=retention_days)
     return _tracker
@@ -193,7 +211,7 @@ class TadoAsyncClient:
             if RATELIMIT_FILE.exists():
                 with open(RATELIMIT_FILE) as f:
                     return json.load(f)
-        except:
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
             pass
         return {}
     
@@ -997,8 +1015,8 @@ class TadoAsyncClient:
                 if existing:
                     _LOGGER.debug(f"AC capabilities loaded from cache ({len(existing)} zones)")
                     return
-            except Exception:
-                pass  # Cache corrupted, fetch fresh
+            except Exception as e:
+                _LOGGER.debug(f"AC capabilities cache corrupted, fetching fresh: {e}")
         
         ac_capabilities = {}
         
