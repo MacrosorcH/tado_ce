@@ -133,6 +133,9 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                         TadoHeatingPowerSensor(zone_id, zone_name, zone_type),
                         TadoTargetTempSensor(zone_id, zone_name, zone_type),
                         TadoOverlaySensor(zone_id, zone_name, zone_type),
+                        # v1.9.0: Environment sensors (always enabled)
+                        TadoMoldRiskSensor(zone_id, zone_name, zone_type),
+                        TadoComfortLevelSensor(zone_id, zone_name, zone_type),
                     ])
                     # v1.9.0: Smart Comfort sensors (opt-in)
                     if config_manager.get_smart_comfort_enabled():
@@ -140,7 +143,6 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                         sensors.extend([
                             TadoHeatingRateSensor(zone_id, zone_name, zone_type),
                             TadoCoolingRateSensor(zone_id, zone_name, zone_type),
-                            TadoComfortLevelSensor(zone_id, zone_name, zone_type),
                             TadoHeatingEfficiencySensor(zone_id, zone_name, zone_type),
                             TadoHistoricalTempSensor(zone_id, zone_name, zone_type),
                             TadoNextScheduleTimeSensor(zone_id, zone_name, zone_type),
@@ -158,6 +160,9 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                         TadoACPowerSensor(zone_id, zone_name, zone_type),
                         TadoTargetTempSensor(zone_id, zone_name, zone_type),
                         TadoOverlaySensor(zone_id, zone_name, zone_type),
+                        # v1.9.0: Environment sensors (always enabled)
+                        TadoMoldRiskSensor(zone_id, zone_name, zone_type),
+                        TadoComfortLevelSensor(zone_id, zone_name, zone_type),
                     ])
                     # v1.9.0: Smart Comfort sensors for AC (opt-in, always create for AC zones)
                     if config_manager.get_smart_comfort_enabled():
@@ -165,7 +170,6 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                             TadoHeatingRateSensor(zone_id, zone_name, zone_type),
                             TadoCoolingRateSensor(zone_id, zone_name, zone_type),
                             TadoTimeToTargetSensor(zone_id, zone_name, zone_type),
-                            TadoComfortLevelSensor(zone_id, zone_name, zone_type),
                             TadoHeatingEfficiencySensor(zone_id, zone_name, zone_type),
                             TadoHistoricalTempSensor(zone_id, zone_name, zone_type),
                             TadoNextScheduleTimeSensor(zone_id, zone_name, zone_type),
@@ -1508,105 +1512,6 @@ class TadoTimeToTargetSensor(TadoBaseSensor):
             _LOGGER.debug(f"Failed to update time to target for zone {self._zone_id}: {e}")
             self._attr_available = False
 
-
-# ============ Comfort Level Sensor (v1.9.0) ============
-
-class TadoComfortLevelSensor(TadoBaseSensor):
-    """Sensor showing comfort level as readable text.
-    
-    Displays:
-    - "Comfortable" when temperature is within comfort range
-    - "Too Cold" when HEATING zone is below threshold
-    - "Too Hot" when AC zone is above threshold
-    """
-    
-    def __init__(self, zone_id: str, zone_name: str, zone_type: str = "HEATING"):
-        super().__init__(zone_id, zone_name, zone_type)
-        self._attr_name = f"{zone_name} Comfort Level"
-        self._attr_unique_id = f"tado_ce_zone_{zone_id}_comfort_level"
-        self._attr_icon = "mdi:thermometer-check"
-        self._current_temp = None
-        self._threshold = None
-        self._using_config_threshold = False
-    
-    @property
-    def extra_state_attributes(self):
-        return {
-            "current_temperature": self._current_temp,
-            "threshold": self._threshold,
-            "zone_type": self._zone_type,
-            "using_config_threshold": self._using_config_threshold,
-        }
-    
-    def update(self):
-        """Update comfort status based on temperature vs threshold."""
-        try:
-            zone_data = self._get_zone_data()
-            if not zone_data:
-                self._attr_available = False
-                return
-            
-            # Get current temperature
-            sensor_data = zone_data.get('sensorDataPoints') or {}
-            self._current_temp = (sensor_data.get('insideTemperature') or {}).get('celsius')
-            
-            if self._current_temp is None:
-                self._attr_available = False
-                return
-            
-            # Determine threshold: use active target if available, else config threshold
-            setting = zone_data.get('setting') or {}
-            self._using_config_threshold = False
-            self._threshold = None
-            
-            if setting.get('power') == 'ON':
-                self._threshold = (setting.get('temperature') or {}).get('celsius')
-            
-            if self._threshold is None:
-                self._using_config_threshold = True
-                self._threshold = self._get_config_threshold()
-            
-            # Determine comfort status
-            if self._zone_type == 'HEATING':
-                if self._current_temp < self._threshold:
-                    self._attr_native_value = "Too Cold"
-                    self._attr_icon = "mdi:snowflake-alert"
-                else:
-                    self._attr_native_value = "Comfortable"
-                    self._attr_icon = "mdi:thermometer-check"
-            else:  # AC
-                if self._current_temp > self._threshold:
-                    self._attr_native_value = "Too Hot"
-                    self._attr_icon = "mdi:fire-alert"
-                else:
-                    self._attr_native_value = "Comfortable"
-                    self._attr_icon = "mdi:thermometer-check"
-            
-            self._attr_available = True
-            
-        except Exception as e:
-            _LOGGER.debug(f"Failed to update comfort status for zone {self._zone_id}: {e}")
-            self._attr_available = False
-    
-    def _get_config_threshold(self) -> float:
-        """Get comfort threshold from config, with fallback defaults."""
-        try:
-            if self.hass:
-                from .config_manager import ConfigurationManager
-                entries = self.hass.config_entries.async_entries(DOMAIN)
-                if entries:
-                    config_manager = ConfigurationManager(entries[0])
-                    if self._zone_type == 'HEATING':
-                        return config_manager.get_comfort_threshold_heating()
-                    else:
-                        return config_manager.get_comfort_threshold_cooling()
-        except Exception as e:
-            _LOGGER.debug(f"Could not get comfort threshold from config, using default: {e}")
-        
-        # Fallback defaults
-        return 18.0 if self._zone_type == 'HEATING' else 26.0
-
-
 # ============ Smart Comfort Insights Sensors (v1.9.0 Phase 3) ============
 
 class TadoHistoricalTempSensor(TadoBaseSensor):
@@ -1782,9 +1687,8 @@ class TadoNextScheduleTempSensor(TadoBaseSensor):
         super().__init__(zone_id, zone_name, zone_type)
         self._attr_name = f"{zone_name} Next Schedule Temp"
         self._attr_unique_id = f"tado_ce_zone_{zone_id}_next_schedule_temp"
-        self._attr_native_unit_of_measurement = "°C"
+        # No unit_of_measurement so we can show "OFF" as state
         self._attr_icon = "mdi:thermometer-chevron-up"
-        self._attr_state_class = "measurement"
         
         # Attributes
         self._schedule_time: str | None = None
@@ -1794,13 +1698,17 @@ class TadoNextScheduleTempSensor(TadoBaseSensor):
     
     @property
     def extra_state_attributes(self):
-        return {
+        attrs = {
             "schedule_time": self._schedule_time,
             "is_heating_on": self._is_heating_on,
             "current_temperature": self._current_temp,
             "temperature_difference": self._temp_diff,
             "zone_type": self._zone_type,
         }
+        # Add unit only when showing temperature
+        if self._is_heating_on and isinstance(self._attr_native_value, (int, float)):
+            attrs["unit_of_measurement"] = "°C"
+        return attrs
     
     @property
     def icon(self):
@@ -1823,8 +1731,8 @@ class TadoNextScheduleTempSensor(TadoBaseSensor):
             next_block = get_next_schedule_change(self._zone_id)
             
             if next_block is None:
-                self._attr_native_value = None
-                self._attr_available = False
+                self._attr_native_value = "No schedule"
+                self._attr_available = True
                 self._schedule_time = None
                 self._is_heating_on = False
                 self._current_temp = None
@@ -1841,8 +1749,8 @@ class TadoNextScheduleTempSensor(TadoBaseSensor):
                 self._current_temp = (sensor_data.get('insideTemperature') or {}).get('celsius')
             
             if not next_block.is_heating_on or next_block.target_temp is None:
-                # Heating OFF block
-                self._attr_native_value = None
+                # Heating OFF block - show "OFF" instead of unknown
+                self._attr_native_value = "OFF"
                 self._attr_available = True
                 self._temp_diff = None
                 return
@@ -2017,35 +1925,22 @@ class TadoPreheatAdvisorSensor(TadoBaseSensor):
         except Exception as e:
             _LOGGER.debug(f"Failed to update preheat advice for zone {self._zone_id}: {e}")
             self._attr_available = False
-    
-    def _get_config_threshold(self) -> float:
-        """Get comfort threshold from config, with fallback defaults."""
-        try:
-            if self.hass:
-                from .config_manager import ConfigurationManager
-                entries = self.hass.config_entries.async_entries(DOMAIN)
-                if entries:
-                    config_manager = ConfigurationManager(entries[0])
-                    if self._zone_type == 'HEATING':
-                        return config_manager.get_comfort_threshold_heating()
-                    else:
-                        return config_manager.get_comfort_threshold_cooling()
-        except Exception as e:
-            _LOGGER.debug(f"Could not get comfort threshold from config, using default: {e}")
-        
-        # Fallback defaults
-        return 18.0 if self._zone_type == 'HEATING' else 26.0
 
 
 class TadoSmartComfortTargetSensor(TadoBaseSensor):
     """Smart Comfort Target Temperature sensor.
     
-    Calculates compensated target temperature based on:
-    - Outdoor temperature (from configured entity)
-    - Indoor humidity
-    - Smart Comfort mode preset
+    Calculates the ideal target temperature using ASHRAE 55 Adaptive Comfort Model.
+    This is the temperature at which the zone would be "Comfortable" according to
+    the Comfort Level sensor.
     
-    State: Compensated target temperature (°C)
+    Formula: Comfort Temp = 0.31 × Outdoor_Temp + 17.8°C
+    
+    This provides a scientifically-validated, location-aware target that adapts
+    to outdoor conditions. When outdoor temp is not available, falls back to
+    seasonal thresholds based on latitude.
+    
+    State: Recommended target temperature (°C)
     """
     
     def __init__(self, zone_id: str, zone_name: str, zone_type: str = "HEATING"):
@@ -2057,44 +1952,38 @@ class TadoSmartComfortTargetSensor(TadoBaseSensor):
         self._attr_state_class = "measurement"
         
         # Attributes
-        self._base_target: float | None = None
+        self._current_temp: float | None = None
         self._outdoor_temp: float | None = None
         self._humidity: float | None = None
-        self._outdoor_adjustment: float = 0.0
-        self._humidity_adjustment: float = 0.0
-        self._mode: str = "none"
-        self._shutoff: bool = False
+        self._comfort_model: str = "unknown"
+        self._deviation: float | None = None
     
     @property
     def extra_state_attributes(self):
         return {
-            "base_target": self._base_target,
+            "current_temperature": self._current_temp,
             "outdoor_temperature": self._outdoor_temp,
             "humidity": self._humidity,
-            "outdoor_adjustment": self._outdoor_adjustment,
-            "humidity_adjustment": self._humidity_adjustment,
-            "total_adjustment": round(self._outdoor_adjustment + self._humidity_adjustment, 1),
-            "smart_comfort_mode": self._mode,
-            "heating_shutoff": self._shutoff,
+            "comfort_model": self._comfort_model,
+            "deviation_from_comfort": self._deviation,
             "zone_type": self._zone_type,
         }
     
     @property
     def icon(self):
-        """Dynamic icon based on state."""
-        if self._shutoff:
-            return "mdi:thermometer-off"
-        if self._outdoor_adjustment > 0 or self._humidity_adjustment > 0:
-            return "mdi:thermometer-plus"
-        if self._outdoor_adjustment < 0 or self._humidity_adjustment < 0:
-            return "mdi:thermometer-minus"
-        return "mdi:thermometer-auto"
+        """Dynamic icon based on deviation from comfort."""
+        if self._deviation is None:
+            return "mdi:thermometer-auto"
+        if self._deviation < -2:
+            return "mdi:thermometer-low"  # Too cold
+        if self._deviation > 2:
+            return "mdi:thermometer-high"  # Too hot
+        return "mdi:thermometer-check"  # Comfortable
     
     def update(self):
-        """Update Smart Comfort target temperature."""
+        """Update Smart Comfort target using ASHRAE 55 Adaptive Comfort Model."""
         try:
             from .config_manager import ConfigurationManager
-            from .const import SMART_COMFORT_PRESETS
             
             if not self.hass:
                 self._attr_available = False
@@ -2107,26 +1996,6 @@ class TadoSmartComfortTargetSensor(TadoBaseSensor):
                 return
             
             config_manager = ConfigurationManager(entries[0])
-            self._mode = config_manager.get_smart_comfort_mode()
-            
-            # If mode is none, just return base target
-            if self._mode == "none":
-                zone_data = self._get_zone_data()
-                if zone_data:
-                    setting = zone_data.get('setting') or {}
-                    temp_data = setting.get('temperature') or {}
-                    self._base_target = temp_data.get('celsius')
-                    self._attr_native_value = self._base_target
-                    self._outdoor_adjustment = 0.0
-                    self._humidity_adjustment = 0.0
-                    self._shutoff = False
-                    self._attr_available = self._base_target is not None
-                else:
-                    self._attr_available = False
-                return
-            
-            # Get preset settings
-            preset = SMART_COMFORT_PRESETS.get(self._mode, SMART_COMFORT_PRESETS["none"])
             
             # Get zone data
             zone_data = self._get_zone_data()
@@ -2134,22 +2003,12 @@ class TadoSmartComfortTargetSensor(TadoBaseSensor):
                 self._attr_available = False
                 return
             
-            # Get base target temperature
-            setting = zone_data.get('setting') or {}
-            temp_data = setting.get('temperature') or {}
-            self._base_target = temp_data.get('celsius')
-            
-            if self._base_target is None:
-                # No target set (heating off)
-                self._attr_native_value = None
-                self._attr_available = True
-                self._outdoor_adjustment = 0.0
-                self._humidity_adjustment = 0.0
-                self._shutoff = False
-                return
-            
-            # Get humidity from zone
+            # Get current temperature
             sensor_data = zone_data.get('sensorDataPoints') or {}
+            inside_temp = sensor_data.get('insideTemperature') or {}
+            self._current_temp = inside_temp.get('celsius')
+            
+            # Get humidity
             humidity_data = sensor_data.get('humidity') or {}
             self._humidity = humidity_data.get('percentage')
             
@@ -2157,53 +2016,92 @@ class TadoSmartComfortTargetSensor(TadoBaseSensor):
             outdoor_entity = config_manager.get_outdoor_temp_entity()
             self._outdoor_temp = self._get_outdoor_temperature(outdoor_entity, config_manager.get_use_feels_like())
             
-            # Calculate outdoor adjustment
-            self._outdoor_adjustment = 0.0
-            self._shutoff = False
+            # Calculate comfort target using ASHRAE 55 or seasonal fallback
+            comfort_target = self._calculate_comfort_target()
             
-            if self._outdoor_temp is not None:
-                # Check shutoff threshold first
-                shutoff_threshold = preset.get("outdoor_shutoff_threshold")
-                if shutoff_threshold is not None and self._outdoor_temp > shutoff_threshold:
-                    self._shutoff = True
-                    self._attr_native_value = 0.0
-                    self._attr_available = True
-                    return
-                
-                # Cold adjustment
-                cold_threshold = preset.get("outdoor_cold_threshold")
-                if cold_threshold is not None and self._outdoor_temp < cold_threshold:
-                    self._outdoor_adjustment = preset.get("outdoor_cold_offset", 0.0)
-                
-                # Warm adjustment
-                warm_threshold = preset.get("outdoor_warm_threshold")
-                if warm_threshold is not None and self._outdoor_temp > warm_threshold:
-                    self._outdoor_adjustment = -preset.get("outdoor_warm_offset", 0.0)
+            if comfort_target is None:
+                self._attr_available = False
+                return
             
-            # Calculate humidity adjustment
-            self._humidity_adjustment = 0.0
+            # Round to 0.5°C (Tado's precision)
+            comfort_target = round(comfort_target * 2) / 2
             
-            if self._humidity is not None:
-                # High humidity adjustment
-                high_threshold = preset.get("humidity_high_threshold", 70)
-                if self._humidity > high_threshold:
-                    self._humidity_adjustment = -preset.get("humidity_high_offset", 0.0)
-                
-                # Low humidity adjustment
-                low_threshold = preset.get("humidity_low_threshold", 35)
-                if self._humidity < low_threshold:
-                    self._humidity_adjustment = preset.get("humidity_low_offset", 0.0)
+            # Calculate deviation from comfort
+            if self._current_temp is not None:
+                self._deviation = round(self._current_temp - comfort_target, 1)
+            else:
+                self._deviation = None
             
-            # Calculate final target
-            final_target = self._base_target + self._outdoor_adjustment + self._humidity_adjustment
-            final_target = max(0.0, round(final_target, 1))  # Don't go below 0
-            
-            self._attr_native_value = final_target
+            self._attr_native_value = comfort_target
             self._attr_available = True
             
         except Exception as e:
             _LOGGER.debug(f"Failed to update Smart Comfort target for zone {self._zone_id}: {e}")
             self._attr_available = False
+    
+    def _calculate_comfort_target(self) -> float | None:
+        """Calculate comfort target using ASHRAE 55 or seasonal fallback."""
+        # Method 1: ASHRAE 55 Adaptive Comfort Model (if outdoor temp available)
+        if self._outdoor_temp is not None:
+            self._comfort_model = "adaptive"
+            # Formula: Comfort Temp = 0.31 × Outdoor_Temp + 17.8°C
+            return 0.31 * self._outdoor_temp + 17.8
+        
+        # Method 2: Seasonal fallback based on latitude
+        self._comfort_model = "seasonal"
+        return self._get_seasonal_comfort_target()
+    
+    def _get_seasonal_comfort_target(self) -> float:
+        """Get comfort target based on season and latitude."""
+        from datetime import datetime
+        
+        # Get latitude from HA config
+        latitude = 51.5  # Default to London
+        if self.hass and hasattr(self.hass.config, 'latitude'):
+            latitude = self.hass.config.latitude or 51.5
+        
+        # Determine season (reverse for Southern Hemisphere)
+        month = datetime.now().month
+        is_southern = latitude < 0
+        
+        if is_southern:
+            # Southern Hemisphere: reverse seasons
+            if month in [12, 1, 2]:
+                season = "summer"
+            elif month in [6, 7, 8]:
+                season = "winter"
+            else:
+                season = "transition"
+        else:
+            # Northern Hemisphere
+            if month in [6, 7, 8]:
+                season = "summer"
+            elif month in [11, 12, 1, 2]:
+                season = "winter"
+            else:
+                season = "transition"
+        
+        # Base comfort targets by season
+        base_targets = {
+            "summer": 24.0,
+            "winter": 20.0,
+            "transition": 22.0,
+        }
+        
+        # Latitude adjustment
+        abs_lat = abs(latitude)
+        if abs_lat > 55:
+            lat_offset = -1.0  # Nordic - prefer cooler
+        elif abs_lat > 45:
+            lat_offset = -0.5  # Northern Europe
+        elif abs_lat < 30:
+            lat_offset = 1.0   # Subtropical - prefer warmer
+        elif abs_lat < 40:
+            lat_offset = 0.5   # Mediterranean
+        else:
+            lat_offset = 0.0   # Temperate
+        
+        return base_targets[season] + lat_offset
     
     def _get_outdoor_temperature(self, entity_id: str, use_feels_like: bool) -> float | None:
         """Get outdoor temperature from configured entity."""
@@ -2233,3 +2131,386 @@ class TadoSmartComfortTargetSensor(TadoBaseSensor):
             pass
         
         return None
+
+
+# ============ Environment Sensors (v1.9.0) ============
+
+def _calculate_dew_point(temperature: float, humidity: float) -> float:
+    """Calculate dew point using Magnus-Tetens formula (more accurate).
+    
+    Formula: Td = (b × α) / (a - α)
+    where α = (a × T) / (b + T) + ln(RH/100)
+    
+    Constants (for -40°C to 50°C range):
+    a = 17.27
+    b = 237.7°C
+    
+    Args:
+        temperature: Indoor temperature in °C
+        humidity: Relative humidity in %
+        
+    Returns:
+        Dew point temperature in °C
+    """
+    import math
+    a = 17.27
+    b = 237.7
+    
+    # Clamp humidity to valid range (avoid log(0))
+    humidity = max(1, min(100, humidity))
+    
+    alpha = (a * temperature) / (b + temperature) + math.log(humidity / 100)
+    dew_point = (b * alpha) / (a - alpha)
+    
+    return round(dew_point, 1)
+
+
+class TadoMoldRiskSensor(TadoBaseSensor):
+    """Mold risk indicator sensor.
+    
+    Calculates dew point from temperature and humidity using Magnus-Tetens formula,
+    then assesses mold risk based on the margin between indoor temp and dew point.
+    
+    Risk Levels (based on condensation margin):
+    - Critical: <3°C margin (high mold risk, condensation likely)
+    - High: 3-5°C margin (elevated risk, monitor closely)
+    - Medium: 5-7°C margin (moderate risk, improve ventilation)
+    - Low: >7°C margin (safe, good conditions)
+    
+    State: Risk level text (Critical/High/Medium/Low)
+    """
+    
+    def __init__(self, zone_id: str, zone_name: str, zone_type: str = "HEATING"):
+        super().__init__(zone_id, zone_name, zone_type)
+        self._attr_name = f"{zone_name} Mold Risk"
+        self._attr_unique_id = f"tado_ce_zone_{zone_id}_mold_risk"
+        self._attr_icon = "mdi:mushroom"
+        
+        # Attributes
+        self._temperature: float | None = None
+        self._humidity: float | None = None
+        self._dew_point: float | None = None
+        self._margin: float | None = None
+    
+    @property
+    def extra_state_attributes(self):
+        return {
+            "temperature": self._temperature,
+            "humidity": self._humidity,
+            "dew_point": self._dew_point,
+            "margin": self._margin,
+            "zone_type": self._zone_type,
+        }
+    
+    @property
+    def icon(self):
+        """Dynamic icon based on risk level."""
+        if self._attr_native_value == "Critical":
+            return "mdi:mushroom-outline"
+        elif self._attr_native_value == "High":
+            return "mdi:alert-circle"
+        elif self._attr_native_value == "Medium":
+            return "mdi:alert"
+        return "mdi:check-circle"
+    
+    def update(self):
+        """Update mold risk based on temperature and humidity."""
+        try:
+            zone_data = self._get_zone_data()
+            if not zone_data:
+                self._attr_available = False
+                return
+            
+            # Get temperature and humidity
+            sensor_data = zone_data.get('sensorDataPoints') or {}
+            self._temperature = (sensor_data.get('insideTemperature') or {}).get('celsius')
+            self._humidity = (sensor_data.get('humidity') or {}).get('percentage')
+            
+            if self._temperature is None or self._humidity is None:
+                self._attr_available = False
+                return
+            
+            # Calculate dew point using Magnus-Tetens formula
+            self._dew_point = _calculate_dew_point(self._temperature, self._humidity)
+            
+            # Calculate margin (difference between indoor temp and dew point)
+            self._margin = round(self._temperature - self._dew_point, 1)
+            
+            # Determine risk level
+            if self._margin < 3:
+                self._attr_native_value = "Critical"
+            elif self._margin < 5:
+                self._attr_native_value = "High"
+            elif self._margin < 7:
+                self._attr_native_value = "Medium"
+            else:
+                self._attr_native_value = "Low"
+            
+            self._attr_available = True
+            
+        except Exception as e:
+            _LOGGER.debug(f"Failed to update mold risk for zone {self._zone_id}: {e}")
+            self._attr_available = False
+
+
+class TadoComfortLevelSensor(TadoBaseSensor):
+    """Comfort level sensor using Adaptive Comfort model.
+    
+    Based on ASHRAE 55 adaptive comfort standard, which adjusts comfort
+    expectations based on outdoor temperature. Also considers humidity.
+    
+    Comfort Calculation:
+    1. If outdoor temp available: Use adaptive comfort model
+       - Comfort temp = 0.31 × outdoor_temp + 17.8°C
+       - Acceptable range = ±3°C (90% acceptability)
+    2. If no outdoor temp: Use latitude-based seasonal thresholds
+       - Adjusts for hemisphere and climate zone
+    
+    Temperature States: Freezing, Cold, Cool, Comfortable, Warm, Hot, Sweltering
+    Humidity Suffix: Dry (<35%), Humid (>70%)
+    
+    State: Combined comfort text (e.g., "Comfortable", "Cool Dry")
+    """
+    
+    def __init__(self, zone_id: str, zone_name: str, zone_type: str = "HEATING"):
+        super().__init__(zone_id, zone_name, zone_type)
+        self._attr_name = f"{zone_name} Comfort Level"
+        self._attr_unique_id = f"tado_ce_zone_{zone_id}_comfort_level"
+        self._attr_icon = "mdi:air-filter"
+        
+        # Attributes
+        self._temperature: float | None = None
+        self._humidity: float | None = None
+        self._outdoor_temp: float | None = None
+        self._comfort_temp: float | None = None
+        self._comfort_model: str = "unknown"
+        self._dew_point: float | None = None
+    
+    @property
+    def extra_state_attributes(self):
+        return {
+            "temperature": self._temperature,
+            "humidity": self._humidity,
+            "outdoor_temperature": self._outdoor_temp,
+            "comfort_target": self._comfort_temp,
+            "comfort_model": self._comfort_model,
+            "dew_point": self._dew_point,
+            "zone_type": self._zone_type,
+        }
+    
+    @property
+    def icon(self):
+        """Dynamic icon based on comfort level."""
+        state = self._attr_native_value or ""
+        if "Freezing" in state or "Cold" in state:
+            return "mdi:snowflake-alert"
+        elif "Cool" in state:
+            return "mdi:thermometer-low"
+        elif "Comfortable" in state:
+            return "mdi:emoticon-happy"
+        elif "Warm" in state:
+            return "mdi:thermometer-high"
+        elif "Hot" in state or "Sweltering" in state:
+            return "mdi:fire-alert"
+        return "mdi:air-filter"
+    
+    def update(self):
+        """Update air comfort using adaptive comfort model."""
+        try:
+            zone_data = self._get_zone_data()
+            if not zone_data:
+                self._attr_available = False
+                return
+            
+            # Get temperature and humidity
+            sensor_data = zone_data.get('sensorDataPoints') or {}
+            self._temperature = (sensor_data.get('insideTemperature') or {}).get('celsius')
+            self._humidity = (sensor_data.get('humidity') or {}).get('percentage')
+            
+            if self._temperature is None:
+                self._attr_available = False
+                return
+            
+            # Calculate dew point if humidity available
+            if self._humidity is not None:
+                self._dew_point = _calculate_dew_point(self._temperature, self._humidity)
+            
+            # Get outdoor temperature from config
+            self._outdoor_temp = self._get_outdoor_temperature()
+            
+            # Calculate comfort level
+            if self._outdoor_temp is not None:
+                # Use ASHRAE 55 Adaptive Comfort model
+                comfort_level = self._calculate_adaptive_comfort()
+                self._comfort_model = "adaptive"
+            else:
+                # Fallback to latitude-based seasonal thresholds
+                comfort_level = self._calculate_seasonal_comfort()
+                self._comfort_model = "seasonal"
+            
+            # Add humidity suffix
+            humidity_suffix = self._get_humidity_suffix()
+            
+            self._attr_native_value = comfort_level + humidity_suffix
+            self._attr_available = True
+            
+        except Exception as e:
+            _LOGGER.debug(f"Failed to update air comfort for zone {self._zone_id}: {e}")
+            self._attr_available = False
+    
+    def _get_outdoor_temperature(self) -> float | None:
+        """Get outdoor temperature from configured entity."""
+        if not self.hass:
+            return None
+        
+        try:
+            from .config_manager import ConfigurationManager
+            entries = self.hass.config_entries.async_entries(DOMAIN)
+            if not entries:
+                return None
+            
+            config_manager = ConfigurationManager(entries[0])
+            entity_id = config_manager.get_outdoor_temp_entity()
+            use_feels_like = config_manager.get_use_feels_like()
+            
+            if not entity_id:
+                return None
+            
+            state = self.hass.states.get(entity_id)
+            if state is None or state.state in ('unknown', 'unavailable'):
+                return None
+            
+            # Check if it's a weather entity
+            if entity_id.startswith('weather.'):
+                if use_feels_like:
+                    apparent = state.attributes.get('apparent_temperature')
+                    if apparent is not None:
+                        return float(apparent)
+                temp = state.attributes.get('temperature')
+                if temp is not None:
+                    return float(temp)
+            else:
+                return float(state.state)
+        except (ValueError, TypeError, AttributeError):
+            pass
+        
+        return None
+    
+    def _calculate_adaptive_comfort(self) -> str:
+        """Calculate comfort using ASHRAE 55 Adaptive Comfort model.
+        
+        Formula: Comfort temp = 0.31 × outdoor_temp + 17.8°C
+        Acceptable range: ±3°C for 90% acceptability
+        
+        Returns:
+            Comfort level text
+        """
+        # Calculate neutral comfort temperature
+        self._comfort_temp = round(0.31 * self._outdoor_temp + 17.8, 1)
+        
+        # Calculate deviation from comfort
+        deviation = self._temperature - self._comfort_temp
+        
+        # Determine comfort level based on deviation
+        if deviation < -6:
+            return "Freezing"
+        elif deviation < -4:
+            return "Cold"
+        elif deviation < -2:
+            return "Cool"
+        elif deviation <= 2:
+            return "Comfortable"
+        elif deviation <= 4:
+            return "Warm"
+        elif deviation <= 6:
+            return "Hot"
+        else:
+            return "Sweltering"
+    
+    def _calculate_seasonal_comfort(self) -> str:
+        """Calculate comfort using latitude-based seasonal thresholds.
+        
+        Adjusts thresholds based on:
+        - Hemisphere (north/south) for season detection
+        - Latitude for climate zone (higher latitude = lower thresholds)
+        
+        Returns:
+            Comfort level text
+        """
+        from datetime import datetime
+        
+        # Get latitude from HA config
+        latitude = 51.5  # Default to London if not available
+        if self.hass:
+            latitude = self.hass.config.latitude or 51.5
+        
+        # Determine season based on month and hemisphere
+        month = datetime.now().month
+        is_southern = latitude < 0
+        
+        # Adjust month for southern hemisphere
+        if is_southern:
+            month = (month + 6 - 1) % 12 + 1
+        
+        # Season detection: Summer (6-8), Winter (12-2), Transition (3-5, 9-11)
+        is_summer = 6 <= month <= 8
+        is_winter = month >= 11 or month <= 2
+        
+        # Adjust thresholds based on latitude (climate zone)
+        # Higher latitude = people accustomed to lower temps
+        lat_abs = abs(latitude)
+        if lat_abs > 55:  # Nordic/Subarctic
+            lat_offset = -2
+        elif lat_abs > 45:  # Northern Europe/Canada
+            lat_offset = -1
+        elif lat_abs < 30:  # Subtropical
+            lat_offset = 2
+        elif lat_abs < 40:  # Mediterranean
+            lat_offset = 1
+        else:
+            lat_offset = 0
+        
+        # Base thresholds for indoor comfort (adjusted for latitude)
+        if is_summer:
+            thresholds = [19, 21, 23, 25, 27, 29]
+        elif is_winter:
+            thresholds = [15, 17, 19, 21, 23, 25]
+        else:  # Transition
+            thresholds = [16, 18, 20, 22, 24, 26]
+        
+        # Apply latitude offset
+        thresholds = [t + lat_offset for t in thresholds]
+        
+        # Store comfort target (middle of comfortable range)
+        self._comfort_temp = (thresholds[2] + thresholds[3]) / 2
+        
+        # Determine comfort level
+        if self._temperature <= thresholds[0]:
+            return "Freezing"
+        elif self._temperature <= thresholds[1]:
+            return "Cold"
+        elif self._temperature <= thresholds[2]:
+            return "Cool"
+        elif self._temperature <= thresholds[3]:
+            return "Comfortable"
+        elif self._temperature <= thresholds[4]:
+            return "Warm"
+        elif self._temperature <= thresholds[5]:
+            return "Hot"
+        else:
+            return "Sweltering"
+    
+    def _get_humidity_suffix(self) -> str:
+        """Get humidity suffix for comfort display.
+        
+        Returns:
+            Humidity suffix: " Dry" (<35%), " Humid" (>70%), or "" (normal)
+        """
+        if self._humidity is None:
+            return ""
+        
+        if self._humidity < 35:
+            return " Dry"
+        elif self._humidity > 70:
+            return " Humid"
+        return ""

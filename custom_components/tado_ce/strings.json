@@ -110,16 +110,12 @@
               "outdoor_temp_entity": "Outdoor Temperature Entity",
               "smart_comfort_mode": "Smart Comfort Mode",
               "use_feels_like": "Use Feels-Like Temperature",
-              "comfort_threshold_heating": "Comfort Threshold (Heating)",
-              "comfort_threshold_cooling": "Comfort Threshold (Cooling)",
               "smart_comfort_history_days": "Temperature History (days)"
             },
             "data_description": {
               "outdoor_temp_entity": "Select a temperature sensor for weather compensation (e.g., weather.home, sensor.outdoor_temperature)",
               "smart_comfort_mode": "Adjusts target temperature based on outdoor temp and humidity",
               "use_feels_like": "Use feels-like (apparent) temperature instead of actual temperature for weather compensation",
-              "comfort_threshold_heating": "Minimum comfort temperature for zones without TRV (e.g., SU02 thermostat only). Below this = Comfort at Risk",
-              "comfort_threshold_cooling": "Maximum comfort temperature for AC zones without explicit target. Above this = Comfort at Risk",
               "smart_comfort_history_days": "Days of temperature history to keep for rate calculation (1-30, default: 7). More days = more accurate rates but larger cache file"
             }
           },
@@ -154,8 +150,6 @@
           "outdoor_temp_entity": "Outdoor Temperature Entity",
           "smart_comfort_mode": "Smart Comfort Mode",
           "use_feels_like": "Use Feels-Like Temperature",
-          "comfort_threshold_heating": "Comfort Threshold (Heating)",
-          "comfort_threshold_cooling": "Comfort Threshold (Cooling)",
           "smart_comfort_history_days": "Temperature History (days)"
         },
         "data_description": {
@@ -176,8 +170,6 @@
           "outdoor_temp_entity": "Select a temperature sensor for Smart Comfort (e.g., weather.home, sensor.outdoor_temperature)",
           "smart_comfort_mode": "Comprehensive comfort optimization: adjusts target temperature based on outdoor temp and humidity. Light: subtle, Moderate: balanced, Aggressive: strong (may turn off heating when warm)",
           "use_feels_like": "Use feels-like (apparent) temperature instead of actual temperature for Smart Comfort calculations",
-          "comfort_threshold_heating": "Minimum comfortable temperature for heating zones without active target (°C)",
-          "comfort_threshold_cooling": "Maximum comfortable temperature for cooling zones without active target (°C)",
           "smart_comfort_history_days": "Days of temperature history to keep for rate calculation (1-30, default: 7). More days = more accurate rates but larger cache file"
         }
       }

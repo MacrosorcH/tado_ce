@@ -427,7 +427,7 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
             # Flatten smart_comfort_settings section
             if 'smart_comfort_settings' in user_input:
                 smart_comfort = user_input['smart_comfort_settings']
-                for key in ['outdoor_temp_entity', 'smart_comfort_mode', 'use_feels_like', 'comfort_threshold_heating', 'comfort_threshold_cooling', 'smart_comfort_history_days']:
+                for key in ['outdoor_temp_entity', 'smart_comfort_mode', 'use_feels_like', 'smart_comfort_history_days']:
                     if key in smart_comfort:
                         processed_input[key] = smart_comfort[key]
             
@@ -526,12 +526,6 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                             )
                         ),
                         vol.Optional('use_feels_like', default=options.get('use_feels_like', False)): BooleanSelector(),
-                        vol.Optional('comfort_threshold_heating', default=options.get('comfort_threshold_heating', 18.0)): NumberSelector(
-                            NumberSelectorConfig(min=10, max=25, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")
-                        ),
-                        vol.Optional('comfort_threshold_cooling', default=options.get('comfort_threshold_cooling', 26.0)): NumberSelector(
-                            NumberSelectorConfig(min=20, max=35, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")
-                        ),
                         vol.Optional('smart_comfort_history_days', default=options.get('smart_comfort_history_days', 7)): NumberSelector(
                             NumberSelectorConfig(min=1, max=30, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="days")
                         ),

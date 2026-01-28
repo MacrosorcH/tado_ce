@@ -34,8 +34,6 @@ DEFAULT_SMART_COMFORT_ENABLED = False  # v1.9.0: Smart Comfort analytics (opt-in
 DEFAULT_OUTDOOR_TEMP_ENTITY = ""  # v1.9.0: Outdoor temperature entity for weather compensation
 DEFAULT_WEATHER_COMPENSATION = "none"  # v1.9.0: Weather compensation preset
 DEFAULT_USE_FEELS_LIKE = False  # v1.9.0: Use feels-like temperature instead of actual
-DEFAULT_COMFORT_THRESHOLD_HEATING = 18.0  # v1.9.0: Min comfort temp for zones without TRV (°C)
-DEFAULT_COMFORT_THRESHOLD_COOLING = 26.0  # v1.9.0: Max comfort temp for zones without TRV (°C)
 DEFAULT_SMART_COMFORT_HISTORY_DAYS = 7  # v1.9.1: Days of temperature history to keep for rate calculation
 
 # WEATHER_COMPENSATION_PRESETS moved to const.py (v1.9.0)
@@ -451,35 +449,6 @@ class ConfigurationManager:
             True to use feels-like temperature, False for actual temperature
         """
         return self._options.get('use_feels_like', DEFAULT_USE_FEELS_LIKE)
-    
-    def get_comfort_threshold_heating(self) -> float:
-        """Get comfort threshold for heating zones without TRV.
-        
-        v1.9.0: For zones without TRV (e.g., SU02 thermostat only), this threshold
-        is used to determine "Comfort at Risk" when no explicit target is set.
-        If current temp < threshold, comfort is at risk.
-        
-        Returns:
-            Temperature in Celsius (default 18.0)
-        """
-        threshold = self._options.get('comfort_threshold_heating', DEFAULT_COMFORT_THRESHOLD_HEATING)
-        if isinstance(threshold, (int, float)) and 10.0 <= threshold <= 25.0:
-            return float(threshold)
-        return DEFAULT_COMFORT_THRESHOLD_HEATING
-    
-    def get_comfort_threshold_cooling(self) -> float:
-        """Get comfort threshold for cooling zones without TRV.
-        
-        v1.9.0: For AC zones, this threshold is used to determine "Comfort at Risk"
-        when no explicit target is set. If current temp > threshold, comfort is at risk.
-        
-        Returns:
-            Temperature in Celsius (default 26.0)
-        """
-        threshold = self._options.get('comfort_threshold_cooling', DEFAULT_COMFORT_THRESHOLD_COOLING)
-        if isinstance(threshold, (int, float)) and 20.0 <= threshold <= 35.0:
-            return float(threshold)
-        return DEFAULT_COMFORT_THRESHOLD_COOLING
     
     def get_smart_comfort_history_days(self) -> int:
         """Get Smart Comfort temperature history retention in days.
