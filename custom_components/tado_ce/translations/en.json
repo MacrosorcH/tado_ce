@@ -72,7 +72,7 @@
               "home_state_sync_enabled": "Enable Home/Away State Sync",
               "offset_enabled": "Enable Temperature Offset Attribute",
               "schedule_calendar_enabled": "Enable Schedule Calendar",
-              "smart_heating_enabled": "Enable Smart Comfort Analytics",
+              "smart_comfort_enabled": "Enable Smart Comfort Analytics",
               "api_history_retention_days": "API History Retention (days)"
             },
             "data_description": {
@@ -81,7 +81,7 @@
               "home_state_sync_enabled": "Sync Tado home/away state for Away Mode switch and climate presets (+1 API call per quick sync)",
               "offset_enabled": "Add offset_celsius attribute to climate entities (+1 API call per device per full sync)",
               "schedule_calendar_enabled": "Display heating schedules as calendar entities (read-only). Initial sync fetches all zones, then uses cached data. Use Refresh Schedule button to update.",
-              "smart_heating_enabled": "Add heating/cooling rate sensors, time-to-target estimation, and comfort risk alerts per zone. No extra API calls - uses existing zone data.",
+              "smart_comfort_enabled": "Add heating/cooling rate sensors, time-to-target estimation, and comfort risk alerts per zone. No extra API calls - uses existing zone data.",
               "api_history_retention_days": "Days to keep API call history (0 = forever, default: 14)"
             }
           },
@@ -112,7 +112,7 @@
               "use_feels_like": "Use Feels-Like Temperature",
               "comfort_threshold_heating": "Comfort Threshold (Heating)",
               "comfort_threshold_cooling": "Comfort Threshold (Cooling)",
-              "smart_heating_history_days": "Temperature History (days)"
+              "smart_comfort_history_days": "Temperature History (days)"
             },
             "data_description": {
               "outdoor_temp_entity": "Select a temperature sensor for weather compensation (e.g., weather.home, sensor.outdoor_temperature)",
@@ -120,7 +120,7 @@
               "use_feels_like": "Use feels-like (apparent) temperature instead of actual temperature for weather compensation",
               "comfort_threshold_heating": "Minimum comfort temperature for zones without TRV (e.g., SU02 thermostat only). Below this = Comfort at Risk",
               "comfort_threshold_cooling": "Maximum comfort temperature for AC zones without explicit target. Above this = Comfort at Risk",
-              "smart_heating_history_days": "Days of temperature history to keep for rate calculation (1-30, default: 7). More days = more accurate rates but larger cache file"
+              "smart_comfort_history_days": "Days of temperature history to keep for rate calculation (1-30, default: 7). More days = more accurate rates but larger cache file"
             }
           },
           "experimental": {

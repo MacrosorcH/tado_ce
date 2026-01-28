@@ -406,7 +406,7 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
             # Flatten features section
             if 'features' in user_input:
                 features = user_input['features']
-                for key in ['weather_enabled', 'mobile_devices_enabled', 'home_state_sync_enabled', 'offset_enabled', 'schedule_calendar_enabled', 'smart_heating_enabled', 'api_history_retention_days']:
+                for key in ['weather_enabled', 'mobile_devices_enabled', 'home_state_sync_enabled', 'offset_enabled', 'schedule_calendar_enabled', 'smart_comfort_enabled', 'api_history_retention_days']:
                     if key in features:
                         processed_input[key] = features[key]
             
@@ -427,7 +427,7 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
             # Flatten smart_comfort_settings section
             if 'smart_comfort_settings' in user_input:
                 smart_comfort = user_input['smart_comfort_settings']
-                for key in ['outdoor_temp_entity', 'smart_comfort_mode', 'use_feels_like', 'comfort_threshold_heating', 'comfort_threshold_cooling', 'smart_heating_history_days']:
+                for key in ['outdoor_temp_entity', 'smart_comfort_mode', 'use_feels_like', 'comfort_threshold_heating', 'comfort_threshold_cooling', 'smart_comfort_history_days']:
                     if key in smart_comfort:
                         processed_input[key] = smart_comfort[key]
             
@@ -481,7 +481,7 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                         vol.Optional('home_state_sync_enabled', default=options.get('home_state_sync_enabled', False)): BooleanSelector(),
                         vol.Optional('offset_enabled', default=options.get('offset_enabled', False)): BooleanSelector(),
                         vol.Optional('schedule_calendar_enabled', default=options.get('schedule_calendar_enabled', False)): BooleanSelector(),
-                        vol.Optional('smart_heating_enabled', default=options.get('smart_heating_enabled', False)): BooleanSelector(),
+                        vol.Optional('smart_comfort_enabled', default=options.get('smart_comfort_enabled', False)): BooleanSelector(),
                         vol.Optional('api_history_retention_days', default=options.get('api_history_retention_days', 14)): NumberSelector(
                             NumberSelectorConfig(min=0, max=365, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="days")
                         ),
@@ -532,7 +532,7 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                         vol.Optional('comfort_threshold_cooling', default=options.get('comfort_threshold_cooling', 26.0)): NumberSelector(
                             NumberSelectorConfig(min=20, max=35, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")
                         ),
-                        vol.Optional('smart_heating_history_days', default=options.get('smart_heating_history_days', 7)): NumberSelector(
+                        vol.Optional('smart_comfort_history_days', default=options.get('smart_comfort_history_days', 7)): NumberSelector(
                             NumberSelectorConfig(min=1, max=30, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="days")
                         ),
                     }),

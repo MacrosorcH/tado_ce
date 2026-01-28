@@ -291,8 +291,8 @@ class TadoClimate(ClimateEntity):
                 
                 self._attr_available = True
                 
-                # v1.9.0: Record temperature for Smart Heating analytics
-                self._record_smart_heating_data()
+                # v1.9.0: Record temperature for Smart Comfort analytics
+                self._record_smart_comfort_data()
             
             # Update preset mode from home state
             self._update_preset_mode()
@@ -531,15 +531,15 @@ class TadoClimate(ClimateEntity):
             return True
         return False
     
-    def _record_smart_heating_data(self):
-        """Record temperature data for Smart Heating analytics.
+    def _record_smart_comfort_data(self):
+        """Record temperature data for Smart Comfort analytics.
         
         v1.9.0: Records current temperature and heating state to the
         SmartHeatingManager for rate calculation and predictions.
         """
         try:
-            smart_heating_manager = self.hass.data.get(DOMAIN, {}).get('smart_heating_manager')
-            if not smart_heating_manager or not smart_heating_manager.is_enabled:
+            smart_comfort_manager = self.hass.data.get(DOMAIN, {}).get('smart_comfort_manager')
+            if not smart_comfort_manager or not smart_comfort_manager.is_enabled:
                 return
             
             # Only record if we have valid temperature data
@@ -552,7 +552,7 @@ class TadoClimate(ClimateEntity):
                 self._heating_power > 0
             )
             
-            smart_heating_manager.record_temperature(
+            smart_comfort_manager.record_temperature(
                 zone_id=self._zone_id,
                 zone_name=self._zone_name,
                 temperature=self._attr_current_temperature,
@@ -812,8 +812,8 @@ class TadoACClimate(ClimateEntity):
                 
                 self._attr_available = True
                 
-                # v1.9.0: Record temperature for Smart Heating analytics
-                self._record_smart_heating_data(ac_power_value)
+                # v1.9.0: Record temperature for Smart Comfort analytics
+                self._record_smart_comfort_data(ac_power_value)
                 
         except Exception as e:
             _LOGGER.debug(f"Failed to update {self.name}: {e}")
@@ -1180,8 +1180,8 @@ class TadoACClimate(ClimateEntity):
             duration_minutes=duration_minutes
         )
     
-    def _record_smart_heating_data(self, ac_power_value: str):
-        """Record temperature data for Smart Heating analytics.
+    def _record_smart_comfort_data(self, ac_power_value: str):
+        """Record temperature data for Smart Comfort analytics.
         
         v1.9.0: Records current temperature and AC state to the
         SmartHeatingManager for rate calculation and predictions.
@@ -1189,8 +1189,8 @@ class TadoACClimate(ClimateEntity):
         For AC zones, "is_heating" means AC is actively running (cooling/heating/etc).
         """
         try:
-            smart_heating_manager = self.hass.data.get(DOMAIN, {}).get('smart_heating_manager')
-            if not smart_heating_manager or not smart_heating_manager.is_enabled:
+            smart_comfort_manager = self.hass.data.get(DOMAIN, {}).get('smart_comfort_manager')
+            if not smart_comfort_manager or not smart_comfort_manager.is_enabled:
                 return
             
             # Only record if we have valid temperature data
@@ -1200,7 +1200,7 @@ class TadoACClimate(ClimateEntity):
             # For AC, "is_heating" means AC is actively running
             is_active = ac_power_value == 'ON'
             
-            smart_heating_manager.record_temperature(
+            smart_comfort_manager.record_temperature(
                 zone_id=self._zone_id,
                 zone_name=self._zone_name,
                 temperature=self._attr_current_temperature,

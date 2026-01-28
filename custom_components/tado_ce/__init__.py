@@ -1147,18 +1147,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         platforms_to_load.append(CALENDAR_PLATFORM)
         _LOGGER.info("Tado CE: Schedule Calendar enabled")
     
-    # v1.9.0: Initialize Smart Heating Manager if enabled (opt-in)
-    if config_manager.get_smart_heating_enabled():
-        from .smart_heating import (
-            get_smart_heating_manager,
+    # v1.9.0: Initialize Smart Comfort Manager if enabled (opt-in)
+    if config_manager.get_smart_comfort_enabled():
+        from .smart_comfort import (
+            get_smart_comfort_manager,
             async_load_history_from_recorder,
             async_load_baseline_from_statistics
         )
-        history_days = config_manager.get_smart_heating_history_days()
-        smart_heating_manager = get_smart_heating_manager(history_days=history_days)
-        smart_heating_manager._hass = hass  # Set hass reference for weather entity access
-        smart_heating_manager._home_id = home_id  # Set home_id for per-home cache files
-        smart_heating_manager.enable()
+        history_days = config_manager.get_smart_comfort_history_days()
+        smart_comfort_manager = get_smart_comfort_manager(history_days=history_days)
+        smart_comfort_manager._hass = hass  # Set hass reference for weather entity access
+        smart_comfort_manager._home_id = home_id  # Set home_id for per-home cache files
+        smart_comfort_manager.enable()
         
         # Configure weather compensation (Phase 3)
         outdoor_temp_entity = config_manager.get_outdoor_temp_entity()
@@ -1166,17 +1166,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         use_feels_like = config_manager.get_use_feels_like()
         
         if outdoor_temp_entity:
-            smart_heating_manager.configure_weather(
+            smart_comfort_manager.configure_weather(
                 outdoor_temp_entity=outdoor_temp_entity,
                 weather_compensation=weather_compensation,
                 use_feels_like=use_feels_like
             )
         
-        hass.data[DOMAIN]['smart_heating_manager'] = smart_heating_manager
+        hass.data[DOMAIN]['smart_comfort_manager'] = smart_comfort_manager
         
         # 3-Tier Loading Strategy:
         # Tier 1: Load from cache file (fastest, 2h detailed data)
-        cache_readings = await hass.async_add_executor_job(smart_heating_manager.load_from_file)
+        cache_readings = await hass.async_add_executor_job(smart_comfort_manager.load_from_file)
         
         # Get zones_info for entity ID mapping
         from .data_loader import load_zones_info_file
@@ -1200,7 +1200,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             recorder_readings = 0
             if climate_entity_ids:
                 recorder_readings = await async_load_history_from_recorder(
-                    hass, smart_heating_manager, climate_entity_ids, entity_to_zone_id
+                    hass, smart_comfort_manager, climate_entity_ids, entity_to_zone_id
                 )
             
             # Tier 3: Load baseline rates from long-term statistics (7 days hourly)
@@ -1211,7 +1211,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if zone.get('name') and zone.get('id')
             }
             baseline_stats = await async_load_baseline_from_statistics(
-                hass, smart_heating_manager, zone_sensor_mapping
+                hass, smart_comfort_manager, zone_sensor_mapping
             )
             
             _LOGGER.info(
@@ -1715,8 +1715,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     cleanup_executor()
     
     # Clean up Smart Heating manager (saves data before cleanup)
-    from .smart_heating import cleanup_smart_heating_manager
-    cleanup_smart_heating_manager()
+    from .smart_comfort import cleanup_smart_comfort_manager
+    cleanup_smart_comfort_manager()
     
     # Clean up data loader home_id
     from .data_loader import cleanup_data_loader

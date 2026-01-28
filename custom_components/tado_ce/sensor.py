@@ -98,7 +98,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
             zone_types = {str(z.get('id')): z.get('type', 'HEATING') for z in zones_info}
         
         # Build zone TRV map - check if zone has TRV device (VA02, RU01, VA01)
-        # Only zones with TRVs should have Smart Heating sensors
+        # Only zones with TRVs should have Smart Comfort sensors
         zones_with_trv = set()
         TRV_DEVICE_TYPES = {'VA02', 'VA01', 'RU01', 'RU02'}  # V3+ and V2 TRVs
         if zones_info:
@@ -134,8 +134,8 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                         TadoTargetTempSensor(zone_id, zone_name, zone_type),
                         TadoOverlaySensor(zone_id, zone_name, zone_type),
                     ])
-                    # v1.9.0: Smart Heating sensors (opt-in)
-                    if config_manager.get_smart_heating_enabled():
+                    # v1.9.0: Smart Comfort sensors (opt-in)
+                    if config_manager.get_smart_comfort_enabled():
                         # Heating/Cooling Rate - useful for all zones with temperature sensor
                         sensors.extend([
                             TadoHeatingRateSensor(zone_id, zone_name, zone_type),
@@ -159,8 +159,8 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                         TadoTargetTempSensor(zone_id, zone_name, zone_type),
                         TadoOverlaySensor(zone_id, zone_name, zone_type),
                     ])
-                    # v1.9.0: Smart Heating sensors for AC (opt-in, always create for AC zones)
-                    if config_manager.get_smart_heating_enabled():
+                    # v1.9.0: Smart Comfort sensors for AC (opt-in, always create for AC zones)
+                    if config_manager.get_smart_comfort_enabled():
                         sensors.extend([
                             TadoHeatingRateSensor(zone_id, zone_name, zone_type),
                             TadoCoolingRateSensor(zone_id, zone_name, zone_type),
@@ -1249,7 +1249,7 @@ class TadoHeatingRateSensor(TadoBaseSensor):
         """Update heating rate from SmartHeatingManager."""
         try:
             # v1.9.0: Use hass.data instead of global singleton for multi-home support
-            manager = self.hass.data.get(DOMAIN, {}).get('smart_heating_manager') if self.hass else None
+            manager = self.hass.data.get(DOMAIN, {}).get('smart_comfort_manager') if self.hass else None
             
             if not manager or not manager.is_enabled:
                 self._attr_available = False
@@ -1303,7 +1303,7 @@ class TadoCoolingRateSensor(TadoBaseSensor):
         """Update cooling rate from SmartHeatingManager."""
         try:
             # v1.9.0: Use hass.data instead of global singleton for multi-home support
-            manager = self.hass.data.get(DOMAIN, {}).get('smart_heating_manager') if self.hass else None
+            manager = self.hass.data.get(DOMAIN, {}).get('smart_comfort_manager') if self.hass else None
             
             if not manager or not manager.is_enabled:
                 self._attr_available = False
@@ -1376,7 +1376,7 @@ class TadoHeatingEfficiencySensor(TadoBaseSensor):
     def update(self):
         """Update heating efficiency from SmartHeatingManager."""
         try:
-            manager = self.hass.data.get(DOMAIN, {}).get('smart_heating_manager') if self.hass else None
+            manager = self.hass.data.get(DOMAIN, {}).get('smart_comfort_manager') if self.hass else None
             
             if not manager or not manager.is_enabled:
                 self._attr_available = False
@@ -1450,7 +1450,7 @@ class TadoTimeToTargetSensor(TadoBaseSensor):
         """Update time to target from SmartHeatingManager."""
         try:
             # v1.9.0: Use hass.data instead of global singleton for multi-home support
-            manager = self.hass.data.get(DOMAIN, {}).get('smart_heating_manager') if self.hass else None
+            manager = self.hass.data.get(DOMAIN, {}).get('smart_comfort_manager') if self.hass else None
             
             if not manager or not manager.is_enabled:
                 self._attr_available = False
@@ -1656,7 +1656,7 @@ class TadoHistoricalTempSensor(TadoBaseSensor):
     def update(self):
         """Update historical comparison from SmartHeatingManager."""
         try:
-            manager = self.hass.data.get(DOMAIN, {}).get('smart_heating_manager') if self.hass else None
+            manager = self.hass.data.get(DOMAIN, {}).get('smart_comfort_manager') if self.hass else None
             
             if not manager or not manager.is_enabled:
                 self._attr_available = False
@@ -1733,7 +1733,7 @@ class TadoNextScheduleTimeSensor(TadoBaseSensor):
     def update(self):
         """Update next schedule time from schedule data."""
         try:
-            from .smart_heating import get_next_schedule_change
+            from .smart_comfort import get_next_schedule_change
             from datetime import datetime
             
             next_block = get_next_schedule_change(self._zone_id)
@@ -1817,7 +1817,7 @@ class TadoNextScheduleTempSensor(TadoBaseSensor):
     def update(self):
         """Update next schedule temperature from schedule data."""
         try:
-            from .smart_heating import get_next_schedule_change
+            from .smart_comfort import get_next_schedule_change
             from datetime import datetime
             
             next_block = get_next_schedule_change(self._zone_id)
@@ -1924,10 +1924,10 @@ class TadoPreheatAdvisorSensor(TadoBaseSensor):
         4. If no schedule or heating OFF, show appropriate status
         """
         try:
-            from .smart_heating import get_next_schedule_change
+            from .smart_comfort import get_next_schedule_change
             from datetime import datetime
             
-            manager = self.hass.data.get(DOMAIN, {}).get('smart_heating_manager') if self.hass else None
+            manager = self.hass.data.get(DOMAIN, {}).get('smart_comfort_manager') if self.hass else None
             
             if not manager or not manager.is_enabled:
                 self._attr_available = False

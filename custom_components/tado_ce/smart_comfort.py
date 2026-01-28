@@ -1,4 +1,4 @@
-"""Smart Heating Manager for Tado CE.
+"""Smart Comfort Manager for Tado CE.
 
 Provides intelligent heating analytics including:
 - Temperature rate calculation (heating/cooling rates)
@@ -697,8 +697,8 @@ class ZoneHistory:
         )
 
 
-class SmartHeatingManager:
-    """Manages smart heating analytics for all zones."""
+class SmartComfortManager:
+    """Manages smart comfort analytics for all zones."""
     
     def __init__(self, hass: "HomeAssistant" = None, home_id: str = "", history_days: int = DEFAULT_HISTORY_DAYS):
         self._zones: dict[str, ZoneHistory] = {}
@@ -717,14 +717,14 @@ class SmartHeatingManager:
         self._history_days = days
         for zone in self._zones.values():
             zone.set_history_days(days)
-        _LOGGER.info(f"Smart Heating: History retention set to {days} days")
+        _LOGGER.info(f"Smart Comfort: History retention set to {days} days")
     
     def _get_cache_file(self) -> Path:
         """Get the cache file path."""
         from .const import DATA_DIR
         if self._home_id:
-            return DATA_DIR / f"smart_heating_cache_{self._home_id}.json"
-        return DATA_DIR / "smart_heating_cache.json"
+            return DATA_DIR / f"smart_comfort_cache_{self._home_id}.json"
+        return DATA_DIR / "smart_comfort_cache.json"
     
     def save_to_file(self) -> bool:
         """Save zone data to file for persistence.
@@ -761,13 +761,13 @@ class SmartHeatingManager:
             
             total_readings = sum(len(z.readings) for z in self._zones.values())
             _LOGGER.debug(
-                f"Smart Heating: Saved {len(self._zones)} zones, "
+                f"Smart Comfort: Saved {len(self._zones)} zones, "
                 f"{total_readings} readings to {cache_file.name}"
             )
             return True
             
         except Exception as e:
-            _LOGGER.warning(f"Smart Heating: Failed to save cache: {e}")
+            _LOGGER.warning(f"Smart Comfort: Failed to save cache: {e}")
             return False
     
     def load_from_file(self) -> int:
@@ -779,7 +779,7 @@ class SmartHeatingManager:
         cache_file = self._get_cache_file()
         
         if not cache_file.exists():
-            _LOGGER.debug(f"Smart Heating: No cache file found at {cache_file}")
+            _LOGGER.debug(f"Smart Comfort: No cache file found at {cache_file}")
             return 0
         
         try:
@@ -800,16 +800,16 @@ class SmartHeatingManager:
             
             saved_at = data.get("saved_at", "unknown")
             _LOGGER.info(
-                f"Smart Heating: Loaded {len(self._zones)} zones, "
+                f"Smart Comfort: Loaded {len(self._zones)} zones, "
                 f"{total_readings} readings from cache (saved at {saved_at})"
             )
             return total_readings
             
         except json.JSONDecodeError as e:
-            _LOGGER.warning(f"Smart Heating: Invalid cache file: {e}")
+            _LOGGER.warning(f"Smart Comfort: Invalid cache file: {e}")
             return 0
         except Exception as e:
-            _LOGGER.warning(f"Smart Heating: Failed to load cache: {e}")
+            _LOGGER.warning(f"Smart Comfort: Failed to load cache: {e}")
             return 0
     
     def maybe_save(self) -> None:
@@ -839,20 +839,20 @@ class SmartHeatingManager:
         self._weather_compensation = weather_compensation
         self._use_feels_like = use_feels_like
         _LOGGER.info(
-            f"Smart Heating: Weather compensation configured - "
+            f"Smart Comfort: Weather compensation configured - "
             f"entity={outdoor_temp_entity}, preset={weather_compensation}, "
             f"feels_like={use_feels_like}"
         )
     
     def enable(self) -> None:
-        """Enable smart heating tracking."""
+        """Enable smart comfort tracking."""
         self._enabled = True
-        _LOGGER.info("Smart Heating Manager enabled")
+        _LOGGER.info("Smart Comfort Manager enabled")
     
     def disable(self) -> None:
-        """Disable smart heating tracking."""
+        """Disable smart comfort tracking."""
         self._enabled = False
-        _LOGGER.info("Smart Heating Manager disabled")
+        _LOGGER.info("Smart Comfort Manager disabled")
     
     @property
     def is_enabled(self) -> bool:
@@ -899,7 +899,7 @@ class SmartHeatingManager:
         self.maybe_save()
         
         _LOGGER.debug(
-            f"Smart Heating: Recorded {zone_name} temp={temperature}°C "
+            f"Smart Comfort: Recorded {zone_name} temp={temperature}°C "
             f"heating={is_heating} target={target_temperature}"
         )
     
@@ -1349,11 +1349,11 @@ class SmartHeatingManager:
 
 
 # Global instance
-_manager: Optional[SmartHeatingManager] = None
+_manager: Optional[SmartComfortManager] = None
 
 
-def cleanup_smart_heating_manager() -> bool:
-    """Clean up the global SmartHeatingManager.
+def cleanup_smart_comfort_manager() -> bool:
+    """Clean up the global SmartComfortManager.
     
     MUST be called in async_unload_entry() to prevent memory leaks
     when integration is reloaded or removed.
@@ -1366,16 +1366,16 @@ def cleanup_smart_heating_manager() -> bool:
         # Save data before cleanup
         _manager.save_to_file()
         _manager = None
-        _LOGGER.debug("Cleaned up SmartHeatingManager")
+        _LOGGER.debug("Cleaned up SmartComfortManager")
         return True
     return False
 
 
-def get_smart_heating_manager(history_days: int = DEFAULT_HISTORY_DAYS) -> SmartHeatingManager:
-    """Get the global SmartHeatingManager instance."""
+def get_smart_comfort_manager(history_days: int = DEFAULT_HISTORY_DAYS) -> SmartComfortManager:
+    """Get the global SmartComfortManager instance."""
     global _manager
     if _manager is None:
-        _manager = SmartHeatingManager(history_days=history_days)
+        _manager = SmartComfortManager(history_days=history_days)
     else:
         # Update history_days if changed
         if _manager._history_days != history_days:
@@ -1385,7 +1385,7 @@ def get_smart_heating_manager(history_days: int = DEFAULT_HISTORY_DAYS) -> Smart
 
 async def async_load_history_from_recorder(
     hass: "HomeAssistant",
-    manager: SmartHeatingManager,
+    manager: SmartComfortManager,
     climate_entity_ids: list[str],
     entity_to_zone_id: dict[str, str] = None
 ) -> int:
@@ -1396,7 +1396,7 @@ async def async_load_history_from_recorder(
     
     Args:
         hass: Home Assistant instance
-        manager: SmartHeatingManager to populate
+        manager: SmartComfortManager to populate
         climate_entity_ids: List of climate entity IDs to load history for
         entity_to_zone_id: Mapping from entity name to numeric zone_id
             e.g., {"master": "1", "dining": "2"}. Required for correct zone matching.
@@ -1416,7 +1416,7 @@ async def async_load_history_from_recorder(
         start_time = end_time - timedelta(hours=RECORDER_HISTORY_HOURS)
         
         _LOGGER.info(
-            f"Smart Heating: Loading {RECORDER_HISTORY_HOURS}h history for "
+            f"Smart Comfort: Loading {RECORDER_HISTORY_HOURS}h history for "
             f"{len(climate_entity_ids)} climate entities"
         )
         
@@ -1433,7 +1433,7 @@ async def async_load_history_from_recorder(
         states = await get_instance(hass).async_add_executor_job(_get_history)
         
         if not states:
-            _LOGGER.debug("Smart Heating: No history found in recorder")
+            _LOGGER.debug("Smart Comfort: No history found in recorder")
             return 0
         
         total_points = 0
@@ -1448,7 +1448,7 @@ async def async_load_history_from_recorder(
             # Get numeric zone_id from mapping
             zone_id = entity_to_zone_id.get(entity_name)
             if not zone_id:
-                _LOGGER.debug(f"Smart Heating: No zone_id mapping for {entity_name}")
+                _LOGGER.debug(f"Smart Comfort: No zone_id mapping for {entity_name}")
                 continue
             
             zone_name = entity_name.replace("_", " ").title()
@@ -1495,7 +1495,7 @@ async def async_load_history_from_recorder(
                     points_added += 1
                     
                 except (ValueError, TypeError, AttributeError) as e:
-                    _LOGGER.debug(f"Smart Heating: Skipping invalid history state: {e}")
+                    _LOGGER.debug(f"Smart Comfort: Skipping invalid history state: {e}")
                     continue
             
             # Sort readings by timestamp and prune old ones
@@ -1504,25 +1504,25 @@ async def async_load_history_from_recorder(
             
             if points_added > 0:
                 _LOGGER.info(
-                    f"Smart Heating: Loaded {points_added} history points for {zone_name}, "
+                    f"Smart Comfort: Loaded {points_added} history points for {zone_name}, "
                     f"{len(zone.readings)} after pruning"
                 )
                 total_points += len(zone.readings)
         
-        _LOGGER.info(f"Smart Heating: Total {total_points} data points loaded from recorder")
+        _LOGGER.info(f"Smart Comfort: Total {total_points} data points loaded from recorder")
         return total_points
         
     except ImportError:
-        _LOGGER.debug("Smart Heating: Recorder component not available")
+        _LOGGER.debug("Smart Comfort: Recorder component not available")
         return 0
     except Exception as e:
-        _LOGGER.warning(f"Smart Heating: Failed to load history from recorder: {e}")
+        _LOGGER.warning(f"Smart Comfort: Failed to load history from recorder: {e}")
         return 0
 
 
 async def async_load_baseline_from_statistics(
     hass: "HomeAssistant",
-    manager: SmartHeatingManager,
+    manager: SmartComfortManager,
     zone_sensor_mapping: dict[str, str]
 ) -> dict[str, dict]:
     """Load baseline heating/cooling rates from long-term statistics.
@@ -1537,7 +1537,7 @@ async def async_load_baseline_from_statistics(
     
     Args:
         hass: Home Assistant instance
-        manager: SmartHeatingManager to update with baseline rates
+        manager: SmartComfortManager to update with baseline rates
         zone_sensor_mapping: Dict mapping zone_id to temperature sensor entity_id
             e.g., {"master": "sensor.master_temperature"}
             
@@ -1562,7 +1562,7 @@ async def async_load_baseline_from_statistics(
         statistic_ids = list(zone_sensor_mapping.values())
         
         _LOGGER.info(
-            f"Smart Heating: Loading 7-day statistics for {len(statistic_ids)} sensors"
+            f"Smart Comfort: Loading 7-day statistics for {len(statistic_ids)} sensors"
         )
         
         # Query statistics (runs in executor)
@@ -1580,7 +1580,7 @@ async def async_load_baseline_from_statistics(
         stats = await get_instance(hass).async_add_executor_job(_get_statistics)
         
         if not stats:
-            _LOGGER.debug("Smart Heating: No long-term statistics found")
+            _LOGGER.debug("Smart Comfort: No long-term statistics found")
             return {}
         
         results = {}
@@ -1592,7 +1592,7 @@ async def async_load_baseline_from_statistics(
             sensor_stats = stats[sensor_id]
             if len(sensor_stats) < 24:  # Need at least 24 hours
                 _LOGGER.debug(
-                    f"Smart Heating: Not enough statistics for {zone_id} "
+                    f"Smart Comfort: Not enough statistics for {zone_id} "
                     f"({len(sensor_stats)} points)"
                 )
                 continue
@@ -1645,15 +1645,15 @@ async def async_load_baseline_from_statistics(
             zone._baseline_cooling_rate = baseline_cooling
             
             _LOGGER.info(
-                f"Smart Heating: {zone_id} baseline rates from {len(sensor_stats)} hours: "
+                f"Smart Comfort: {zone_id} baseline rates from {len(sensor_stats)} hours: "
                 f"heating={baseline_heating}°C/h, cooling={baseline_cooling}°C/h"
             )
         
         return results
         
     except ImportError as e:
-        _LOGGER.debug(f"Smart Heating: Statistics API not available: {e}")
+        _LOGGER.debug(f"Smart Comfort: Statistics API not available: {e}")
         return {}
     except Exception as e:
-        _LOGGER.warning(f"Smart Heating: Failed to load statistics: {e}")
+        _LOGGER.warning(f"Smart Comfort: Failed to load statistics: {e}")
         return {}
