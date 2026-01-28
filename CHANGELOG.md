@@ -11,6 +11,7 @@ All notable changes to Tado CE will be documented in this file.
 - **Cooling Rate Sensor** - °C/hour when heating is off (heat loss rate)
 - **Time to Target Sensor** - Estimated minutes to reach target temperature (zones with TRV only)
 - **Comfort at Risk Binary Sensor** - Alert when target may be missed
+- **Heating Efficiency Sensor** - Compare current vs baseline rate (detect anomalies)
 - **Configurable Comfort Thresholds** - Set min/max comfort temperatures for zones without TRV
 - **Weather Compensation** - Adjust predictions based on outdoor temperature
 - **Unit Conversions** - Automatic conversion for Fahrenheit and various wind speed units

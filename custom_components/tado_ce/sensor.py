@@ -141,6 +141,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                             TadoHeatingRateSensor(zone_id, zone_name, zone_type),
                             TadoCoolingRateSensor(zone_id, zone_name, zone_type),
                             TadoComfortLevelSensor(zone_id, zone_name, zone_type),
+                            TadoHeatingEfficiencySensor(zone_id, zone_name, zone_type),
                         ])
                         # Time to Target - only for zones with TRV (heating control)
                         if zone_id in zones_with_trv:
@@ -160,6 +161,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                             TadoCoolingRateSensor(zone_id, zone_name, zone_type),
                             TadoTimeToTargetSensor(zone_id, zone_name, zone_type),
                             TadoComfortLevelSensor(zone_id, zone_name, zone_type),
+                            TadoHeatingEfficiencySensor(zone_id, zone_name, zone_type),
                         ])
                 elif zone_type == 'HOT_WATER':
                     # Only create temperature sensor if zone has temperature data
@@ -1308,6 +1310,102 @@ class TadoCoolingRateSensor(TadoBaseSensor):
         except Exception as e:
             _LOGGER.debug(f"Failed to update cooling rate for zone {self._zone_id}: {e}")
             self._attr_available = False
+
+
+class TadoHeatingEfficiencySensor(TadoBaseSensor):
+    """Heating efficiency sensor - compares current rate vs baseline.
+    
+    Shows percentage of baseline heating rate, helping identify:
+    - Slow heating (possible issues like open windows, poor insulation)
+    - Fast heating (external heat sources like sun, cooking)
+    
+    State: Percentage (100% = normal, <75% = slow, >125% = fast)
+    """
+    
+    # Thresholds for status determination
+    SLOW_THRESHOLD = 75   # Below 75% = slow
+    FAST_THRESHOLD = 125  # Above 125% = fast
+    
+    def __init__(self, zone_id: str, zone_name: str, zone_type: str = "HEATING"):
+        super().__init__(zone_id, zone_name, zone_type)
+        self._attr_name = f"{zone_name} Heating Efficiency"
+        self._attr_unique_id = f"tado_ce_zone_{zone_id}_heating_efficiency"
+        self._attr_native_unit_of_measurement = "%"
+        self._attr_icon = "mdi:gauge"
+        self._attr_state_class = "measurement"
+        
+        # Attributes
+        self._current_rate: float | None = None
+        self._baseline_rate: float | None = None
+        self._status: str = "unknown"
+    
+    @property
+    def extra_state_attributes(self):
+        return {
+            "current_rate": self._current_rate,
+            "baseline_rate": self._baseline_rate,
+            "status": self._status,
+            "zone_type": self._zone_type,
+        }
+    
+    @property
+    def icon(self):
+        """Dynamic icon based on status."""
+        if self._status == "slow":
+            return "mdi:gauge-low"
+        elif self._status == "fast":
+            return "mdi:gauge-full"
+        elif self._status == "normal":
+            return "mdi:gauge"
+        return "mdi:gauge-empty"
+    
+    def update(self):
+        """Update heating efficiency from SmartHeatingManager."""
+        try:
+            manager = self.hass.data.get(DOMAIN, {}).get('smart_heating_manager') if self.hass else None
+            
+            if not manager or not manager.is_enabled:
+                self._attr_available = False
+                return
+            
+            self._current_rate = manager.get_heating_rate(self._zone_id)
+            self._baseline_rate = manager.get_baseline_heating_rate(self._zone_id)
+            
+            # Need both rates to calculate efficiency
+            if self._current_rate is None or self._baseline_rate is None:
+                self._attr_native_value = None
+                self._attr_available = False
+                self._status = "unknown"
+                return
+            
+            # Avoid division by zero
+            if self._baseline_rate == 0:
+                # If baseline is 0 but current is positive, that's unusual
+                if self._current_rate > 0:
+                    self._attr_native_value = 999  # Cap at 999%
+                    self._status = "fast"
+                else:
+                    self._attr_native_value = 100  # Both zero = normal
+                    self._status = "normal"
+            else:
+                # Calculate efficiency percentage
+                efficiency = (self._current_rate / self._baseline_rate) * 100
+                self._attr_native_value = round(efficiency, 0)
+                
+                # Determine status
+                if efficiency < self.SLOW_THRESHOLD:
+                    self._status = "slow"
+                elif efficiency > self.FAST_THRESHOLD:
+                    self._status = "fast"
+                else:
+                    self._status = "normal"
+            
+            self._attr_available = True
+            
+        except Exception as e:
+            _LOGGER.debug(f"Failed to update heating efficiency for zone {self._zone_id}: {e}")
+            self._attr_available = False
+            self._status = "unknown"
 
 
 class TadoTimeToTargetSensor(TadoBaseSensor):

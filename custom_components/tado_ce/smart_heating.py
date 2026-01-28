@@ -510,6 +510,18 @@ class SmartHeatingManager:
             return None
         return self._zones[zone_id].get_cooling_rate()
     
+    def get_baseline_heating_rate(self, zone_id: str) -> Optional[float]:
+        """Get baseline heating rate for a zone (from long-term statistics)."""
+        if zone_id not in self._zones:
+            return None
+        return self._zones[zone_id]._baseline_heating_rate
+    
+    def get_baseline_cooling_rate(self, zone_id: str) -> Optional[float]:
+        """Get baseline cooling rate for a zone (from long-term statistics)."""
+        if zone_id not in self._zones:
+            return None
+        return self._zones[zone_id]._baseline_cooling_rate
+    
     def get_time_to_target(
         self,
         zone_id: str,
