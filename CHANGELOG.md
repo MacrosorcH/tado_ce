@@ -2,6 +2,12 @@
 
 All notable changes to Tado CE will be documented in this file.
 
+## [1.9.1] - 2026-01-31
+
+**Hotfix: Device Migration Error** - Fixed crash on startup for some users.
+
+- **Fixed device identifier parsing** - Device migration code now handles non-standard identifier formats ([#74](https://github.com/hiall-fyi/tado_ce/issues/74))
+
 ## [1.9.0] - 2026-01-31
 
 **Smart Comfort Analytics + Environment Sensors** - Complete Smart Comfort suite with analytics and environment monitoring for both Heating and AC zones.

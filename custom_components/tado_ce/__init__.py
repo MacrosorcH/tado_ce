@@ -667,7 +667,10 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
                 zone_pattern = re.compile(r"tado_ce_zone_(\d+)")
                 
                 for device in device_registry.devices.values():
-                    for domain, identifier in device.identifiers:
+                    for id_tuple in device.identifiers:
+                        if len(id_tuple) != 2:
+                            continue
+                        domain, identifier = id_tuple
                         if domain == DOMAIN:
                             match = zone_pattern.match(identifier)
                             if match:
@@ -932,7 +935,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         zone_pattern = re.compile(r"tado_ce_zone_(\d+)")
         
         for device in list(device_registry.devices.values()):
-            for domain, identifier in device.identifiers:
+            for id_tuple in device.identifiers:
+                if len(id_tuple) != 2:
+                    continue
+                domain, identifier = id_tuple
                 if domain == DOMAIN:
                     match = zone_pattern.match(identifier)
                     if match:
