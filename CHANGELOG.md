@@ -8,6 +8,10 @@ All notable changes to Tado CE will be documented in this file.
 
 - **Fixed device identifier parsing** - Device migration code now handles non-standard identifier formats ([#74](https://github.com/hiall-fyi/tado_ce/issues/74))
 
+### ⚠️ Known Issue: Options Not Saving
+
+If options don't save after clicking Submit, set a valid entity in **Smart Comfort Settings → Outdoor Temperature Entity**. This is a [Home Assistant Core limitation](https://github.com/home-assistant/core/issues/154795) - EntitySelector cannot handle empty values. ([#44](https://github.com/hiall-fyi/tado_ce/issues/44) - @chinezbrun, @pkmetski)
+
 ## [1.9.0] - 2026-01-31
 
 **Smart Comfort Analytics + Environment Sensors** - Complete Smart Comfort suite with analytics and environment monitoring for both Heating and AC zones.

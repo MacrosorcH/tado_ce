@@ -254,6 +254,23 @@ Tado X devices use Matter over Thread - use the [Home Assistant Matter integrati
 ## Troubleshooting
 
 <details>
+<summary><strong>⚠️ Options not saving (v1.9.0+)</strong></summary>
+
+If clicking "Submit" in Configure doesn't show "Successfully saved", the **Outdoor Temperature Entity** field may be empty.
+
+**This is a Home Assistant Core limitation** ([Issue #154795](https://github.com/home-assistant/core/issues/154795)) - EntitySelector cannot handle empty values.
+
+**Workaround:**
+1. Go to **Settings → Devices & Services → Tado CE → Configure**
+2. Expand **Smart Comfort Settings**
+3. Set **Outdoor Temperature Entity** to any weather entity (e.g., `weather.home`)
+4. Click **Submit**
+
+If you don't want weather compensation, set "Smart Comfort Mode" to "None".
+
+</details>
+
+<details>
 <summary><strong>Token refresh failed / Re-authentication required</strong></summary>
 
 1. Go to **Settings > Devices & Services > Tado CE**
