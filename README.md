@@ -347,7 +347,7 @@ Contributions welcome!
 
 ---
 
-**Version**: 1.9.0 | **Last Updated**: 2026-01-29 | **Tested On**: Home Assistant 2026.1.3
+**Version**: 1.9.0 | **Last Updated**: 2026-01-31 | **Tested On**: Home Assistant 2026.1.3
 
 ---
 

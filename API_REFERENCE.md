@@ -222,4 +222,4 @@ These files persist across restarts and upgrades.
 ---
 
 **Version**: 1.9.0  
-**Last Updated**: 2026-01-29
+**Last Updated**: 2026-01-31
