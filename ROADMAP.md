@@ -6,53 +6,19 @@ For completed features, see [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
-## v1.9.0 - Smart Comfort Analytics + Insights
+## v2.0.0 - Multiple Homes Enabled + Smart Boost + ML Predictions
 
-Complete Smart Comfort suite with analytics and predictive insights for both Heating and AC zones.
+Major release enabling full multi-home support, smart boost feature, and ML-based predictions.
 
-**Multi-Home Migration:**
-- [x] **Change hub device identifier** - From `tado_ce_hub` to `tado_ce_hub_{home_id}`
-- [x] **Zone device migration** - From `tado_ce_zone_X` to `tado_ce_{home_id}_zone_X`
-- [x] **Device registry migration** - Existing devices updated automatically
-- [x] **Entity IDs stable** - No entity ID changes for existing users
-
-**Smart Comfort Analytics (Phase 1+2):**
-- [x] **Heating Rate Sensor** - °C/hour when heating is active
-- [x] **Cooling Rate Sensor** - °C/hour when heating is off (heat loss rate)
-- [x] **Time to Target Sensor** - Estimated minutes to reach target temperature
-- [x] **Heating Efficiency Sensor** - Compare current vs baseline rate (detect anomalies)
-- [x] **Weather Compensation** - Adjust predictions based on outdoor temperature
-- [x] **2-Tier Data Loading** - Cache file + Recorder history for instant bootstrap
-
-**Smart Comfort Insights (Phase 3):**
-- [x] **Historical Temperature Comparison** - Compare current temp vs 7-day same-time average
-- [x] **Preheat Advisor** - Suggest optimal preheat time based on historical warm-up patterns
-- [x] **Smart Comfort Target Sensor** - Compensated target temperature based on outdoor temp + humidity
-- [x] **Smart Comfort Mode** - Preset-based comfort optimization (None/Light/Moderate/Aggressive)
-
-**Example Insights:**
-```
-"Past 7 days at this time: avg 18.5°C, today: 17.2°C (-1.3°C)"
-"Heating rate today: 1.2°C/h vs historical 2.5°C/h (-52% - possible issue?)"
-"Suggested preheat time: 06:15 (typical warm-up: 45 min)"
-```
-
-**Bug Fixes:**
-- [x] **Fixed API reset detection for 100-call limit** - Dynamic threshold now works with both 5000 and 100 call limits ([#54](https://github.com/hiall-fyi/tado_ce/issues/54))
-- [x] **AC turn-off debug logging** - Added detailed logging to diagnose intermittent restore-to-ON issue ([#44](https://github.com/hiall-fyi/tado_ce/issues/44))
-- [x] **Refresh AC Capabilities now tracked in call history** - API calls from button now recorded ([#61](https://github.com/hiall-fyi/tado_ce/issues/61))
-- [x] **Fixed temperature offset for multi-TRV rooms** - Offset now applied to ALL devices in a zone ([#66](https://github.com/hiall-fyi/tado_ce/issues/66))
-- [x] **Fixed device sensor assignment** - Battery/Connection sensors now assigned to HEATING zones over HOT_WATER ([#56](https://github.com/hiall-fyi/tado_ce/issues/56))
-
-**Data Sources:**
-- Tier 1: Cache file (2h detailed data, survives restarts)
-- Tier 2: Recorder history (24h, for bootstrap after cache expires)
-
----
-
-## v2.0.0 - Multiple Homes Enabled + Smart Boost
-
-Major release enabling full multi-home support plus smart boost feature.
+**Regression-Based Predictive Models** (Self-Learning):
+- [ ] **Linear Regression Framework** - NumPy OLS implementation for per-zone predictions
+- [ ] **Heating Rate Prediction** - ML-based heating rate using delta_temp, valve%, power, time features
+- [ ] **Comfort Level Estimation** - Multi-factor comfort score (temp, humidity, rate)
+- [ ] **Time to Target Prediction** - Accurate ETA based on learned heating patterns
+- [ ] **Heating Intensity Advisor** - Suggest target temp for desired valve % (indirect valve control)
+- [ ] **Cold Start Handling** - Graceful fallback during learning period (1-2 weeks)
+- [ ] **Model Persistence** - Training data survives HA restarts, 30-day rolling window
+- [ ] **Feature Importance** - Expose which factors affect predictions most
 
 **Multi-Home Support:**
 - [ ] **Allow multiple integration entries** - Each entry for a different home
@@ -62,25 +28,12 @@ Major release enabling full multi-home support plus smart boost feature.
 **Smart Boost (Phase 4):**
 - [ ] **Smart Boost Button** - One-tap boost with intelligent duration
 - [ ] **Duration Calculation** - `(target - current) / heating_rate`
-- [ ] **Reasonable Caps** - Max 3 hours to prevent runaway heating
+- [ ] **Reasonable Caps** - Max 3 h to prevent runaway heating
 
 **API Monitoring Enhancements** ([#65](https://github.com/hiall-fyi/tado_ce/issues/65)):
 - [ ] **Call History Sensor** - Separate sensor for Activity card visualization
 - [ ] **Call Priority System** - Configurable weighting for different call types
 - [ ] **Granular API Call Options** - Enable/disable optional call types in Advanced settings
-
-**API Call Types - What's Configurable:**
-
-| Code | Type | Configurable? | Notes |
-|------|------|---------------|-------|
-| 1 | zoneStates | ❌ Required | Core data - temperature, humidity, heating status |
-| 2 | weather | ✅ Already available | Weather sync option |
-| 3 | zones | ❌ Required | Zone configuration, needed at startup |
-| 4 | mobileDevices | ✅ Already available | Mobile devices sync option |
-| 5 | overlay | ❌ Required | Manual overrides, needed for heating control |
-| 6 | presenceLock | ✅ Will add | Home/Away lock status |
-| 7 | homeState | ✅ Already available | Home state sync option |
-| 8 | capabilities | ✅ Auto-cached | AC capabilities, fetched once and cached |
 
 **Setup & Polish:**
 - [ ] **Auto-assign Areas** - Suggest HA Areas based on zone names during setup ([#14](https://github.com/hiall-fyi/tado_ce/issues/14))
@@ -111,8 +64,7 @@ Major release enabling full multi-home support plus smart boost feature.
 ## Backlog (Future Consideration)
 
 **Environment Sensors** ([#64](https://github.com/hiall-fyi/tado_ce/issues/64)):
-- [ ] **Mold Risk Indicator** - Calculate mold risk from temp + humidity
-- [ ] **Indoor Air Quality (IAQ)** - Air quality score per zone
+- [ ] **Indoor Air Quality (IAQ)** - Air quality score per zone (requires additional sensors)
 - [ ] **Air Comfort** - Similar to Tado app's comfort visualization
 
 ---

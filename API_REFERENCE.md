@@ -88,7 +88,7 @@ Runs frequently (based on your polling interval). Fetches:
 
 ### Full Sync
 
-Runs every 6 hours. Fetches everything from quick sync plus:
+Runs every 6 h. Fetches everything from quick sync plus:
 - zones (Code 3)
 - weather (Code 2) - if enabled
 - mobileDevices (Code 4) - if enabled
@@ -116,7 +116,7 @@ call_history:
 
 ### History Retention
 
-Configure via **Options > API History Retention** (default: 14 days, 0 = forever)
+Configure via **Options > API History Retention** (default: 14 d, 0 = forever)
 
 ---
 
@@ -221,5 +221,5 @@ These files persist across restarts and upgrades.
 
 ---
 
-**Version**: 1.9.1  
-**Last Updated**: 2026-01-31
+**Version**: 1.9.2  
+**Last Updated**: 2026-02-01

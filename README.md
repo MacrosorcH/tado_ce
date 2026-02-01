@@ -6,7 +6,7 @@
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.1.3-blue?style=for-the-badge&logo=home-assistant) ![Tado](https://img.shields.io/badge/Tado-V3%2FV3%2B-orange?style=for-the-badge) ![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)
 
 <!-- Status Badges -->
-![Version](https://img.shields.io/badge/Version-1.9.1-purple?style=for-the-badge) ![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=for-the-badge) ![Maintained](https://img.shields.io/badge/Maintained-Yes-green.svg?style=for-the-badge) ![Tests](https://img.shields.io/badge/Tests-480%20Passing-success?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-1.9.2-purple?style=for-the-badge) ![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=for-the-badge) ![Maintained](https://img.shields.io/badge/Maintained-Yes-green.svg?style=for-the-badge) ![Tests](https://img.shields.io/badge/Tests-494%20Passing-success?style=for-the-badge)
 
 <!-- Community Badges -->
 ![GitHub stars](https://img.shields.io/github/stars/hiall-fyi/tado_ce?style=for-the-badge&logo=github) ![GitHub forks](https://img.shields.io/github/forks/hiall-fyi/tado_ce?style=for-the-badge&logo=github) ![GitHub issues](https://img.shields.io/github/issues/hiall-fyi/tado_ce?style=for-the-badge&logo=github) ![GitHub last commit](https://img.shields.io/github/last-commit/hiall-fyi/tado_ce?style=for-the-badge&logo=github)
@@ -120,7 +120,7 @@ Access via **Settings > Devices & Services > Tado CE > gear icon**.
 | Enable Temperature Offset Attribute | Off | Adds `offset_celsius` to climate entities (1 API call/device every 6h) |
 | Enable Schedule Calendar | Off | Calendar entities showing heating schedules |
 | Enable Smart Comfort Analytics | Off | Heating rate, cooling rate, time-to-target, efficiency, preheat advisor, schedule sensors |
-| API History Retention | 14 days | Days to keep API call history (0 = forever) |
+| API History Retention | 14 d | Days to keep API call history (0 = forever) |
 
 </details>
 
@@ -133,8 +133,8 @@ Access via **Settings > Devices & Services > Tado CE > gear icon**.
 | Night Start Hour | 23 | When "night" period starts (0-23). Set Day = Night for uniform 24/7 polling |
 | Custom Day Interval | Empty | Override smart polling with fixed interval (1-1440 min) |
 | Custom Night Interval | Empty | Override smart polling with fixed interval (1-1440 min) |
-| Refresh Debounce Delay | 15 sec | Delay before refreshing after user actions (1-60 sec) |
-| Sync Mobile Devices Frequently | Off | Mobile devices sync every quick sync instead of every 6 hours |
+| Refresh Debounce Delay | 15 s | Delay before refreshing after user actions (1-60 s) |
+| Sync Mobile Devices Frequently | Off | Mobile devices sync every quick sync instead of only during full sync (every 6 h) |
 
 When custom intervals are not set, Tado CE uses smart polling that automatically adjusts based on your API quota.
 
@@ -202,8 +202,8 @@ The integration automatically adjusts polling frequency based on your API limit 
 
 | API Limit | Day (7am-11pm) | Night (11pm-7am) | Est. Calls/Day |
 |-----------|----------------|------------------|----------------|
-| 100 | 30 min | 2 hours | ~80 calls |
-| 1,000 | 15 min | 1 hour | ~160 calls |
+| 100 | 30 min | 2 h | ~80 calls |
+| 1,000 | 15 min | 1 h | ~160 calls |
 | 5,000 | 10 min | 30 min | ~240 calls |
 | 20,000 | 5 min | 15 min | ~480 calls |
 
@@ -364,7 +364,7 @@ Contributions welcome!
 
 ---
 
-**Version**: 1.9.1 | **Last Updated**: 2026-01-31 | **Tested On**: Home Assistant 2026.1.3
+**Version**: 1.9.2 | **Last Updated**: 2026-02-01 | **Tested On**: Home Assistant 2026.1.3
 
 ---
 

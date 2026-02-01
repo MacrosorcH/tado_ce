@@ -483,7 +483,7 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                         vol.Optional('schedule_calendar_enabled', default=options.get('schedule_calendar_enabled', False)): BooleanSelector(),
                         vol.Optional('smart_comfort_enabled', default=options.get('smart_comfort_enabled', False)): BooleanSelector(),
                         vol.Optional('api_history_retention_days', default=options.get('api_history_retention_days', 14)): NumberSelector(
-                            NumberSelectorConfig(min=0, max=365, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="days")
+                            NumberSelectorConfig(min=0, max=365, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="d")
                         ),
                     }),
                     {"collapsed": True},
@@ -505,7 +505,7 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                             TextSelectorConfig(type=TextSelectorType.TEXT)
                         ),
                         vol.Optional('refresh_debounce_seconds', default=options.get('refresh_debounce_seconds', 15)): NumberSelector(
-                            NumberSelectorConfig(min=1, max=60, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="sec")
+                            NumberSelectorConfig(min=1, max=60, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="s")
                         ),
                         vol.Optional('mobile_devices_frequent_sync', default=options.get('mobile_devices_frequent_sync', False)): BooleanSelector(),
                     }),
@@ -527,7 +527,7 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                         ),
                         vol.Optional('use_feels_like', default=options.get('use_feels_like', False)): BooleanSelector(),
                         vol.Optional('smart_comfort_history_days', default=options.get('smart_comfort_history_days', 7)): NumberSelector(
-                            NumberSelectorConfig(min=1, max=30, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="days")
+                            NumberSelectorConfig(min=1, max=30, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="d")
                         ),
                     }),
                     {"collapsed": True},

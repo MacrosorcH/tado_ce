@@ -2,6 +2,18 @@
 
 All notable changes to Tado CE will be documented in this file.
 
+## [1.9.2] - 2026-02-01
+
+**Hotfix: Grey Loading State & Cache Deduplication** - Fixed climate control delays and Smart Comfort cache bloat.
+
+### Bug Fixes
+- **Fixed grey loading state issue** - Climate mode changes (Auto → Off) now respond immediately instead of 15-20 second delay ([#44](https://github.com/hiall-fyi/tado_ce/issues/44) - @chinezbrun)
+  - Changed from fire-and-forget to await pattern for API calls
+  - Service calls now await API completion (with 10s timeout) for proper HA Frontend state sync
+  - Optimistic updates still fire immediately, but service call waits for confirmation
+  - Fixed race condition: refresh failures no longer trigger rollback when API call succeeded
+- **Fixed Smart Comfort cache bloat** - Deduplicate readings on cache load and skip duplicate readings (same temp/heating state within 5 minutes)
+
 ## [1.9.1] - 2026-01-31
 
 **Hotfix: Device Migration Error** - Fixed crash on startup for some users.
@@ -17,8 +29,8 @@ If options don't save after clicking Submit, set a valid entity in **Smart Comfo
 **Smart Comfort Analytics + Environment Sensors** - Complete Smart Comfort suite with analytics and environment monitoring for both Heating and AC zones.
 
 ### Smart Comfort Analytics
-- **Heating Rate Sensor** - °C/hour when heating is active
-- **Cooling Rate Sensor** - °C/hour when heating is off (heat loss rate)
+- **Heating Rate Sensor** - °C/h when heating is active
+- **Cooling Rate Sensor** - °C/h when heating is off (heat loss rate)
 - **Time to Target Sensor** - Estimated minutes to reach target temperature (zones with TRV only)
 - **Heating Efficiency Sensor** - Compare current vs baseline rate (detect anomalies)
 - **Weather Compensation** - Adjust predictions based on outdoor temperature

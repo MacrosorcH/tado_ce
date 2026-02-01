@@ -347,14 +347,37 @@ class TadoClimate(ClimateEntity):
         """Set preset mode (Home/Away).
         
         Uses 1 API call to set presence lock.
+        
+        v1.9.2: Added timeout protection for consistency with other methods.
         """
+        import time
+        import asyncio
         client = get_async_client(self.hass)
         state = "AWAY" if preset_mode == PRESET_AWAY else "HOME"
         
-        if await client.set_presence_lock(state):
-            self._attr_preset_mode = preset_mode
-            self.async_write_ha_state()  # Optimistic update
+        # Optimistic update BEFORE API call
+        old_preset = self._attr_preset_mode
+        self._attr_preset_mode = preset_mode
+        self._optimistic_set_at = time.time()
+        self.async_write_ha_state()
+        
+        api_success = False
+        try:
+            async with asyncio.timeout(10):
+                api_success = await client.set_presence_lock(state)
+        except asyncio.TimeoutError:
+            _LOGGER.warning(f"TIMEOUT: {self._zone_name} preset mode API call timed out")
+        except Exception as e:
+            _LOGGER.warning(f"ERROR: {self._zone_name} preset mode API call failed ({e})")
+        
+        if api_success:
+            _LOGGER.info(f"Set {self._zone_name} preset mode to {preset_mode}")
             await self._async_trigger_immediate_refresh("preset_mode_change")
+        else:
+            _LOGGER.warning(f"ROLLBACK: {self._zone_name} preset mode failed")
+            self._attr_preset_mode = old_preset
+            self._optimistic_set_at = None
+            self.async_write_ha_state()
 
     async def async_set_temperature(self, **kwargs):
         """Set new target temperature.
@@ -362,8 +385,8 @@ class TadoClimate(ClimateEntity):
         Optimized to use single API call when both temperature and hvac_mode are provided.
         This saves 1 API call (1% of 100-call limit) compared to calling set_hvac_mode first.
         
-        Uses fire-and-forget pattern: optimistic update returns immediately,
-        API call runs in background.
+        v1.9.2: Changed from fire-and-forget to await pattern to fix grey loading state issue (#44).
+        Service call now awaits API completion (with timeout) for proper HA Frontend state sync.
         """
         import time
         import asyncio
@@ -398,7 +421,7 @@ class TadoClimate(ClimateEntity):
         _LOGGER.debug(f"Optimistic update: {self._zone_name} target_temp={temperature}")
         self.async_write_ha_state()
         
-        # Fire-and-forget: API call in background so service returns immediately
+        # v1.9.2: Await API call with timeout (fixes #44 grey loading state)
         client = get_async_client(self.hass)
         setting = {
             "type": "HEATING",
@@ -407,26 +430,31 @@ class TadoClimate(ClimateEntity):
         }
         termination = {"type": "MANUAL"}
         
-        async def _background_api_call():
-            if await client.set_zone_overlay(self._zone_id, setting, termination):
-                _LOGGER.info(f"Set {self._zone_name} to {temperature}°C")
-                await self._async_trigger_immediate_refresh("temperature_change")
-            else:
-                # Rollback on failure
-                _LOGGER.warning(f"ROLLBACK: {self._zone_name} API call failed, reverting to {old_temp}")
-                self._attr_target_temperature = old_temp
-                self._attr_hvac_mode = old_mode
-                self._optimistic_set_at = None  # Clear on failure to allow immediate update
-                self.async_write_ha_state()
+        api_success = False
+        try:
+            async with asyncio.timeout(10):  # 10 second timeout
+                api_success = await client.set_zone_overlay(self._zone_id, setting, termination)
+        except asyncio.TimeoutError:
+            _LOGGER.warning(f"TIMEOUT: {self._zone_name} API call timed out, reverting to {old_temp}")
+        except Exception as e:
+            _LOGGER.warning(f"ERROR: {self._zone_name} API call failed ({e}), reverting to {old_temp}")
         
-        asyncio.create_task(_background_api_call())
+        if api_success:
+            _LOGGER.info(f"Set {self._zone_name} to {temperature}°C")
+            # Refresh is best-effort, don't rollback if it fails
+            await self._async_trigger_immediate_refresh("temperature_change")
+        else:
+            # Rollback on API failure
+            self._attr_target_temperature = old_temp
+            self._attr_hvac_mode = old_mode
+            self._optimistic_set_at = None
+            self.async_write_ha_state()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode):
         """Set new HVAC mode.
         
-        Uses fire-and-forget pattern: optimistic update returns immediately,
-        API call runs in background. This prevents UI from blocking while
-        waiting for Tado API response.
+        v1.9.2: Changed from fire-and-forget to await pattern to fix grey loading state issue (#44).
+        Service call now awaits API completion (with timeout) for proper HA Frontend state sync.
         """
         import time
         import asyncio
@@ -448,17 +476,24 @@ class TadoClimate(ClimateEntity):
             self._optimistic_set_at = time.time()
             self.async_write_ha_state()
             
-            # Fire-and-forget: API call in background so service returns immediately
-            async def _background_api_call():
-                if await client.set_zone_overlay(self._zone_id, setting, termination):
-                    await self._async_trigger_immediate_refresh("hvac_mode_change")
-                else:
-                    # Rollback on failure
-                    self._attr_hvac_mode = old_mode
-                    self._optimistic_set_at = None
-                    self.async_write_ha_state()
+            # v1.9.2: Await API call with timeout (fixes #44)
+            api_success = False
+            try:
+                async with asyncio.timeout(10):
+                    api_success = await client.set_zone_overlay(self._zone_id, setting, termination)
+            except asyncio.TimeoutError:
+                _LOGGER.warning(f"TIMEOUT: {self._zone_name} HEAT mode API call timed out")
+            except Exception as e:
+                _LOGGER.warning(f"ERROR: {self._zone_name} HEAT mode API call failed ({e})")
             
-            asyncio.create_task(_background_api_call())
+            if api_success:
+                _LOGGER.info(f"Set {self._zone_name} to HEAT mode at {temp}°C")
+                await self._async_trigger_immediate_refresh("hvac_mode_change")
+            else:
+                _LOGGER.warning(f"ROLLBACK: {self._zone_name} HEAT mode failed")
+                self._attr_hvac_mode = old_mode
+                self._optimistic_set_at = None
+                self.async_write_ha_state()
                 
         elif hvac_mode == HVACMode.OFF:
             setting = {
@@ -476,18 +511,25 @@ class TadoClimate(ClimateEntity):
             self._optimistic_set_at = time.time()
             self.async_write_ha_state()
             
-            # Fire-and-forget: API call in background so service returns immediately
-            async def _background_api_call():
-                if await client.set_zone_overlay(self._zone_id, setting, termination):
-                    await self._async_trigger_immediate_refresh("hvac_mode_change")
-                else:
-                    # Rollback on failure
-                    self._attr_hvac_mode = old_mode
-                    self._attr_hvac_action = old_action
-                    self._optimistic_set_at = None
-                    self.async_write_ha_state()
+            # v1.9.2: Await API call with timeout (fixes #44)
+            api_success = False
+            try:
+                async with asyncio.timeout(10):
+                    api_success = await client.set_zone_overlay(self._zone_id, setting, termination)
+            except asyncio.TimeoutError:
+                _LOGGER.warning(f"TIMEOUT: {self._zone_name} OFF mode API call timed out")
+            except Exception as e:
+                _LOGGER.warning(f"ERROR: {self._zone_name} OFF mode API call failed ({e})")
             
-            asyncio.create_task(_background_api_call())
+            if api_success:
+                _LOGGER.info(f"Set {self._zone_name} to OFF mode")
+                await self._async_trigger_immediate_refresh("hvac_mode_change")
+            else:
+                _LOGGER.warning(f"ROLLBACK: {self._zone_name} OFF mode failed")
+                self._attr_hvac_mode = old_mode
+                self._attr_hvac_action = old_action
+                self._optimistic_set_at = None
+                self.async_write_ha_state()
                 
         elif hvac_mode == HVACMode.AUTO:
             # Optimistic update BEFORE API call
@@ -498,18 +540,25 @@ class TadoClimate(ClimateEntity):
             self._optimistic_set_at = time.time()
             self.async_write_ha_state()
             
-            # Fire-and-forget: API call in background so service returns immediately
-            async def _background_api_call():
-                if await client.delete_zone_overlay(self._zone_id):
-                    await self._async_trigger_immediate_refresh("hvac_mode_change")
-                else:
-                    # Rollback on failure
-                    self._attr_hvac_mode = old_mode
-                    self._overlay_type = old_overlay
-                    self._optimistic_set_at = None
-                    self.async_write_ha_state()
+            # v1.9.2: Await API call with timeout (fixes #44)
+            api_success = False
+            try:
+                async with asyncio.timeout(10):
+                    api_success = await client.delete_zone_overlay(self._zone_id)
+            except asyncio.TimeoutError:
+                _LOGGER.warning(f"TIMEOUT: {self._zone_name} AUTO mode API call timed out")
+            except Exception as e:
+                _LOGGER.warning(f"ERROR: {self._zone_name} AUTO mode API call failed ({e})")
             
-            asyncio.create_task(_background_api_call())
+            if api_success:
+                _LOGGER.info(f"Set {self._zone_name} to AUTO mode (deleted overlay)")
+                await self._async_trigger_immediate_refresh("hvac_mode_change")
+            else:
+                _LOGGER.warning(f"ROLLBACK: {self._zone_name} AUTO mode failed")
+                self._attr_hvac_mode = old_mode
+                self._overlay_type = old_overlay
+                self._optimistic_set_at = None
+                self.async_write_ha_state()
     
     async def _async_trigger_immediate_refresh(self, reason: str):
         """Trigger immediate refresh after state change."""
@@ -550,7 +599,18 @@ class TadoClimate(ClimateEntity):
             termination = {"type": "MANUAL"}
             term_desc = "manually"
         
-        if await client.set_zone_overlay(self._zone_id, setting, termination):
+        # v1.9.2: Added timeout protection for consistency
+        import asyncio
+        api_success = False
+        try:
+            async with asyncio.timeout(10):
+                api_success = await client.set_zone_overlay(self._zone_id, setting, termination)
+        except asyncio.TimeoutError:
+            _LOGGER.warning(f"TIMEOUT: {self._zone_name} set_timer API call timed out")
+        except Exception as e:
+            _LOGGER.warning(f"ERROR: {self._zone_name} set_timer API call failed ({e})")
+        
+        if api_success:
             _LOGGER.info(f"Set {self._zone_name} to {temperature}°C {term_desc}")
             return True
         return False
@@ -849,8 +909,8 @@ class TadoACClimate(ClimateEntity):
         Optimized to use single API call when both temperature and hvac_mode are provided.
         This saves 1 API call (1% of 100-call limit) compared to calling set_hvac_mode first.
         
-        Uses fire-and-forget pattern: optimistic update returns immediately,
-        API call runs in background.
+        v1.9.2: Changed from fire-and-forget to await pattern to fix grey loading state issue (#44).
+        Service call now awaits API completion (with timeout) for proper HA Frontend state sync.
         """
         import time
         import asyncio
@@ -911,27 +971,32 @@ class TadoACClimate(ClimateEntity):
         _LOGGER.debug(f"AC Optimistic update: {self._zone_name} target_temp={temperature}")
         self.async_write_ha_state()
         
-        # Fire-and-forget: API call in background so service returns immediately
-        async def _background_api_call():
-            if await self._async_set_ac_overlay(temperature=temperature, mode=tado_mode):
-                _LOGGER.info(f"AC Set {self._zone_name} to {temperature}°C")
-                await self._async_trigger_immediate_refresh("temperature_change")
-            else:
-                # Rollback on failure
-                _LOGGER.warning(f"AC ROLLBACK: {self._zone_name} API call failed, reverting")
-                self._attr_target_temperature = old_temp
-                self._attr_hvac_mode = old_mode
-                self._attr_hvac_action = old_action
-                self._optimistic_set_at = None
-                self.async_write_ha_state()
+        # v1.9.2: Await API call with timeout (fixes #44)
+        api_success = False
+        try:
+            async with asyncio.timeout(10):
+                api_success = await self._async_set_ac_overlay(temperature=temperature, mode=tado_mode)
+        except asyncio.TimeoutError:
+            _LOGGER.warning(f"AC TIMEOUT: {self._zone_name} temperature change timed out")
+        except Exception as e:
+            _LOGGER.warning(f"AC ERROR: {self._zone_name} temperature change failed ({e})")
         
-        asyncio.create_task(_background_api_call())
+        if api_success:
+            _LOGGER.info(f"AC Set {self._zone_name} to {temperature}°C")
+            await self._async_trigger_immediate_refresh("temperature_change")
+        else:
+            _LOGGER.warning(f"AC ROLLBACK: {self._zone_name} temperature change failed")
+            self._attr_target_temperature = old_temp
+            self._attr_hvac_mode = old_mode
+            self._attr_hvac_action = old_action
+            self._optimistic_set_at = None
+            self.async_write_ha_state()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode):
         """Set new HVAC mode.
         
-        Uses fire-and-forget pattern: optimistic update returns immediately,
-        API call runs in background.
+        v1.9.2: Changed from fire-and-forget to await pattern to fix grey loading state issue (#44).
+        Service call now awaits API completion (with timeout) for proper HA Frontend state sync.
         """
         import time
         import asyncio
@@ -958,25 +1023,28 @@ class TadoACClimate(ClimateEntity):
             }
             termination = {"type": "MANUAL"}
             
-            # Fire-and-forget: API call in background so service returns immediately
-            async def _background_api_call():
-                _LOGGER.debug(f"AC {self._zone_name}: [OFF-3] Calling API set_zone_overlay...")
-                result = await client.set_zone_overlay(self._zone_id, setting, termination)
-                _LOGGER.debug(f"AC {self._zone_name}: [OFF-4] API result={result}")
-                
-                if result:
-                    _LOGGER.debug(f"AC {self._zone_name}: [OFF-5] Triggering immediate refresh")
-                    await self._async_trigger_immediate_refresh("hvac_mode_change")
-                    _LOGGER.debug(f"AC {self._zone_name}: [OFF-6] Immediate refresh complete")
-                else:
-                    # Rollback on failure
-                    _LOGGER.debug(f"AC {self._zone_name}: [OFF-FAIL] API failed, rolling back to mode={old_mode}, action={old_action}")
-                    self._attr_hvac_mode = old_mode
-                    self._attr_hvac_action = old_action
-                    self._optimistic_set_at = None
-                    self.async_write_ha_state()
+            # v1.9.2: Await API call with timeout (fixes #44)
+            api_success = False
+            try:
+                async with asyncio.timeout(10):
+                    _LOGGER.debug(f"AC {self._zone_name}: [OFF-3] Calling API set_zone_overlay...")
+                    api_success = await client.set_zone_overlay(self._zone_id, setting, termination)
+                    _LOGGER.debug(f"AC {self._zone_name}: [OFF-4] API result={api_success}")
+            except asyncio.TimeoutError:
+                _LOGGER.warning(f"AC {self._zone_name}: [OFF-TIMEOUT] API call timed out")
+            except Exception as e:
+                _LOGGER.warning(f"AC {self._zone_name}: [OFF-ERROR] API call failed ({e})")
             
-            asyncio.create_task(_background_api_call())
+            if api_success:
+                _LOGGER.debug(f"AC {self._zone_name}: [OFF-5] Triggering immediate refresh")
+                await self._async_trigger_immediate_refresh("hvac_mode_change")
+                _LOGGER.debug(f"AC {self._zone_name}: [OFF-6] Immediate refresh complete")
+            else:
+                _LOGGER.debug(f"AC {self._zone_name}: [OFF-FAIL] Rolling back to mode={old_mode}, action={old_action}")
+                self._attr_hvac_mode = old_mode
+                self._attr_hvac_action = old_action
+                self._optimistic_set_at = None
+                self.async_write_ha_state()
                 
         elif hvac_mode == HVACMode.AUTO:
             # Optimistic update BEFORE API call
@@ -987,18 +1055,25 @@ class TadoACClimate(ClimateEntity):
             self._optimistic_set_at = time.time()
             self.async_write_ha_state()
             
-            # Fire-and-forget: API call in background so service returns immediately
-            async def _background_api_call():
-                if await client.delete_zone_overlay(self._zone_id):
-                    await self._async_trigger_immediate_refresh("hvac_mode_change")
-                else:
-                    # Rollback on failure
-                    self._attr_hvac_mode = old_mode
-                    self._overlay_type = old_overlay
-                    self._optimistic_set_at = None
-                    self.async_write_ha_state()
+            # v1.9.2: Await API call with timeout (fixes #44)
+            api_success = False
+            try:
+                async with asyncio.timeout(10):
+                    api_success = await client.delete_zone_overlay(self._zone_id)
+            except asyncio.TimeoutError:
+                _LOGGER.warning(f"AC TIMEOUT: {self._zone_name} AUTO mode API call timed out")
+            except Exception as e:
+                _LOGGER.warning(f"AC ERROR: {self._zone_name} AUTO mode API call failed ({e})")
             
-            asyncio.create_task(_background_api_call())
+            if api_success:
+                _LOGGER.info(f"AC Set {self._zone_name} to AUTO mode (deleted overlay)")
+                await self._async_trigger_immediate_refresh("hvac_mode_change")
+            else:
+                _LOGGER.warning(f"AC ROLLBACK: {self._zone_name} AUTO mode failed")
+                self._attr_hvac_mode = old_mode
+                self._overlay_type = old_overlay
+                self._optimistic_set_at = None
+                self.async_write_ha_state()
         else:
             # Optimistic update BEFORE API call
             # Include all attributes that will be set by _async_set_ac_overlay
@@ -1037,26 +1112,33 @@ class TadoACClimate(ClimateEntity):
             self._optimistic_set_at = time.time()
             self.async_write_ha_state()
             
-            # Fire-and-forget: API call in background so service returns immediately
-            async def _background_api_call():
-                if await self._async_set_ac_overlay(mode=tado_mode):
-                    await self._async_trigger_immediate_refresh("hvac_mode_change")
-                else:
-                    # Rollback on failure
-                    self._attr_hvac_mode = old_mode
-                    self._attr_target_temperature = old_temp
-                    self._attr_fan_mode = old_fan
-                    self._attr_hvac_action = old_action
-                    self._optimistic_set_at = None
-                    self.async_write_ha_state()
+            # v1.9.2: Await API call with timeout (fixes #44)
+            api_success = False
+            try:
+                async with asyncio.timeout(10):
+                    api_success = await self._async_set_ac_overlay(mode=tado_mode)
+            except asyncio.TimeoutError:
+                _LOGGER.warning(f"AC TIMEOUT: {self._zone_name} {hvac_mode} mode API call timed out")
+            except Exception as e:
+                _LOGGER.warning(f"AC ERROR: {self._zone_name} {hvac_mode} mode API call failed ({e})")
             
-            asyncio.create_task(_background_api_call())
+            if api_success:
+                _LOGGER.info(f"AC Set {self._zone_name} to {hvac_mode} mode")
+                await self._async_trigger_immediate_refresh("hvac_mode_change")
+            else:
+                _LOGGER.warning(f"AC ROLLBACK: {self._zone_name} {hvac_mode} mode failed")
+                self._attr_hvac_mode = old_mode
+                self._attr_target_temperature = old_temp
+                self._attr_fan_mode = old_fan
+                self._attr_hvac_action = old_action
+                self._optimistic_set_at = None
+                self.async_write_ha_state()
 
     async def async_set_fan_mode(self, fan_mode: str):
         """Set new fan mode.
         
-        Uses fire-and-forget pattern: optimistic update returns immediately,
-        API call runs in background.
+        v1.9.2: Changed from fire-and-forget to await pattern to fix grey loading state issue (#44).
+        Service call now awaits API completion (with timeout) for proper HA Frontend state sync.
         """
         import time
         import asyncio
@@ -1078,19 +1160,26 @@ class TadoACClimate(ClimateEntity):
         
         tado_fan = HA_TO_TADO_FAN.get(fan_mode, 'AUTO')
         
-        # Fire-and-forget: API call in background so service returns immediately
-        async def _background_api_call():
-            if await self._async_set_ac_overlay(fan_level=tado_fan):
-                await self._async_trigger_immediate_refresh("fan_mode_change")
-            else:
-                # Rollback on failure
-                self._attr_fan_mode = old_fan
-                self._attr_hvac_mode = old_mode
-                self._attr_hvac_action = old_action
-                self._optimistic_set_at = None
-                self.async_write_ha_state()
+        # v1.9.2: Await API call with timeout (fixes #44)
+        api_success = False
+        try:
+            async with asyncio.timeout(10):
+                api_success = await self._async_set_ac_overlay(fan_level=tado_fan)
+        except asyncio.TimeoutError:
+            _LOGGER.warning(f"AC TIMEOUT: {self._zone_name} fan mode change timed out")
+        except Exception as e:
+            _LOGGER.warning(f"AC ERROR: {self._zone_name} fan mode change failed ({e})")
         
-        asyncio.create_task(_background_api_call())
+        if api_success:
+            _LOGGER.info(f"AC Set {self._zone_name} fan mode to {fan_mode}")
+            await self._async_trigger_immediate_refresh("fan_mode_change")
+        else:
+            _LOGGER.warning(f"AC ROLLBACK: {self._zone_name} fan mode change failed")
+            self._attr_fan_mode = old_fan
+            self._attr_hvac_mode = old_mode
+            self._attr_hvac_action = old_action
+            self._optimistic_set_at = None
+            self.async_write_ha_state()
 
     async def async_set_swing_mode(self, swing_mode: str):
         """Set new swing mode.
@@ -1101,8 +1190,8 @@ class TadoACClimate(ClimateEntity):
         - horizontal: verticalSwing=OFF, horizontalSwing=ON
         - both: verticalSwing=ON, horizontalSwing=ON
         
-        Uses fire-and-forget pattern: optimistic update returns immediately,
-        API call runs in background.
+        v1.9.2: Changed from fire-and-forget to await pattern to fix grey loading state issue (#44).
+        Service call now awaits API completion (with timeout) for proper HA Frontend state sync.
         """
         import time
         import asyncio
@@ -1135,19 +1224,26 @@ class TadoACClimate(ClimateEntity):
         self._optimistic_set_at = time.time()
         self.async_write_ha_state()
         
-        # Fire-and-forget: API call in background so service returns immediately
-        async def _background_api_call():
-            if await self._async_set_ac_overlay(vertical_swing=v_swing, horizontal_swing=h_swing):
-                await self._async_trigger_immediate_refresh("swing_mode_change")
-            else:
-                # Rollback on failure
-                self._attr_swing_mode = old_swing
-                self._attr_hvac_mode = old_mode
-                self._attr_hvac_action = old_action
-                self._optimistic_set_at = None
-                self.async_write_ha_state()
+        # v1.9.2: Await API call with timeout (fixes #44)
+        api_success = False
+        try:
+            async with asyncio.timeout(10):
+                api_success = await self._async_set_ac_overlay(vertical_swing=v_swing, horizontal_swing=h_swing)
+        except asyncio.TimeoutError:
+            _LOGGER.warning(f"AC TIMEOUT: {self._zone_name} swing mode change timed out")
+        except Exception as e:
+            _LOGGER.warning(f"AC ERROR: {self._zone_name} swing mode change failed ({e})")
         
-        asyncio.create_task(_background_api_call())
+        if api_success:
+            _LOGGER.info(f"AC Set {self._zone_name} swing mode to {swing_mode}")
+            await self._async_trigger_immediate_refresh("swing_mode_change")
+        else:
+            _LOGGER.warning(f"AC ROLLBACK: {self._zone_name} swing mode change failed")
+            self._attr_swing_mode = old_swing
+            self._attr_hvac_mode = old_mode
+            self._attr_hvac_action = old_action
+            self._optimistic_set_at = None
+            self.async_write_ha_state()
     
     async def _async_trigger_immediate_refresh(self, reason: str):
         """Trigger immediate refresh after state change."""
@@ -1239,12 +1335,25 @@ class TadoACClimate(ClimateEntity):
         return False
 
     async def async_set_timer(self, temperature: float, duration_minutes: int, mode: str = None) -> bool:
-        """Set AC with timer."""
-        return await self._async_set_ac_overlay(
-            temperature=temperature,
-            mode=mode,
-            duration_minutes=duration_minutes
-        )
+        """Set AC with timer.
+        
+        v1.9.2: Added timeout protection for consistency.
+        """
+        import asyncio
+        api_success = False
+        try:
+            async with asyncio.timeout(10):
+                api_success = await self._async_set_ac_overlay(
+                    temperature=temperature,
+                    mode=mode,
+                    duration_minutes=duration_minutes
+                )
+        except asyncio.TimeoutError:
+            _LOGGER.warning(f"AC TIMEOUT: {self._zone_name} set_timer API call timed out")
+        except Exception as e:
+            _LOGGER.warning(f"AC ERROR: {self._zone_name} set_timer API call failed ({e})")
+        
+        return api_success
     
     def _record_smart_comfort_data(self, ac_power_value: str):
         """Record temperature data for Smart Comfort analytics.

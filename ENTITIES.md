@@ -11,8 +11,8 @@ New sensors automatically created for all HEATING and AIR_CONDITIONING zones:
 
 ### Smart Comfort Analytics (Opt-in)
 Enable in Options → Features → "Enable Smart Comfort Analytics":
-- **Heating Rate** (`sensor.{zone}_heating_rate`): °C/hour when heating is active
-- **Cooling Rate** (`sensor.{zone}_cooling_rate`): °C/hour when heating is off (heat loss rate)
+- **Heating Rate** (`sensor.{zone}_heating_rate`): °C/h when heating is active
+- **Cooling Rate** (`sensor.{zone}_cooling_rate`): °C/h when heating is off (heat loss rate)
 - **Time to Target** (`sensor.{zone}_time_to_target`): Estimated minutes to reach target (TRV zones only)
 - **Heating Efficiency** (`sensor.{zone}_heating_efficiency`): Compare current vs baseline rate
 - **Historical Temp** (`sensor.{zone}_historical_temp`): Compare current temp vs 7-day same-time average
@@ -339,7 +339,7 @@ The Heating Efficiency sensor compares current heating rate against the baseline
 
 - Sensors need ~15 minutes of data to calculate rates
 - Baseline rates require HA Recorder long-term statistics (typically 1+ week)
-- Cache stores up to 7-30 days of readings (configurable)
+- Cache stores up to 7-30 d of readings (configurable)
 
 ---
 
@@ -347,7 +347,7 @@ The Heating Efficiency sensor compares current heating rate against the baseline
 
 **v1.2.0 Optimizations:**
 - Normal polling: 1-2 calls (quick sync) instead of 4
-- Full sync: Every 6 hours only (4 calls)
+- Full sync: Every 6 h only (4 calls)
 - Weather: Optional (disabled by default, saves 1 call per sync)
 - Immediate refresh: Quota-aware with exponential backoff
 - **Estimated savings: 60-70% reduction in API calls**
