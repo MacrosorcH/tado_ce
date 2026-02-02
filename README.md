@@ -96,6 +96,7 @@ Full climate, AC, and hot water control with timer support, geofencing, presence
 | **Environment** | Mold Risk | Per-zone mold risk indicator (always enabled) |
 | | Comfort Level | Adaptive comfort sensor using ASHRAE 55 model (always enabled) |
 | **Enhanced Controls** | Immediate Refresh | Dashboard updates immediately after user actions |
+| | Smart Boost | One-tap boost with intelligent duration based on heating rate |
 | | Enhanced Hot Water | AUTO/HEAT/OFF modes with timer presets (30/60/90 min) |
 | | Schedule Calendar | View heating schedules as calendar events (opt-in) |
 | | Boiler Flow Temp | Auto-detected sensor for OpenTherm systems |
