@@ -51,7 +51,9 @@ Major release enabling full multi-home support, smart boost feature, and ML-base
 ---
 
 ## Considering (Need More Feedback)
-
+- **Preheat Binary Sensor** - `binary_sensor.zone_preheat_now` that turns ON when it's time to start heating ([Discussion #72](https://github.com/hiall-fyi/tado_ce/discussions/72) - @thefern69)
+- **Turnkey Early Start Replacement** - Auto-trigger heating at recommended preheat time, stop when target reached or next schedule starts ([Discussion #72](https://github.com/hiall-fyi/tado_ce/discussions/72) - @thefern69)
+- **UFH Slow Response Mode** - Add buffer time for underfloor heating thermal lag ([Discussion #72](https://github.com/hiall-fyi/tado_ce/discussions/72) - @thefern69)
 - Rate Trend indicator for UFH - detect "acceleration" when heating is catching up ([#33](https://github.com/hiall-fyi/tado_ce/discussions/33))
 - Air Comfort sensors (humidity comfort level)
 - Boost button entity

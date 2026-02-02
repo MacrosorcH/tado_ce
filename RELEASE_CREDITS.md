@@ -4,6 +4,22 @@
 
 ---
 
+## v1.9.3 (2026-02-02) - Fix: Slow State Confirmation
+
+### Bug Reports & Issue Reporters
+
+**[@hapklaar](https://github.com/hapklaar)**, **[@chinezbrun](https://github.com/chinezbrun)** - [Issue #44](https://github.com/hiall-fyi/tado_ce/issues/44)
+- Reported slow state confirmation (25-30s delay) after climate changes
+- @hapklaar provided detailed screenshots and debug logs that confirmed the root cause
+- Identified that immediate refresh handler updated zones.json but entities didn't re-read
+
+### What Was Fixed
+
+- ✅ **Issue #44**: Signal-based entity update - climate entities now listen for `SIGNAL_ZONES_UPDATED` and re-read fresh data immediately after zones.json refresh
+- ✅ State confirmation time reduced from 25-30s to ~6-8s (debounce_delay + API time)
+
+---
+
 ## v1.9.1 (2026-01-31) - Hotfix: Device Migration Error
 
 ### Bug Reports & Issue Reporters

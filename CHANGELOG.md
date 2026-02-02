@@ -2,6 +2,25 @@
 
 All notable changes to Tado CE will be documented in this file.
 
+## [1.9.3] - 2026-02-02
+
+**Fix: Slow State Confirmation for Heating Users** ([#44](https://github.com/hiall-fyi/tado_ce/issues/44)) - Signal-based entity update reduces confirmation delay from 25-30s to ~6-8s.
+
+### Bug Fixes
+- **Fixed slow state confirmation for Heating users** - Climate entities now update immediately after zones.json refresh instead of waiting for SCAN_INTERVAL (30s) ([#44](https://github.com/hiall-fyi/tado_ce/issues/44) - @hapklaar, @chinezbrun)
+- **Fixed AC DRY mode 422 error** - DRY mode now checks capabilities to determine if temperature is required ([#79](https://github.com/hiall-fyi/tado_ce/issues/79) - @Fred224, @neonsp)
+- **Fixed AC optimistic update for Fan/Dry modes** - Temperature display now clears immediately when switching to modes that don't support temperature ([#44](https://github.com/hiall-fyi/tado_ce/issues/44) - @neonsp)
+  - Added `SIGNAL_ZONES_UPDATED` dispatcher signal
+  - Immediate refresh handler now broadcasts signal after zones.json update
+  - All climate entities listen for signal and re-read fresh data immediately
+  - State confirmation time reduced from 25-30s to debounce_delay + API time (~6-8s with 5s debounce)
+
+### Technical Details
+The root cause was that `immediate_refresh_handler` updated `zones.json` but entities didn't know the file changed. They waited for the next `SCAN_INTERVAL` (30s) to re-read. The optimistic update worked correctly (UI showed new state immediately), but the confirmation took too long.
+
+### Contributors
+Thanks to [@hapklaar](https://github.com/hapklaar) for detailed screenshots and debug logs that helped confirm the root cause!
+
 ## [1.9.2] - 2026-02-01
 
 **Hotfix: Grey Loading State & Cache Deduplication** - Fixed climate control delays and Smart Comfort cache bloat.

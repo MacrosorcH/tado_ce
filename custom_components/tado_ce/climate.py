@@ -19,8 +19,9 @@ from homeassistant.components.climate.const import (
 )
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.components.climate import ATTR_HVAC_MODE
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
     DOMAIN, ZONES_FILE, ZONES_INFO_FILE, CONFIG_FILE, HOME_STATE_FILE,
@@ -33,6 +34,7 @@ from .data_loader import (
     load_home_state_file, load_offsets_file, load_ac_capabilities_file,
     get_zone_names as dl_get_zone_names, get_zone_types as dl_get_zone_types
 )
+from .immediate_refresh_handler import SIGNAL_ZONES_UPDATED
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
@@ -186,6 +188,41 @@ class TadoClimate(ClimateEntity):
         # Optimistic update - track when optimistic state was set
         # update() will skip if within debounce window (default 15s)
         self._optimistic_set_at: float | None = None
+        
+        # v1.9.3: Unsubscribe callback for zones_updated signal
+        self._unsub_zones_updated = None
+
+    async def async_added_to_hass(self):
+        """Register signal listener when entity is added to hass.
+        
+        v1.9.3: Listen for SIGNAL_ZONES_UPDATED to force immediate update
+        after zones.json is refreshed. This fixes the grey loading state
+        issue (#44) where entities wait for SCAN_INTERVAL (30s).
+        """
+        await super().async_added_to_hass()
+        
+        @callback
+        def _handle_zones_updated():
+            """Handle zones.json update signal."""
+            # Clear optimistic state so update() reads fresh data
+            self._optimistic_set_at = None
+            # Schedule immediate update
+            self.async_schedule_update_ha_state(True)
+            _LOGGER.debug(f"{self._zone_name}: Received zones_updated signal, scheduling update")
+        
+        self._unsub_zones_updated = async_dispatcher_connect(
+            self.hass, SIGNAL_ZONES_UPDATED, _handle_zones_updated
+        )
+
+    async def async_will_remove_from_hass(self):
+        """Unregister signal listener when entity is removed.
+        
+        v1.9.3: Clean up signal listener to prevent memory leaks.
+        """
+        if self._unsub_zones_updated:
+            self._unsub_zones_updated()
+            self._unsub_zones_updated = None
+        await super().async_will_remove_from_hass()
 
     @property
     def extra_state_attributes(self):
@@ -771,6 +808,41 @@ class TadoACClimate(ClimateEntity):
         # Optimistic update - track when optimistic state was set
         # update() will skip if within debounce window (default 15s)
         self._optimistic_set_at: float | None = None
+        
+        # v1.9.3: Unsubscribe callback for zones_updated signal
+        self._unsub_zones_updated = None
+
+    async def async_added_to_hass(self):
+        """Register signal listener when entity is added to hass.
+        
+        v1.9.3: Listen for SIGNAL_ZONES_UPDATED to force immediate update
+        after zones.json is refreshed. This fixes the grey loading state
+        issue (#44) where entities wait for SCAN_INTERVAL (30s).
+        """
+        await super().async_added_to_hass()
+        
+        @callback
+        def _handle_zones_updated():
+            """Handle zones.json update signal."""
+            # Clear optimistic state so update() reads fresh data
+            self._optimistic_set_at = None
+            # Schedule immediate update
+            self.async_schedule_update_ha_state(True)
+            _LOGGER.debug(f"AC {self._zone_name}: Received zones_updated signal, scheduling update")
+        
+        self._unsub_zones_updated = async_dispatcher_connect(
+            self.hass, SIGNAL_ZONES_UPDATED, _handle_zones_updated
+        )
+
+    async def async_will_remove_from_hass(self):
+        """Unregister signal listener when entity is removed.
+        
+        v1.9.3: Clean up signal listener to prevent memory leaks.
+        """
+        if self._unsub_zones_updated:
+            self._unsub_zones_updated()
+            self._unsub_zones_updated = None
+        await super().async_will_remove_from_hass()
 
     @property
     def extra_state_attributes(self):
@@ -1086,10 +1158,19 @@ class TadoACClimate(ClimateEntity):
             self._overlay_type = "MANUAL"
             
             # Set default temperature if not already set (matches _async_set_ac_overlay logic)
+            # v1.9.3: Clear temperature for FAN/DRY modes that don't support it (#44)
             tado_mode = HA_TO_TADO_HVAC_MODE.get(hvac_mode, 'COOL')
-            if tado_mode != "FAN":
-                if not self._attr_target_temperature:
-                    self._attr_target_temperature = 24.0
+            
+            # Check if this mode supports temperature (from capabilities)
+            ac_caps = self._capabilities.get('ac_capabilities') or {}
+            mode_caps = ac_caps.get(tado_mode) or {}
+            mode_has_temp = 'temperatures' in mode_caps
+            
+            if tado_mode == "FAN" or not mode_has_temp:
+                # FAN mode and modes without temperature support: clear temperature display
+                self._attr_target_temperature = None
+            elif not self._attr_target_temperature:
+                self._attr_target_temperature = 24.0
             
             # Set default fan mode if not already set
             if not self._attr_fan_mode:
@@ -1285,8 +1366,10 @@ class TadoACClimate(ClimateEntity):
         ac_caps = self._capabilities.get('ac_capabilities') or {}
         mode_caps = ac_caps.get(current_mode) or {}
         
-        # Temperature (FAN mode doesn't need it)
-        if current_mode != "FAN":
+        # Temperature - only send if mode supports it (check capabilities)
+        # Some AC units require temperature for DRY mode, others don't
+        mode_has_temp = 'temperatures' in mode_caps
+        if current_mode != "FAN" and mode_has_temp:
             if temperature:
                 setting["temperature"] = {"celsius": temperature}
             elif self._attr_target_temperature:

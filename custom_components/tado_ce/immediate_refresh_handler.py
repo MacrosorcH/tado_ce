@@ -8,10 +8,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import DATA_DIR, RATELIMIT_FILE, ZONES_FILE
 
 _LOGGER = logging.getLogger(__name__)
+
+# Signal name for notifying entities to update after zones.json refresh
+SIGNAL_ZONES_UPDATED = "tado_ce_zones_updated"
 
 # Entity types that should trigger immediate refresh
 REFRESH_ENTITY_TYPES = {
@@ -255,6 +259,12 @@ class ImmediateRefreshHandler:
                     self._consecutive_failures = 0
                 
                 _LOGGER.debug("Immediate refresh completed (1 API call)")
+                
+                # v1.9.3: Notify all climate entities to update immediately
+                # This fixes the grey loading state issue (#44) where entities
+                # wait for SCAN_INTERVAL (30s) to re-read zones.json
+                async_dispatcher_send(self.hass, SIGNAL_ZONES_UPDATED)
+                _LOGGER.debug("Sent zones_updated signal to all entities")
                 
             except Exception as e:
                 self._consecutive_failures += 1
