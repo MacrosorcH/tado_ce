@@ -2,6 +2,19 @@
 
 All notable changes to Tado CE will be documented in this file.
 
+## [1.9.5] - 2026-02-02
+
+**Hotfix: hvac_action not updating for changed zone** - Optimistic updates now set hvac_action correctly when setting temperature.
+
+### Bug Fixes
+- **Fixed hvac_action not updating for the zone being changed** - When setting temperature higher than current, hvac_action now immediately shows "Heating" instead of staying "Idle" until the next zone change ([#44](https://github.com/hiall-fyi/tado_ce/issues/44) - @hapklaar, @chinezbrun)
+  - Heating zones: hvac_action = HEATING when target > current temperature
+  - AC zones: hvac_action matches current mode (COOLING/HEATING/DRYING/FAN)
+  - The actual heating_power/ac_power will be confirmed when zones.json is refreshed
+
+### Contributors
+Thanks to [@hapklaar](https://github.com/hapklaar) and [@chinezbrun](https://github.com/chinezbrun) for detailed testing and logs that helped identify this pattern!
+
 ## [1.9.4] - 2026-02-02
 
 **Boost Buttons & Bug Fixes** - One-tap boost functionality and state confirmation improvements.
@@ -26,13 +39,6 @@ All notable changes to Tado CE will be documented in this file.
 - **Fixed slow state confirmation for Heating users** - Climate entities now update immediately after zones.json refresh instead of waiting for SCAN_INTERVAL (30s) ([#44](https://github.com/hiall-fyi/tado_ce/issues/44) - @hapklaar, @chinezbrun)
 - **Fixed AC DRY mode 422 error** - DRY mode now checks capabilities to determine if temperature is required ([#79](https://github.com/hiall-fyi/tado_ce/issues/79) - @Fred224, @neonsp)
 - **Fixed AC optimistic update for Fan/Dry modes** - Temperature display now clears immediately when switching to modes that don't support temperature ([#44](https://github.com/hiall-fyi/tado_ce/issues/44) - @neonsp)
-  - Added `SIGNAL_ZONES_UPDATED` dispatcher signal
-  - Immediate refresh handler now broadcasts signal after zones.json update
-  - All climate entities listen for signal and re-read fresh data immediately
-  - State confirmation time reduced from 25-30s to debounce_delay + API time (~6-8s with 5s debounce)
-
-### Technical Details
-The root cause was that `immediate_refresh_handler` updated `zones.json` but entities didn't know the file changed. They waited for the next `SCAN_INTERVAL` (30s) to re-read. The optimistic update worked correctly (UI showed new state immediately), but the confirmation took too long.
 
 ### Contributors
 Thanks to [@hapklaar](https://github.com/hapklaar) for detailed screenshots and debug logs that helped confirm the root cause!

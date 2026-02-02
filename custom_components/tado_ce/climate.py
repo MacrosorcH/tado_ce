@@ -451,11 +451,22 @@ class TadoClimate(ClimateEntity):
         # Optimistic update BEFORE API call
         old_temp = self._attr_target_temperature
         old_mode = self._attr_hvac_mode
+        old_action = self._attr_hvac_action
         self._attr_target_temperature = temperature
         self._attr_hvac_mode = HVACMode.HEAT
         self._overlay_type = "MANUAL"
+        # v1.9.5: Set hvac_action based on target vs current temperature (#44)
+        # This fixes the issue where hvac_action doesn't update correctly after setting temperature.
+        # The actual heating_power will be confirmed when zones.json is refreshed.
+        if self._attr_current_temperature is not None:
+            if temperature > self._attr_current_temperature:
+                # Target above current = will heat
+                self._attr_hvac_action = HVACAction.HEATING
+            else:
+                # Target at or below current = idle (already at/above target)
+                self._attr_hvac_action = HVACAction.IDLE
         self._optimistic_set_at = time.time()  # Track when optimistic state was set
-        _LOGGER.debug(f"Optimistic update: {self._zone_name} target_temp={temperature}")
+        _LOGGER.debug(f"Optimistic update: {self._zone_name} target_temp={temperature}, hvac_action={self._attr_hvac_action}")
         self.async_write_ha_state()
         
         # v1.9.2: Await API call with timeout (fixes #44 grey loading state)
@@ -484,6 +495,7 @@ class TadoClimate(ClimateEntity):
             # Rollback on API failure
             self._attr_target_temperature = old_temp
             self._attr_hvac_mode = old_mode
+            self._attr_hvac_action = old_action
             self._optimistic_set_at = None
             self.async_write_ha_state()
 
@@ -508,8 +520,18 @@ class TadoClimate(ClimateEntity):
             
             # Optimistic update BEFORE API call
             old_mode = self._attr_hvac_mode
+            old_action = self._attr_hvac_action
             self._attr_hvac_mode = HVACMode.HEAT
             self._overlay_type = "MANUAL"
+            # v1.9.5: Set hvac_action based on target vs current temperature (#44)
+            # This fixes the issue where hvac_action doesn't update correctly after switching to HEAT mode.
+            if self._attr_current_temperature is not None:
+                if temp > self._attr_current_temperature:
+                    # Target above current = will heat
+                    self._attr_hvac_action = HVACAction.HEATING
+                else:
+                    # Target at or below current = idle (already at/above target)
+                    self._attr_hvac_action = HVACAction.IDLE
             self._optimistic_set_at = time.time()
             self.async_write_ha_state()
             
@@ -529,6 +551,7 @@ class TadoClimate(ClimateEntity):
             else:
                 _LOGGER.warning(f"ROLLBACK: {self._zone_name} HEAT mode failed")
                 self._attr_hvac_mode = old_mode
+                self._attr_hvac_action = old_action
                 self._optimistic_set_at = None
                 self.async_write_ha_state()
                 
@@ -1046,6 +1069,19 @@ class TadoACClimate(ClimateEntity):
                 self._attr_hvac_action = HVACAction.IDLE
             else:
                 self._attr_hvac_action = HVACAction.COOLING  # Default fallback
+        else:
+            # v1.9.5: AC is already ON - set hvac_action based on current mode (#44)
+            # This fixes the issue where hvac_action doesn't update when changing temperature
+            current_mode = self._attr_hvac_mode
+            if current_mode == HVACMode.COOL:
+                self._attr_hvac_action = HVACAction.COOLING
+            elif current_mode == HVACMode.HEAT:
+                self._attr_hvac_action = HVACAction.HEATING
+            elif current_mode == HVACMode.DRY:
+                self._attr_hvac_action = HVACAction.DRYING
+            elif current_mode == HVACMode.FAN_ONLY:
+                self._attr_hvac_action = HVACAction.FAN
+            # HEAT_COOL (Tado AUTO) - keep current action, let API response determine
         
         self._overlay_type = "MANUAL"
         self._optimistic_set_at = time.time()

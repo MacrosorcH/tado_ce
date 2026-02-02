@@ -4,6 +4,24 @@
 
 ---
 
+## v1.9.5 (2026-02-02) - Hotfix: hvac_action not updating
+
+### Bug Reports & Issue Reporters
+
+**[@hapklaar](https://github.com/hapklaar)**, **[@chinezbrun](https://github.com/chinezbrun)** - [Issue #44](https://github.com/hiall-fyi/tado_ce/issues/44)
+- Reported hvac_action not updating for the zone being changed
+- Identified pattern: Zone A's hvac_action only updates after changing Zone B
+- Provided detailed logs showing optimistic update wasn't setting hvac_action based on temperature
+
+### What Was Fixed
+
+- ✅ **Issue #44**: hvac_action now updates immediately based on target vs current temperature
+  - Heating zones: `hvac_action = HEATING` when target > current
+  - Heating zones: `hvac_action = IDLE` when target <= current
+  - AC zones: `hvac_action` matches current mode when changing temperature
+
+---
+
 ## v1.9.4 (2026-02-02) - Boost Buttons & Bug Fixes
 
 ### Bug Reports & Issue Reporters
