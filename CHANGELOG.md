@@ -2,6 +2,47 @@
 
 All notable changes to Tado CE will be documented in this file.
 
+## [1.10.0] - 2026-02-05
+
+**Coordinator Race Condition Fix** - Complete architectural fix for climate entity flickering and state sync issues.
+
+### Bug Fixes
+- **Fixed coordinator race condition causing climate entity flickering** - Implemented 3-layer defense strategy to prevent stale coordinator data from overwriting user actions ([#44](https://github.com/hiall-fyi/tado_ce/issues/44) - @hapklaar, @chinezbrun, @neonsp)
+  - **Layer 1: Coordinator-level freshness tracking** - Entities marked "fresh" after user actions skip coordinator updates for 17 seconds
+  - **Layer 2: Sequence number tracking** - Each coordinator update has monotonically increasing sequence number, entities reject lower sequences
+  - **Layer 3: Explicit state confirmation** - Entities track expected state and only clear optimistic state when API confirms the exact expected state
+- **Fixed state not syncing after mode changes** - Climate entities now properly sync with Tado API state after user actions
+- **Fixed optimistic updates not working consistently** - Optimistic state now persists correctly until API confirmation
+- **Fixed heating power stuck after mode change** - Heating power sensor now updates correctly after climate mode changes
+- **Fixed grey loading state during rapid changes** - UI no longer shows grey loading state when quickly changing modes
+- **Fixed rapid mode changes causing confusion** - Multiple rapid changes (HEAT→OFF→AUTO) now handled correctly with final state preserved
+
+### Why v1.9.5-v1.9.7 Failed
+Previous versions attempted time-based optimistic windows, but couldn't handle:
+- **Race conditions** - Coordinator updates arriving before API confirmation
+- **Out-of-order responses** - API responses arriving in different order than requests
+- **Rapid changes** - Multiple user actions within coordinator polling interval
+- **Environmental factors** - Network latency (Home→ISP→Tado) varying by location, ISP routing, HA load
+
+### Technical Details
+- Added `_entity_freshness` dict and `_global_sequence` counter to coordinator
+- Added `mark_entity_fresh()`, `is_entity_fresh()`, `get_next_sequence()` coordinator methods
+- Added optimistic state tracking to both `TadoClimate` and `TadoACClimate` classes
+- Coordinator attaches sequence numbers to all zone data updates
+- Entities check freshness before accepting coordinator updates
+- Entities reject updates with lower sequence numbers than current optimistic sequence
+- Entities track expected state and only clear optimistic state on exact match
+- **16 property-based tests** validate correctness across all edge cases
+- **3 live functional tests** verify real-world behavior with actual HA instance
+
+### Performance Impact
+- **Reduced API calls** - Fresh entities skip unnecessary updates
+- **Faster UI response** - Optimistic updates provide immediate feedback
+- **Better multi-zone handling** - Independent freshness tracking per entity
+
+### Contributors
+Thanks to [@hapklaar](https://github.com/hapklaar), [@chinezbrun](https://github.com/chinezbrun), and [@neonsp](https://github.com/neonsp) for extensive testing, detailed logs, and patience through multiple iterations!
+
 ## [1.9.7] - 2026-02-04
 
 **Explicit Optimistic State Tracking** - Fixed flickering/wrong state preservation after mode changes.
