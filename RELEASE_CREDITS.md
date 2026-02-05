@@ -18,30 +18,12 @@
 ### What Was Fixed
 
 - ✅ **Issue #44**: Complete architectural fix for coordinator race condition
-  - **Layer 1**: Coordinator-level freshness tracking - entities skip updates for 17s after user actions
-  - **Layer 2**: Sequence number tracking - monotonically increasing sequences, reject stale data
-  - **Layer 3**: Explicit state confirmation - track expected state, clear only on exact match
 - ✅ **Issue #44**: Fixed climate entity flickering during rapid mode changes
 - ✅ **Issue #44**: Fixed state not syncing after mode changes
 - ✅ **Issue #44**: Fixed optimistic updates not working consistently
 - ✅ **Issue #44**: Fixed heating power stuck after mode change
 - ✅ **Issue #44**: Fixed grey loading state during rapid changes
 - ✅ **Issue #44**: Fixed rapid mode changes causing confusion (HEAT→OFF→AUTO)
-
-### Technical Implementation
-
-- **16 property-based tests** validate correctness across all edge cases (100 iterations each)
-- **3 live functional tests** verify real-world behavior with actual HA instance
-- **Both TadoClimate and TadoACClimate** updated (heating/AC parity maintained)
-- **Performance improvement**: Reduced unnecessary API calls via fresh entity protection
-
-### Why v1.9.5-v1.9.7 Failed
-
-Previous versions attempted time-based optimistic windows but couldn't handle:
-- Race conditions (coordinator updates arriving before API confirmation)
-- Out-of-order responses (API responses in different order than requests)
-- Rapid changes (multiple actions within coordinator polling interval)
-- Environmental factors (network latency varying by location, ISP routing, HA load)
 
 ---
 
