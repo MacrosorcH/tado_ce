@@ -187,17 +187,17 @@ class TadoClimate(ClimateEntity):
         self._offset_celsius = None  # Temperature offset (optional, enabled in config)
         self._attr_preset_mode = PRESET_HOME
         
-        # v1.9.7: Explicit optimistic state tracking
-        # Instead of just tracking "when" (time-based), we now track "what" (state-based)
-        # This fixes the flickering issue where update() would preserve wrong state
-        self._optimistic_set_at: float | None = None
-        self._optimistic_hvac_mode: HVACMode | None = None  # The mode we're waiting for API to confirm
-        self._optimistic_hvac_action: HVACAction | None = None  # The action we're waiting for API to confirm
+        # v1.10.0: Optimistic state tracking with sequence numbers (Issue #44 fix)
+        # Replaces v1.9.7's flawed state-based tracking with coordinator-aware approach
+        self._optimistic_state: dict | None = None  # Current optimistic state
+        self._optimistic_sequence: int | None = None  # Sequence number of optimistic state
+        self._expected_hvac_mode: HVACMode | None = None  # Expected mode after API call
+        self._expected_hvac_action: HVACAction | None = None  # Expected action after API call
         
         # v1.9.3: Unsubscribe callback for zones_updated signal
         self._unsub_zones_updated = None
 
-    # ========== v1.9.6: Helper Methods ==========
+    # ========== v1.10.0: Helper Methods (Updated for Issue #44 fix) ==========
     
     def _get_debounce_window(self) -> float:
         """Get the optimistic update debounce window in seconds.
@@ -214,6 +214,60 @@ class TadoClimate(ClimateEntity):
         except Exception:
             pass
         return 17.0  # Default fallback (15s debounce + 2s buffer)
+    
+    def _clear_optimistic_state(self):
+        """Clear all optimistic state tracking.
+        
+        v1.10.0: Updated for sequence-based tracking (Issue #44 fix).
+        Called when:
+        - API confirms the expected state
+        - Optimistic window expires
+        - API call fails (rollback)
+        """
+        self._optimistic_state = None
+        self._optimistic_sequence = None
+        self._expected_hvac_mode = None
+        self._expected_hvac_action = None
+    
+    def _set_optimistic_state(self, hvac_mode: HVACMode, hvac_action: HVACAction, target_temp: float = None):
+        """Set optimistic state with sequence number tracking.
+        
+        v1.10.0: Updated for coordinator-aware optimistic updates (Issue #44 fix).
+        Instead of time-based tracking, we now use sequence numbers and mark
+        the entity as fresh in the coordinator to prevent stale data overwrites.
+        
+        Args:
+            hvac_mode: The HVAC mode we expect API to confirm
+            hvac_action: The HVAC action we expect API to confirm
+            target_temp: Optional target temperature for optimistic state
+        """
+        # Get sequence number from coordinator
+        get_next_sequence = self.hass.data.get(DOMAIN, {}).get('get_next_sequence')
+        if get_next_sequence:
+            self._optimistic_sequence = get_next_sequence()
+        else:
+            _LOGGER.warning(f"{self._zone_name}: get_next_sequence not available, using fallback")
+            self._optimistic_sequence = int(time.time())
+        
+        # Set optimistic state
+        self._optimistic_state = {
+            "target_temperature": target_temp,
+            "hvac_mode": hvac_mode,
+            "hvac_action": hvac_action,
+            "timestamp": time.time(),
+        }
+        self._expected_hvac_mode = hvac_mode
+        self._expected_hvac_action = hvac_action
+        
+        # Mark entity as fresh in coordinator
+        mark_entity_fresh = self.hass.data.get(DOMAIN, {}).get('mark_entity_fresh')
+        if mark_entity_fresh:
+            # Schedule async call (we're in sync context)
+            asyncio.create_task(mark_entity_fresh(self.entity_id))
+        
+        _LOGGER.debug(
+            f"{self._zone_name}: Set optimistic state: mode={hvac_mode}, action={hvac_action}, seq={self._optimistic_sequence}"
+        )
     
     def _is_within_optimistic_window(self) -> bool:
         """Check if we're within the optimistic update window.
@@ -572,18 +626,18 @@ class TadoClimate(ClimateEntity):
         if temperature is None:
             return
         
-        # Optimistic update BEFORE API call
+        # v1.10.0: Optimistic update BEFORE API call (Issue #44 fix)
         old_temp = self._attr_target_temperature
         old_mode = self._attr_hvac_mode
         old_action = self._attr_hvac_action
         self._attr_target_temperature = temperature
         self._attr_hvac_mode = HVACMode.HEAT
         self._overlay_type = "MANUAL"
-        # v1.9.7: Use helper method for hvac_action calculation
+        # Calculate hvac_action
         new_hvac_action = self._calculate_hvac_action(target_temp=temperature)
         self._attr_hvac_action = new_hvac_action
-        # v1.9.7: Use explicit optimistic state tracking
-        self._set_optimistic_state(HVACMode.HEAT, new_hvac_action)
+        # Set optimistic state with sequence number and mark entity fresh
+        self._set_optimistic_state(HVACMode.HEAT, new_hvac_action, target_temp=temperature)
         _LOGGER.debug(f"Optimistic update: {self._zone_name} target_temp={temperature}, hvac_action={self._attr_hvac_action}")
         self.async_write_ha_state()
         
@@ -610,7 +664,7 @@ class TadoClimate(ClimateEntity):
             # Refresh is best-effort, don't rollback if it fails
             await self._async_trigger_immediate_refresh("temperature_change")
         else:
-            # Rollback on API failure
+            # v1.10.0: Rollback on API failure (Issue #44 fix)
             self._attr_target_temperature = old_temp
             self._attr_hvac_mode = old_mode
             self._attr_hvac_action = old_action

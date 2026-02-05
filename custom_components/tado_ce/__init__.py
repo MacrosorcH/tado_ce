@@ -1,6 +1,8 @@
 """Tado CE Integration."""
+import asyncio
 import json
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -835,6 +837,35 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     hass.data[DOMAIN]['config_manager'] = config_manager
     
+    # v1.10.0: Store freshness tracking functions in hass.data for entity access
+    async def mark_entity_fresh(entity_id: str) -> None:
+        """Mark entity as having a recent API call in progress."""
+        async with freshness_lock:
+            entity_freshness[entity_id] = time.time()
+            _LOGGER.debug(f"Marked entity fresh: {entity_id}")
+    
+    def is_entity_fresh(entity_id: str, debounce_seconds: int = 17) -> bool:
+        """Check if entity has a recent API call (within debounce window)."""
+        if entity_id not in entity_freshness:
+            return False
+        
+        elapsed = time.time() - entity_freshness[entity_id]
+        if elapsed > debounce_seconds:
+            # Auto-cleanup expired entries
+            del entity_freshness[entity_id]
+            return False
+        
+        return True
+    
+    def get_next_sequence() -> int:
+        """Get next sequence number for tracking data freshness."""
+        global_sequence[0] += 1
+        return global_sequence[0]
+    
+    hass.data[DOMAIN]['mark_entity_fresh'] = mark_entity_fresh
+    hass.data[DOMAIN]['is_entity_fresh'] = is_entity_fresh
+    hass.data[DOMAIN]['get_next_sequence'] = get_next_sequence
+    
     # Sync configuration to config.json for tado_api.py
     await config_manager.async_sync_all_to_config_json()
     
@@ -1012,6 +1043,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # Cache for ratelimit data (loaded async to avoid blocking I/O)
     cached_ratelimit = [None]
+    
+    # v1.10.0: Coordinator freshness tracking for race condition fix (Issue #44)
+    # Track which entities have recent API calls to prevent stale data overwrites
+    entity_freshness = {}  # entity_id -> timestamp
+    global_sequence = [0]  # Monotonically increasing sequence number
+    freshness_lock = asyncio.Lock()  # Protect concurrent access
     
     async def async_load_ratelimit():
         """Load ratelimit data asynchronously."""
