@@ -25,12 +25,12 @@ This implementation plan addresses Issue #44 - the coordinator race condition th
     - Add try/except for API failure rollback
     - _Requirements: 1.1, 1.4_
   
-  - [ ] 2.3 Modify async_set_hvac_mode with optimistic updates
+  - [x] 2.3 Modify async_set_hvac_mode with optimistic updates
     - Same pattern as set_temperature
     - Handle OFF mode special case (immediate confirmation)
     - _Requirements: 4.1, 4.4_
   
-  - [ ] 2.4 Implement coordinator_update with sequence checking
+  - [x] 2.4 Implement coordinator_update with sequence checking
     - Check incoming sequence vs optimistic sequence
     - Reject stale data (lower sequence)
     - Check for state confirmation (expected vs actual)
