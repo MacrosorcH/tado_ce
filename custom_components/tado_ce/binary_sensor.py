@@ -72,8 +72,9 @@ class TadoHomeSensor(BinarySensorEntity):
     
     def update(self):
         try:
-            with open(ZONES_FILE) as f:
-                data = json.load(f)
+            # Use data_loader for per-home file support
+            data = load_zones_file()
+            if data:
                 # Get tado mode from first zone
                 # Use 'or {}' pattern for null safety
                 zone_states = data.get('zoneStates') or {}
@@ -115,8 +116,9 @@ class TadoOpenWindowSensor(BinarySensorEntity):
     
     def update(self):
         try:
-            with open(ZONES_FILE) as f:
-                data = json.load(f)
+            # Use data_loader for per-home file support
+            data = load_zones_file()
+            if data:
                 # Use 'or {}' pattern for null safety
                 zone_states = data.get('zoneStates') or {}
                 zone_data = zone_states.get(self._zone_id)
@@ -136,6 +138,8 @@ class TadoOpenWindowSensor(BinarySensorEntity):
                     self._expiry_time = None
                 
                 self._attr_available = True
+            else:
+                self._attr_available = False
         except Exception:
             self._attr_available = False
 

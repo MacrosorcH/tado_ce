@@ -214,20 +214,30 @@ For each zone, you get these sensors:
 | `sensor.{zone}_battery` | State | Battery status (NORMAL/LOW) |
 | `sensor.{zone}_connection` | State | Connection (Online/Offline) |
 
-### v1.12.0: Heating Cycle Analysis Sensors (HEATING zones only)
+### v1.12.0: Thermal Analytics Sensors (HEATING zones only)
 
-Automatically created for all HEATING zones to provide improved preheat timing estimates:
+Automatically created for all HEATING zones to provide improved preheat timing estimates with first-order and second-order thermal analysis:
+
+#### First-Order Analysis (Basic Metrics)
 
 | Entity | Type | Description |
 |--------|------|-------------|
-| `sensor.{zone}_inertia_time` | Time (minutes) | Thermal inertia time - delay before temperature starts rising after heating starts |
-| `sensor.{zone}_heating_rate` | Rate (°C/min) | Linear heating rate during active heating |
-| `sensor.{zone}_preheat_estimate` | Time (minutes) | Estimated time to reach target temperature from current temperature |
-| `sensor.{zone}_confidence_score` | Percentage | Confidence score (0-100%) indicating reliability of estimates |
+| `sensor.{zone}_thermal_inertia` | Time (minutes) | Thermal inertia time - delay before temperature starts rising after heating starts |
+| `sensor.{zone}_avg_heating_rate` | Rate (°C/min) | Average linear heating rate during active heating |
+| `sensor.{zone}_preheat_time` | Time (minutes) | Estimated time to reach target temperature from current temperature |
+| `sensor.{zone}_analysis_confidence` | Percentage | Confidence score (0-100%) indicating reliability of estimates |
+
+#### Second-Order Analysis (Advanced Metrics)
+
+| Entity | Type | Description |
+|--------|------|-------------|
+| `sensor.{zone}_heating_acceleration` | Rate (°C/h²) | How quickly the heating rate increases after heating starts |
+| `sensor.{zone}_approach_factor` | Percentage | How much the heating rate decreases near the setpoint (used to predict overshoot) |
 
 **How it works:**
 - Automatically tracks heating cycles (when setpoint increases and heating activates)
-- Analyzes completed cycles to calculate thermal inertia and heating rate
+- First-order analysis: calculates thermal inertia and average heating rate
+- Second-order analysis: calculates acceleration and approach behavior for improved predictions
 - Provides preheat time estimates based on historical data
 - Confidence score increases as more cycles are collected (minimum 3 cycles recommended)
 

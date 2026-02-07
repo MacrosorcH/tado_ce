@@ -270,7 +270,8 @@ class TadoRefreshScheduleButton(ButtonEntity):
     async def async_press(self) -> None:
         """Handle button press - refresh schedule for this zone."""
         from .async_api import get_async_client
-        from .calendar import SCHEDULES_FILE
+        from .calendar import _get_schedules_file
+        from .const import DATA_DIR
         import json
         
         _LOGGER.info(f"Refresh Schedule button pressed for {self._zone_name} (zone {self._zone_id})")
@@ -285,10 +286,13 @@ class TadoRefreshScheduleButton(ButtonEntity):
                 _LOGGER.warning(f"No schedule data returned for {self._zone_name}")
                 return
             
+            # Get per-home schedules file path
+            schedules_file = _get_schedules_file()
+            
             # Load existing schedules
             def _load_schedules():
-                if SCHEDULES_FILE.exists():
-                    with open(SCHEDULES_FILE) as f:
+                if schedules_file.exists():
+                    with open(schedules_file) as f:
                         return json.load(f)
                 return {}
             
@@ -306,14 +310,14 @@ class TadoRefreshScheduleButton(ButtonEntity):
                 import tempfile
                 import shutil
                 
-                SCHEDULES_FILE.parent.mkdir(parents=True, exist_ok=True)
+                DATA_DIR.mkdir(parents=True, exist_ok=True)
                 # Atomic write: write to temp file then move
                 with tempfile.NamedTemporaryFile(
-                    mode='w', dir=SCHEDULES_FILE.parent, delete=False, suffix='.tmp'
+                    mode='w', dir=DATA_DIR, delete=False, suffix='.tmp'
                 ) as tmp:
                     json.dump(schedules, tmp, indent=2)
                     temp_path = tmp.name
-                shutil.move(temp_path, SCHEDULES_FILE)
+                shutil.move(temp_path, schedules_file)
             
             await self.hass.async_add_executor_job(_save_schedules)
             

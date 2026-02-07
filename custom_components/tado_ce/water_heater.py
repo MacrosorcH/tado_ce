@@ -132,78 +132,84 @@ class TadoWaterHeater(WaterHeaterEntity):
         """
         _LOGGER.debug(f"TadoWaterHeater.update() called for {self._zone_name} (zone {self._zone_id})")
         try:
-            with open(CONFIG_FILE) as f:
-                config = json.load(f)
+            # Load home_id from config (uses data_loader for per-home file support)
+            config = load_config_file()
+            if config:
                 self._home_id = config.get("home_id")
             
-            with open(ZONES_FILE) as f:
-                data = json.load(f)
-                # Use 'or {}' pattern for null safety
-                zone_states = data.get('zoneStates') or {}
-                zone_data = zone_states.get(self._zone_id)
-                
-                if not zone_data:
-                    _LOGGER.debug(f"No zone data for {self._zone_name} (zone {self._zone_id})")
-                    self._attr_available = False
-                    return
-                
-                # Check link state - if offline, mark unavailable
-                link = zone_data.get('link') or {}
-                link_state = link.get('state')
-                if link_state != 'ONLINE':
-                    _LOGGER.debug(f"Zone {self._zone_name} link state: {link_state}")
-                    self._attr_available = False
-                    return
-                
-                _LOGGER.debug(f"Zone {self._zone_name} link state OK, setting available=True")
-                setting = zone_data.get('setting') or {}
-                power = setting.get('power')
-                overlay = zone_data.get('overlay')
-                self._overlay_type = zone_data.get('overlayType')
-                
-                # Read target temperature from setting (for systems that support it)
-                temp_data = setting.get('temperature') or {}
-                self._attr_target_temperature = temp_data.get('celsius')
-                
-                # Enable temperature feature if zone supports it
-                if self._attr_target_temperature is not None and not self._supports_temperature:
-                    self._supports_temperature = True
-                    self._attr_supported_features = (
-                        WaterHeaterEntityFeature.OPERATION_MODE |
-                        WaterHeaterEntityFeature.TARGET_TEMPERATURE
-                    )
-                    _LOGGER.debug(f"Hot water zone {self._zone_name} supports temperature control")
-                
-                # v1.9.6: Preserve optimistic state if within window
-                if self._is_within_optimistic_window():
-                    _LOGGER.debug(f"Hot water {self._zone_name}: Preserving optimistic state (within window)")
-                    self._attr_available = True
-                    return
-                
-                # Window expired, clear optimistic tracking
-                if self._optimistic_set_at is not None:
-                    self._optimistic_set_at = None
-                
-                # Detect current operation mode based on overlay state
-                if not overlay or self._overlay_type is None:
-                    # No overlay = following schedule
-                    self._attr_current_operation = STATE_AUTO
-                elif self._overlay_type == 'TIMER':
-                    # Timer overlay = HEAT mode
-                    self._attr_current_operation = STATE_HEAT
-                elif self._overlay_type == 'MANUAL':
-                    if power == 'OFF':
-                        # Manual OFF = OFF mode
-                        self._attr_current_operation = STATE_OFF
-                    else:
-                        # Manual ON = HEAT mode
-                        self._attr_current_operation = STATE_HEAT
-                else:
-                    # Unknown overlay type, default to AUTO
-                    _LOGGER.debug(f"Unknown overlay type: {self._overlay_type}, defaulting to AUTO")
-                    self._attr_current_operation = STATE_AUTO
-                
+            # Load zones data (uses data_loader for per-home file support)
+            data = load_zones_file()
+            if not data:
+                _LOGGER.debug(f"No zones data for {self._zone_name} (zone {self._zone_id})")
+                self._attr_available = False
+                return
+            
+            # Use 'or {}' pattern for null safety
+            zone_states = data.get('zoneStates') or {}
+            zone_data = zone_states.get(self._zone_id)
+            
+            if not zone_data:
+                _LOGGER.debug(f"No zone data for {self._zone_name} (zone {self._zone_id})")
+                self._attr_available = False
+                return
+            
+            # Check link state - if offline, mark unavailable
+            link = zone_data.get('link') or {}
+            link_state = link.get('state')
+            if link_state != 'ONLINE':
+                _LOGGER.debug(f"Zone {self._zone_name} link state: {link_state}")
+                self._attr_available = False
+                return
+            
+            _LOGGER.debug(f"Zone {self._zone_name} link state OK, setting available=True")
+            setting = zone_data.get('setting') or {}
+            power = setting.get('power')
+            overlay = zone_data.get('overlay')
+            self._overlay_type = zone_data.get('overlayType')
+            
+            # Read target temperature from setting (for systems that support it)
+            temp_data = setting.get('temperature') or {}
+            self._attr_target_temperature = temp_data.get('celsius')
+            
+            # Enable temperature feature if zone supports it
+            if self._attr_target_temperature is not None and not self._supports_temperature:
+                self._supports_temperature = True
+                self._attr_supported_features = (
+                    WaterHeaterEntityFeature.OPERATION_MODE |
+                    WaterHeaterEntityFeature.TARGET_TEMPERATURE
+                )
+                _LOGGER.debug(f"Hot water zone {self._zone_name} supports temperature control")
+            
+            # v1.9.6: Preserve optimistic state if within window
+            if self._is_within_optimistic_window():
+                _LOGGER.debug(f"Hot water {self._zone_name}: Preserving optimistic state (within window)")
                 self._attr_available = True
+                return
+            
+            # Window expired, clear optimistic tracking
+            if self._optimistic_set_at is not None:
+                self._optimistic_set_at = None
+            
+            # Detect current operation mode based on overlay state
+            if not overlay or self._overlay_type is None:
+                # No overlay = following schedule
+                self._attr_current_operation = STATE_AUTO
+            elif self._overlay_type == 'TIMER':
+                # Timer overlay = HEAT mode
+                self._attr_current_operation = STATE_HEAT
+            elif self._overlay_type == 'MANUAL':
+                if power == 'OFF':
+                    # Manual OFF = OFF mode
+                    self._attr_current_operation = STATE_OFF
+                else:
+                    # Manual ON = HEAT mode
+                    self._attr_current_operation = STATE_HEAT
+            else:
+                # Unknown overlay type, default to AUTO
+                _LOGGER.debug(f"Unknown overlay type: {self._overlay_type}, defaulting to AUTO")
+                self._attr_current_operation = STATE_AUTO
+            
+            self._attr_available = True
                 
         except FileNotFoundError as e:
             _LOGGER.warning(f"Data file not found for {self.name}: {e}")

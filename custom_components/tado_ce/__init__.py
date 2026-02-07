@@ -6,6 +6,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import aiofiles
+import aiofiles.os
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
@@ -246,53 +248,46 @@ async def _update_ratelimit_reset_time(hass: HomeAssistant, detected_reset: date
         detected_reset: Detected reset time (datetime in UTC)
     """
     try:
-        def _update_file():
-            if not RATELIMIT_FILE.exists():
-                return
-            
-            with open(RATELIMIT_FILE) as f:
-                data = json.load(f)
-            
-            # Only update if detected time is different from stored time
-            current_reset = data.get("last_reset_utc")
-            new_reset = detected_reset.strftime("%Y-%m-%dT%H:%M:%SZ")
-            
-            if current_reset != new_reset:
-                data["last_reset_utc"] = new_reset
-                
-                # Recalculate reset_seconds, reset_at, reset_human
-                now_utc = datetime.now(timezone.utc)
-                next_reset = detected_reset + timedelta(hours=24)
-                
-                # If next_reset is in the past, add another 24h
-                while next_reset <= now_utc:
-                    next_reset += timedelta(hours=24)
-                
-                seconds_until_reset = int((next_reset - now_utc).total_seconds())
-                
-                if seconds_until_reset > 0:
-                    hours = seconds_until_reset // 3600
-                    minutes = (seconds_until_reset % 3600) // 60
-                    data["reset_seconds"] = seconds_until_reset
-                    data["reset_at"] = next_reset.isoformat()
-                    data["reset_human"] = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
-                
-                # Write back
-                import tempfile
-                import shutil
-                
-                with tempfile.NamedTemporaryFile(
-                    mode='w', dir=RATELIMIT_FILE.parent, delete=False, suffix='.tmp'
-                ) as tmp:
-                    json.dump(data, tmp, indent=2)
-                    temp_path = tmp.name
-                
-                shutil.move(temp_path, RATELIMIT_FILE)
-                _LOGGER.info(
-                    f"Updated reset time from HA history: {detected_reset.strftime('%H:%M')} UTC"
-                )
+        if not await aiofiles.os.path.exists(RATELIMIT_FILE):
+            return
         
-        await hass.async_add_executor_job(_update_file)
+        async with aiofiles.open(RATELIMIT_FILE, 'r') as f:
+            content = await f.read()
+            data = json.loads(content)
+        
+        # Only update if detected time is different from stored time
+        current_reset = data.get("last_reset_utc")
+        new_reset = detected_reset.strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        if current_reset != new_reset:
+            data["last_reset_utc"] = new_reset
+            
+            # Recalculate reset_seconds, reset_at, reset_human
+            now_utc = datetime.now(timezone.utc)
+            next_reset = detected_reset + timedelta(hours=24)
+            
+            # If next_reset is in the past, add another 24h
+            while next_reset <= now_utc:
+                next_reset += timedelta(hours=24)
+            
+            seconds_until_reset = int((next_reset - now_utc).total_seconds())
+            
+            if seconds_until_reset > 0:
+                hours = seconds_until_reset // 3600
+                minutes = (seconds_until_reset % 3600) // 60
+                data["reset_seconds"] = seconds_until_reset
+                data["reset_at"] = next_reset.isoformat()
+                data["reset_human"] = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+            
+            # Write back with atomic write
+            temp_path = RATELIMIT_FILE.with_suffix('.tmp')
+            async with aiofiles.open(temp_path, 'w') as f:
+                await f.write(json.dumps(data, indent=2))
+            
+            await aiofiles.os.replace(temp_path, RATELIMIT_FILE)
+            _LOGGER.info(
+                f"Updated reset time from HA history: {detected_reset.strftime('%H:%M')} UTC"
+            )
         
     except Exception as e:
         _LOGGER.debug(f"Failed to update ratelimit reset time: {e}")
@@ -363,11 +358,10 @@ def get_polling_interval(config_manager: ConfigurationManager, cached_ratelimit:
         if cached_ratelimit is not None:
             # Use pre-loaded data (async-safe)
             ratelimit_data = cached_ratelimit
-        elif RATELIMIT_FILE.exists():
-            # Fallback: sync read (only for non-async callers)
-            # WARNING: This will trigger blocking I/O warning if called from async context
-            with open(RATELIMIT_FILE) as f:
-                ratelimit_data = json.load(f)
+        else:
+            # Use data_loader for per-home file support
+            from .data_loader import load_ratelimit_file
+            ratelimit_data = load_ratelimit_file()
         
         if ratelimit_data:
             adaptive_interval = _calculate_adaptive_interval(ratelimit_data, config_manager)
@@ -452,12 +446,19 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     intermediate migrations correctly.
     """
     # Store initial version for logging (version may change during migration)
+    # Handle None version (can happen if previous migration failed mid-way)
     initial_version = config_entry.version
+    if initial_version is None:
+        _LOGGER.warning(
+            "Config entry version is None (possibly from failed migration). "
+            "Treating as version 1 to run all migrations."
+        )
+        initial_version = 1
     
     _LOGGER.info(
         "=== Tado CE Migration Start ===\n"
         f"  Current version: {initial_version}\n"
-        f"  Target version: 5\n"
+        f"  Target version: 9\n"
         f"  Entry ID: {config_entry.entry_id}\n"
         f"  Entry data: {config_entry.data}"
     )
@@ -802,18 +803,195 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         
         _LOGGER.info("Migration step -> v8 complete")
 
+    # v1.11.0 Migration (continued)
+    if initial_version < 9:
+        # Version 8 -> 9 (v1.11.0): Remove deprecated instantaneous sensors
+        # These have been replaced by heating cycle analysis sensors
+        _LOGGER.info("=== Migration: -> v9 ===")
+        _LOGGER.info("Removing deprecated sensors and cleaning up non-TRV zone thermal analytics")
+        
+        from homeassistant.helpers import entity_registry as er
+        from .data_loader import load_zones_info_file
+        
+        entity_registry = er.async_get(hass)
+        
+        # Part 1: Remove deprecated sensor suffixes (all zones)
+        deprecated_suffixes = [
+            # Original v1.9.0 instantaneous sensors
+            "_thermal_rate",
+            "_cooling_rate", 
+            "_heating_efficiency",
+            "_time_to_target",
+            # Additional deprecated sensors from earlier iterations
+            "_heating_rate",           # replaced by _avg_heating_rate
+            "_historical_comparison",  # replaced by _historical_deviation
+            "_inertia_time",           # replaced by _thermal_inertia
+            "_heating_rate_analysis",  # replaced by _avg_heating_rate
+            "_preheat_estimate",       # replaced by _preheat_time
+            "_confidence_score",       # replaced by _analysis_confidence
+        ]
+        
+        # Part 2: Find zones WITHOUT TRV (SU02 Smart Thermostat zones)
+        # These zones should NOT have thermal analytics sensors
+        TRV_DEVICE_TYPES = {'VA02', 'VA01', 'RU01', 'RU02'}
+        thermal_analytics_suffixes = [
+            "_thermal_inertia",
+            "_avg_heating_rate",
+            "_preheat_time",
+            "_analysis_confidence",
+            "_heating_acceleration",
+            "_approach_factor",
+        ]
+        
+        zones_without_trv = set()
+        zone_name_map = {}
+        try:
+            zones_info = await hass.async_add_executor_job(load_zones_info_file)
+            if zones_info:
+                for zone in zones_info:
+                    zone_id = str(zone.get('id'))
+                    zone_name = zone.get('name', '').lower().replace(' ', '_')
+                    zone_name_map[zone_id] = zone_name
+                    devices = zone.get('devices', [])
+                    has_trv = any(d.get('deviceType') in TRV_DEVICE_TYPES for d in devices)
+                    if not has_trv and zone.get('type') == 'HEATING':
+                        zones_without_trv.add(zone_name)
+                        _LOGGER.debug(f"  Zone without TRV: {zone_name}")
+        except Exception as e:
+            _LOGGER.warning(f"  Could not load zones_info for TRV check: {e}")
+        
+        removed_count = 0
+        for entity_id, entity_entry in list(entity_registry.entities.items()):
+            if entity_entry.platform != DOMAIN:
+                continue
+            
+            should_remove = False
+            
+            # Check deprecated suffixes (all zones)
+            for suffix in deprecated_suffixes:
+                if entity_id.endswith(suffix):
+                    should_remove = True
+                    _LOGGER.info(f"  Removing deprecated entity: {entity_id}")
+                    break
+            
+            # Check thermal analytics on non-TRV zones
+            if not should_remove and zones_without_trv:
+                for suffix in thermal_analytics_suffixes:
+                    if entity_id.endswith(suffix):
+                        # Extract zone name from entity_id (e.g., sensor.hallway_thermal_inertia -> hallway)
+                        entity_zone = entity_id.replace("sensor.", "").replace(suffix, "")
+                        if entity_zone in zones_without_trv:
+                            should_remove = True
+                            _LOGGER.info(f"  Removing thermal analytics from non-TRV zone: {entity_id}")
+                            break
+            
+            if should_remove:
+                entity_registry.async_remove(entity_id)
+                removed_count += 1
+        
+        _LOGGER.info(f"  Removed {removed_count} entities")
+        
+        # Migrate legacy data files to per-home format
+        # v1.8.0 introduced per-home files WITH _HOMEID suffix
+        # Legacy files (no suffix) need to be RENAMED to per-home format
+        # Exception: config.json stays as-is (bootstrap file, needed before we know home_id)
+        home_id = config_entry.data.get("home_id")
+        if home_id:
+            # Legacy files (no suffix) -> New files (with _HOMEID suffix)
+            # Note: config.json is NOT migrated - it's the bootstrap file
+            legacy_to_new_mapping = {
+                "api_call_history.json": f"api_call_history_{home_id}.json",
+                "heating_cycle_history.json": f"heating_cycle_history_{home_id}.json",
+                "home_state.json": f"home_state_{home_id}.json",
+                "ratelimit.json": f"ratelimit_{home_id}.json",
+                "schedules.json": f"schedules_{home_id}.json",
+                "smart_comfort_cache.json": f"smart_comfort_cache_{home_id}.json",
+                "smart_heating_cache.json": f"smart_heating_cache_{home_id}.json",
+                "zones.json": f"zones_{home_id}.json",
+                "zones_info.json": f"zones_info_{home_id}.json",
+                "weather.json": f"weather_{home_id}.json",
+                "mobile_devices.json": f"mobile_devices_{home_id}.json",
+                "offsets.json": f"offsets_{home_id}.json",
+                "ac_capabilities.json": f"ac_capabilities_{home_id}.json",
+            }
+            
+            def _migrate_legacy_files():
+                """Migrate legacy files to per-home format in executor."""
+                import shutil
+                migrated = []
+                deleted = []
+                
+                for legacy_name, new_name in legacy_to_new_mapping.items():
+                    legacy_path = DATA_DIR / legacy_name
+                    new_path = DATA_DIR / new_name
+                    
+                    if not legacy_path.exists():
+                        continue
+                    
+                    if new_path.exists():
+                        # Per-home file already exists, delete legacy
+                        try:
+                            legacy_path.unlink()
+                            deleted.append(legacy_name)
+                            _LOGGER.debug(f"  Deleted legacy file: {legacy_name} (per-home exists)")
+                        except Exception as e:
+                            _LOGGER.warning(f"  Failed to delete {legacy_name}: {e}")
+                    else:
+                        # RENAME legacy -> per-home
+                        try:
+                            legacy_path.rename(new_path)
+                            migrated.append(f"{legacy_name} -> {new_name}")
+                            _LOGGER.info(f"  Migrated: {legacy_name} -> {new_name}")
+                        except Exception as e:
+                            _LOGGER.warning(f"  Failed to migrate {legacy_name}: {e}")
+                
+                return {"migrated": migrated, "deleted": deleted}
+            
+            result = await hass.async_add_executor_job(_migrate_legacy_files)
+            if result["migrated"]:
+                _LOGGER.info(f"  Migrated {len(result['migrated'])} files to per-home format")
+            if result["deleted"]:
+                _LOGGER.info(f"  Deleted {len(result['deleted'])} legacy files")
+        
+        # Clean up deprecated code files (tado_api.py, error_handler.py)
+        # These were replaced by async_api.py in v1.6.0 but kept for compatibility
+        # Now safe to remove as all functionality is in async_api.py
+        from pathlib import Path
+        integration_dir = Path(__file__).parent
+        deprecated_code_files = ["tado_api.py", "error_handler.py", "test_schedule_api.py"]
+        
+        def _cleanup_deprecated_code():
+            """Remove deprecated code files."""
+            removed = []
+            for filename in deprecated_code_files:
+                file_path = integration_dir / filename
+                if file_path.exists():
+                    try:
+                        file_path.unlink()
+                        removed.append(filename)
+                        _LOGGER.info(f"  Removed deprecated file: {filename}")
+                    except Exception as e:
+                        _LOGGER.warning(f"  Failed to remove {filename}: {e}")
+            return removed
+        
+        removed_files = await hass.async_add_executor_job(_cleanup_deprecated_code)
+        if removed_files:
+            _LOGGER.info(f"  Cleaned up {len(removed_files)} deprecated code files")
+        
+        _LOGGER.info("Migration step -> v9 complete")
+
     # Update to final version (only once, at the end)
-    if initial_version < 8:
-        hass.config_entries.async_update_entry(config_entry, version=8)
+    if initial_version < 10:
+        hass.config_entries.async_update_entry(config_entry, version=10)
         _LOGGER.info(
             "=== Migration Complete ===\n"
             f"  Initial version: {initial_version}\n"
-            f"  Final version: 8\n"
+            f"  Final version: 10\n"
             f"  CONFIG_FILE exists: {CONFIG_FILE.exists()}\n"
             f"  DATA_DIR exists: {DATA_DIR.exists()}"
         )
     else:
-        _LOGGER.info("Config entry already at version 8, no migration needed")
+        _LOGGER.info("Config entry already at version 10, no migration needed")
     
     return True
 
@@ -1156,16 +1334,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     freshness_lock = asyncio.Lock()  # Protect concurrent access
     
     async def async_load_ratelimit():
-        """Load ratelimit data asynchronously."""
-        if RATELIMIT_FILE.exists():
-            def read_file():
-                with open(RATELIMIT_FILE) as f:
-                    return json.load(f)
-            try:
-                cached_ratelimit[0] = await hass.async_add_executor_job(read_file)
-            except Exception:
+        """Load ratelimit data asynchronously using native async I/O."""
+        try:
+            # Use per-home file path
+            from .data_loader import get_current_home_id
+            from .const import get_data_file
+            home_id = get_current_home_id()
+            ratelimit_path = get_data_file("ratelimit", home_id)
+            
+            if await aiofiles.os.path.exists(ratelimit_path):
+                async with aiofiles.open(ratelimit_path, 'r') as f:
+                    content = await f.read()
+                    cached_ratelimit[0] = json.loads(content)
+            else:
                 cached_ratelimit[0] = None
-        else:
+        except Exception:
             cached_ratelimit[0] = None
     
     async def async_schedule_next_sync():
@@ -1206,11 +1389,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Check if polling should be paused due to Test Mode limit
         if config_manager.get_test_mode_enabled():
             try:
-                if RATELIMIT_FILE.exists():
-                    def read_ratelimit():
-                        with open(RATELIMIT_FILE) as f:
-                            return json.load(f)
-                    data = await hass.async_add_executor_job(read_ratelimit)
+                if await aiofiles.os.path.exists(RATELIMIT_FILE):
+                    async with aiofiles.open(RATELIMIT_FILE, 'r') as f:
+                        content = await f.read()
+                        data = json.loads(content)
                     used = data.get("used", 0)
                     if used >= 100:
                         _LOGGER.warning(
@@ -1373,42 +1555,46 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # v1.11.0: Initialize Heating Cycle Coordinator (always enabled for HEATING zones)
     if home_id:
-        from .heating_cycle_coordinator import HeatingCycleCoordinator
-        from .heating_cycle_models import HeatingCycleConfig
-        
-        # Create config from settings (use defaults for now, will add config options later)
-        heating_cycle_config = HeatingCycleConfig(
-            enabled=True,
-            rolling_window_days=7,
-            inertia_threshold_celsius=0.1,
-            min_cycles=3,
-        )
-        
-        # Initialize coordinator
-        heating_cycle_coordinator = HeatingCycleCoordinator(
-            hass, home_id, heating_cycle_config
-        )
-        
-        # Setup coordinator (load storage, resume active cycles)
-        await heating_cycle_coordinator.async_setup()
-        
-        # Store in hass.data for sensor access
-        hass.data[DOMAIN]['heating_cycle_coordinator'] = heating_cycle_coordinator
-        
-        # Schedule periodic timeout check (every 60 seconds)
-        async def async_check_cycle_timeouts(_now):
-            """Periodic task to check for cycle timeouts."""
-            await heating_cycle_coordinator.check_timeouts()
-        
-        # Use track_time_interval for periodic execution
-        cancel_timeout_check = async_track_time_interval(
-            hass, 
-            async_check_cycle_timeouts,
-            timedelta(seconds=60)
-        )
-        hass.data[DOMAIN]['heating_cycle_timeout_cancel'] = cancel_timeout_check
-        
-        _LOGGER.info("Tado CE: Heating Cycle Analysis initialized")
+        try:
+            from .heating_cycle_coordinator import HeatingCycleCoordinator
+            from .heating_cycle_models import HeatingCycleConfig
+            
+            # Create config from settings (use defaults for now, will add config options later)
+            heating_cycle_config = HeatingCycleConfig(
+                enabled=True,
+                rolling_window_days=7,
+                inertia_threshold_celsius=0.1,
+                min_cycles=3,
+            )
+            
+            # Initialize coordinator
+            heating_cycle_coordinator = HeatingCycleCoordinator(
+                hass, home_id, heating_cycle_config
+            )
+            
+            # Setup coordinator (load storage, resume active cycles)
+            await heating_cycle_coordinator.async_setup()
+            
+            # Store in hass.data for sensor access
+            hass.data[DOMAIN]['heating_cycle_coordinator'] = heating_cycle_coordinator
+            
+            # Schedule periodic timeout check (every 60 seconds)
+            async def async_check_cycle_timeouts(_now):
+                """Periodic task to check for cycle timeouts."""
+                await heating_cycle_coordinator.check_timeouts()
+            
+            # Use track_time_interval for periodic execution
+            cancel_timeout_check = async_track_time_interval(
+                hass, 
+                async_check_cycle_timeouts,
+                timedelta(seconds=60)
+            )
+            hass.data[DOMAIN]['heating_cycle_timeout_cancel'] = cancel_timeout_check
+            
+            _LOGGER.info("Tado CE: Heating Cycle Analysis initialized")
+        except Exception as e:
+            _LOGGER.error("Tado CE: Failed to initialize Heating Cycle Analysis: %s", e)
+            # Continue without heating cycle analysis - non-critical feature
     
     await hass.config_entries.async_forward_entry_setups(entry, platforms_to_load)
     
@@ -1815,11 +2001,12 @@ def _get_device_serial_for_zone(zone_id: str) -> str | None:
     Returns:
         Device serial number, or None if not found
     """
-    from .const import ZONES_INFO_FILE
+    from .data_loader import load_zones_info_file
     
     try:
-        with open(ZONES_INFO_FILE) as f:
-            zones_info = json.load(f)
+        zones_info = load_zones_info_file()
+        if not zones_info:
+            return None
         
         for zone in zones_info:
             if str(zone.get('id')) == zone_id:
@@ -1845,12 +2032,13 @@ def _get_device_serials_for_zone(zone_id: str) -> list[str]:
     Returns:
         List of device serial numbers (may be empty)
     """
-    from .const import ZONES_INFO_FILE
+    from .data_loader import load_zones_info_file
     
     serials = []
     try:
-        with open(ZONES_INFO_FILE) as f:
-            zones_info = json.load(f)
+        zones_info = load_zones_info_file()
+        if not zones_info:
+            return []
         
         for zone in zones_info:
             if str(zone.get('id')) == zone_id:

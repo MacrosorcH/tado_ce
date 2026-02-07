@@ -14,12 +14,20 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, DATA_DIR, MANUFACTURER
-from .data_loader import load_zones_info_file
+from .const import DOMAIN, DATA_DIR, MANUFACTURER, get_data_file
+from .data_loader import load_zones_info_file, get_current_home_id
 from .async_api import get_async_client
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def _get_schedules_file() -> Path:
+    """Get schedules file path with per-home support."""
+    home_id = get_current_home_id()
+    return get_data_file("schedules", home_id)
+
+
+# Legacy constant for backwards compatibility (used by button.py)
 SCHEDULES_FILE = DATA_DIR / "schedules.json"
 
 # Day type mappings
@@ -121,6 +129,8 @@ async def _async_save_schedules(hass: HomeAssistant, schedules: dict) -> None:
     import tempfile
     import shutil
     
+    schedules_file = _get_schedules_file()
+    
     def _save():
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         # Atomic write: write to temp file then move
@@ -129,7 +139,7 @@ async def _async_save_schedules(hass: HomeAssistant, schedules: dict) -> None:
         ) as tmp:
             json.dump(schedules, tmp, indent=2)
             temp_path = tmp.name
-        shutil.move(temp_path, SCHEDULES_FILE)
+        shutil.move(temp_path, schedules_file)
     
     await hass.async_add_executor_job(_save)
 
@@ -189,8 +199,9 @@ class TadoZoneScheduleCalendar(CalendarEntity):
     async def _async_reload_schedule(self) -> None:
         """Reload schedule from file after Refresh Schedule button press."""
         def _load():
-            if SCHEDULES_FILE.exists():
-                with open(SCHEDULES_FILE) as f:
+            schedules_file = _get_schedules_file()
+            if schedules_file.exists():
+                with open(schedules_file) as f:
                     return json.load(f)
             return {}
         

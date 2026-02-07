@@ -1,6 +1,6 @@
 """API Call Tracker for Tado CE integration.
 
-v1.6.2: Made file I/O async-safe using run_in_executor to avoid blocking the event loop.
+v1.11.0: Refactored to use aiofiles for native async I/O.
 """
 import asyncio
 import json
@@ -9,7 +9,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Dict, Optional
 from threading import Lock
-from concurrent.futures import ThreadPoolExecutor
+
+import aiofiles
+import aiofiles.os
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,37 +36,42 @@ CALL_TYPE_NAMES = {
     CALL_TYPE_CAPABILITIES: "capabilities",
 }
 
-# Shared executor for file I/O (avoids creating new threads for each operation)
-_io_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tado_ce_io")
-
 
 class APICallTracker:
     """Track API calls with persistent storage.
     
-    All file I/O is performed in a thread pool to avoid blocking the event loop.
+    v1.11.0: Async methods use native aiofiles for non-blocking I/O.
+    Sync methods are kept for compatibility with non-async contexts.
+    v1.11.0+: Supports per-home file paths for multi-home setups.
     """
     
-    def __init__(self, data_dir: Path, retention_days: int = 14):
+    def __init__(self, data_dir: Path, retention_days: int = 14, home_id: Optional[str] = None):
         """Initialize API call tracker.
         
         Args:
             data_dir: Directory for storing call history
             retention_days: Number of days to retain history (0 = forever)
+            home_id: Optional home ID for per-home file paths
         """
         self.data_dir = data_dir
         self.retention_days = retention_days
-        self.history_file = data_dir / "api_call_history.json"
+        self.home_id = home_id
+        
+        # Use per-home file path if home_id provided
+        from .const import get_data_file
+        self.history_file = get_data_file("api_call_history", home_id)
+        
         self._lock = Lock()
+        self._async_lock = asyncio.Lock()
         self._call_history: Dict[str, List[Dict]] = {}
         self._last_cleanup_date = None
         self._initialized = False
-        self._pending_writes: List[Dict] = []  # Buffer for async writes
         
-        # Ensure data directory exists (sync, but fast)
+        # Ensure data directory exists
         self.data_dir.mkdir(parents=True, exist_ok=True)
     
     def _load_history_sync(self) -> Dict:
-        """Load call history from disk (sync, for executor)."""
+        """Load call history from disk synchronously."""
         try:
             if self.history_file.exists():
                 with open(self.history_file, 'r') as f:
@@ -74,11 +81,7 @@ class APICallTracker:
         return {}
     
     def _save_history_sync(self, data: Dict):
-        """Save call history to disk (sync, for executor).
-        
-        Uses atomic write (temp file + rename) to prevent corruption
-        if HA crashes or restarts during write.
-        """
+        """Save call history to disk synchronously with atomic write."""
         import tempfile
         import shutil
         
@@ -101,26 +104,60 @@ class APICallTracker:
             except Exception as cleanup_err:
                 _LOGGER.debug(f"Failed to clean up temp file: {cleanup_err}")
     
+    async def _load_history_async(self) -> Dict:
+        """Load call history from disk using native async I/O."""
+        try:
+            if await aiofiles.os.path.exists(self.history_file):
+                async with aiofiles.open(self.history_file, 'r') as f:
+                    content = await f.read()
+                    return json.loads(content)
+        except Exception as e:
+            _LOGGER.error(f"Failed to load API call history: {e}")
+        return {}
+    
+    async def _save_history_async(self, data: Dict):
+        """Save call history to disk using native async I/O with atomic write."""
+        try:
+            # Ensure directory exists
+            await aiofiles.os.makedirs(self.data_dir, exist_ok=True)
+            
+            # Write to temp file then atomic rename
+            temp_path = self.history_file.with_suffix('.tmp')
+            async with aiofiles.open(temp_path, 'w') as f:
+                await f.write(json.dumps(data, indent=2))
+            
+            # Atomic move
+            await aiofiles.os.replace(temp_path, self.history_file)
+        except Exception as e:
+            _LOGGER.error(f"Failed to save API call history: {e}")
+            # Clean up temp file if it exists
+            try:
+                temp_path = self.history_file.with_suffix('.tmp')
+                if await aiofiles.os.path.exists(temp_path):
+                    await aiofiles.os.remove(temp_path)
+            except Exception as cleanup_err:
+                _LOGGER.debug(f"Failed to clean up temp file: {cleanup_err}")
+    
     async def async_init(self):
         """Initialize tracker asynchronously (load history from disk)."""
         if self._initialized:
             return
         
-        loop = asyncio.get_event_loop()
-        self._call_history = await loop.run_in_executor(
-            _io_executor, self._load_history_sync
-        )
-        self._initialized = True
-        _LOGGER.debug(f"Loaded API call history: {len(self._call_history)} dates")
-        
-        # Cleanup old records
-        await self.async_cleanup_old_records()
-        self._last_cleanup_date = datetime.now().date()
+        async with self._async_lock:
+            if self._initialized:  # Double-check after acquiring lock
+                return
+            
+            self._call_history = await self._load_history_async()
+            self._initialized = True
+            _LOGGER.debug(f"Loaded API call history: {len(self._call_history)} dates")
+            
+            # Cleanup old records
+            await self.async_cleanup_old_records()
+            self._last_cleanup_date = datetime.now().date()
     
     def _ensure_initialized_sync(self):
-        """Ensure tracker is initialized (sync fallback for non-async contexts).
+        """Ensure tracker is initialized synchronously.
         
-        This loads history synchronously if not already loaded.
         Should only be used when async_init() cannot be called.
         """
         if not self._initialized:
@@ -165,11 +202,8 @@ class APICallTracker:
                 self._last_cleanup_date = today
                 should_cleanup = True
         
-        # Save asynchronously
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(
-            _io_executor, self._save_history_sync, dict(self._call_history)
-        )
+        # Save using native async I/O
+        await self._save_history_async(dict(self._call_history))
         
         if should_cleanup:
             await self.async_cleanup_old_records()
@@ -204,15 +238,7 @@ class APICallTracker:
                 self._call_history[date_key] = []
             self._call_history[date_key].append(call_record)
         
-        # Schedule async save if we're in an event loop
-        try:
-            loop = asyncio.get_running_loop()
-            loop.run_in_executor(
-                _io_executor, self._save_history_sync, dict(self._call_history)
-            )
-        except RuntimeError:
-            # No event loop, save synchronously (fallback)
-            self._save_history_sync(dict(self._call_history))
+        self._save_history_sync(dict(self._call_history))
         
         _LOGGER.debug(f"Recorded API call: {CALL_TYPE_NAMES.get(call_type)} (status {status_code})")
     
@@ -274,10 +300,7 @@ class APICallTracker:
                 removed += 1
         
         if removed > 0:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                _io_executor, self._save_history_sync, dict(self._call_history)
-            )
+            await self._save_history_async(dict(self._call_history))
             _LOGGER.info(f"Cleaned up {removed} days of old API call records")
     
     def cleanup_old_records(self):
@@ -294,13 +317,7 @@ class APICallTracker:
                 del self._call_history[date_key]
             
             if dates_to_remove:
-                try:
-                    loop = asyncio.get_running_loop()
-                    loop.run_in_executor(
-                        _io_executor, self._save_history_sync, dict(self._call_history)
-                    )
-                except RuntimeError:
-                    self._save_history_sync(dict(self._call_history))
+                self._save_history_sync(dict(self._call_history))
                 _LOGGER.info(f"Cleaned up {len(dates_to_remove)} days of old API call records")
     
     def get_daily_usage(self, date) -> Dict:
@@ -419,12 +436,9 @@ class APICallTracker:
 
 
 def cleanup_executor():
-    """Shutdown the I/O executor to prevent thread leaks on integration reload.
+    """Cleanup function for backward compatibility.
     
+    v1.11.0: No longer uses ThreadPoolExecutor, but kept for API compatibility.
     MUST be called in async_unload_entry() to properly cleanup resources.
     """
-    global _io_executor
-    if _io_executor is not None:
-        _io_executor.shutdown(wait=False)
-        _io_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tado_ce_io")
-        _LOGGER.debug("API call tracker executor reset")
+    _LOGGER.debug("API call tracker cleanup (no executor to reset in v1.11.0)")

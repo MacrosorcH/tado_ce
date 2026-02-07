@@ -6,12 +6,12 @@ Handles migration from old formats automatically.
 import asyncio
 import json
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, Any
 
 import aiofiles
+import aiofiles.os
 
 from .heating_cycle_models import HeatingCycle, TemperatureReading
 
@@ -286,8 +286,7 @@ class ThermalStorage:
         if self._storage_path.exists():
             backup_path = self._storage_path.with_suffix(".corrupted")
             try:
-                await asyncio.to_thread(
-                    os.rename,
+                await aiofiles.os.rename(
                     str(self._storage_path),
                     str(backup_path)
                 )
@@ -312,7 +311,7 @@ class ThermalStorage:
                 await f.write(json.dumps(self._data, indent=2))
             
             # Atomic move
-            await asyncio.to_thread(os.replace, str(temp_path), str(self._storage_path))
+            await aiofiles.os.replace(str(temp_path), str(self._storage_path))
             
             self._dirty = False
             self._last_save_time = datetime.now(timezone.utc)

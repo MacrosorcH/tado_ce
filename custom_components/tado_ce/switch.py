@@ -142,10 +142,9 @@ class TadoAwayModeSwitch(SwitchEntity):
         try:
             # Try to read from home state file first (most reliable)
             try:
-                import os
-                state_file = os.path.join(os.path.dirname(MOBILE_DEVICES_FILE), 'home_state.json')
-                with open(state_file) as f:
-                    home_state = json.load(f)
+                from .data_loader import load_home_state_file, load_mobile_devices_file
+                home_state = load_home_state_file()
+                if home_state:
                     presence = home_state.get('presence', 'HOME')
                     self._presence_locked = home_state.get('presenceLocked', False)
                     # Away mode is ON when presence is AWAY
@@ -156,10 +155,11 @@ class TadoAwayModeSwitch(SwitchEntity):
                 _LOGGER.debug(f"Could not read home_state.json, trying mobile_devices: {e}")
             
             # Fallback: check mobile devices location (if geo tracking enabled)
-            with open(MOBILE_DEVICES_FILE) as f:
-                mobile_devices = json.load(f)
-                
-            # Check if any device is at home
+            from .data_loader import load_mobile_devices_file
+            mobile_devices = load_mobile_devices_file()
+            
+            if mobile_devices:
+                # Check if any device is at home
                 any_at_home = False
                 for device in mobile_devices:
                     location = device.get('location') or {}
@@ -170,6 +170,9 @@ class TadoAwayModeSwitch(SwitchEntity):
                 # Away mode is ON when no one is home
                 self._attr_is_on = not any_at_home
                 self._attr_available = True
+            else:
+                # No mobile devices data, keep last known state
+                pass
                 
         except Exception as e:
             _LOGGER.warning(f"Failed to update away mode: {e}")
@@ -492,9 +495,11 @@ class TadoChildLockSwitch(SwitchEntity):
             self._optimistic_set_at = None
         
         try:
-            with open(ZONES_INFO_FILE) as f:
-                zones_info = json.load(f)
-                
+            # Use data_loader for per-home file support
+            from .data_loader import load_zones_info_file
+            zones_info = load_zones_info_file()
+            
+            if zones_info:
                 for zone in zones_info:
                     for device in zone.get('devices', []):
                         if device.get('shortSerialNo') == self._serial:

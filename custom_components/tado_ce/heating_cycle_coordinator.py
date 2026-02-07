@@ -11,6 +11,7 @@ from .heating_cycle_detector import HeatingCycleDetector
 from .heating_cycle_models import HeatingCycle, HeatingCycleConfig
 from .heating_cycle_storage import HeatingCycleStorage
 from .heating_cycle_analyzer import HeatingCycleAnalyzer
+from .second_order_analyzer import SecondOrderAnalyzer
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class HeatingCycleCoordinator(DataUpdateCoordinator):
         self._config = config
         self._storage = HeatingCycleStorage(hass, home_id)
         self._analyzer = HeatingCycleAnalyzer(config.min_cycles)
+        self._second_order = SecondOrderAnalyzer(config.min_cycles)
         self._detectors: dict[str, HeatingCycleDetector] = {}
         self._zone_data: dict[str, dict] = {}
         self._lock = asyncio.Lock()
@@ -69,6 +71,13 @@ class HeatingCycleCoordinator(DataUpdateCoordinator):
                 zone_id,
                 cycle.start_time.isoformat()
             )
+        
+        # Load historical data for all zones with completed cycles
+        all_zone_ids = await self._storage.get_all_zone_ids()
+        _LOGGER.info("HeatingCycleCoordinator: Loading historical data for %d zones", len(all_zone_ids))
+        
+        for zone_id in all_zone_ids:
+            await self._async_update_zone_data(zone_id)
         
         _LOGGER.info("HeatingCycleCoordinator: async_setup complete")
     
@@ -144,16 +153,27 @@ class HeatingCycleCoordinator(DataUpdateCoordinator):
         # Get completed cycles within rolling window
         cycles = await self._storage.get_cycles(zone_id, self._config.rolling_window_days)
         
-        # Analyze cycles
+        # Analyze cycles (first-order)
         metrics = self._analyzer.analyze_cycles(cycles)
         
+        # Second-order analysis
+        acceleration = self._second_order.calculate_acceleration(cycles)
+        approach_factor = self._second_order.calculate_approach_factor(cycles)
+        
         if metrics:
-            self._zone_data[zone_id] = metrics
+            self._zone_data[zone_id] = {
+                **metrics,
+                "acceleration": acceleration,
+                "approach_factor": approach_factor,
+            }
             _LOGGER.debug(
-                "Zone %s: Updated metrics - inertia=%.1f min, rate=%.3f °C/min, confidence=%.2f",
+                "Zone %s: Updated metrics - inertia=%.1f min, rate=%.3f °C/min, "
+                "accel=%s °C/h², approach=%s%%, confidence=%.2f",
                 zone_id,
                 metrics["inertia_time"],
                 metrics["heating_rate"],
+                acceleration,
+                approach_factor,
                 metrics["confidence_score"]
             )
         else:
@@ -164,6 +184,8 @@ class HeatingCycleCoordinator(DataUpdateCoordinator):
                 "confidence_score": 0.0,
                 "cycle_count": len(cycles),
                 "completed_count": len(cycles),
+                "acceleration": None,
+                "approach_factor": None,
             }
             _LOGGER.debug(
                 "Zone %s: Insufficient data for analysis (%d cycles)",

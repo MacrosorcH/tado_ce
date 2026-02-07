@@ -174,8 +174,8 @@
               "mold_risk_window_type": "Window type for mold risk surface temperature calculation. Used with outdoor temperature to estimate cold spot temperature at window edges."
             }
           },
-          "heating_cycle_settings": {
-            "name": "Heating Cycle Analytics",
+          "thermal_analytics_settings": {
+            "name": "Thermal Analytics",
             "data": {
               "heating_cycle_history_days": "Cycle History (days)",
               "heating_cycle_min_cycles": "Minimum Cycles for Analysis",

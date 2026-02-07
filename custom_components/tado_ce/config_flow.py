@@ -34,7 +34,7 @@ _LOGGER = logging.getLogger(__name__)
 class TadoCEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Tado CE."""
 
-    VERSION = 8
+    VERSION = 10
 
     def __init__(self):
         """Initialize the config flow."""
@@ -431,12 +431,12 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                     if key in smart_comfort:
                         processed_input[key] = smart_comfort[key]
             
-            # Flatten heating_cycle_settings section (v1.12.0)
-            if 'heating_cycle_settings' in user_input:
-                heating_cycle = user_input['heating_cycle_settings']
+            # Flatten thermal_analytics_settings section (v1.11.0, renamed from heating_cycle_settings)
+            if 'thermal_analytics_settings' in user_input:
+                thermal_analytics = user_input['thermal_analytics_settings']
                 for key in ['heating_cycle_history_days', 'heating_cycle_min_cycles', 'heating_cycle_inertia_threshold']:
-                    if key in heating_cycle:
-                        processed_input[key] = heating_cycle[key]
+                    if key in thermal_analytics:
+                        processed_input[key] = thermal_analytics[key]
             
             # Handle custom day interval
             day_interval_str = processed_input.get('custom_day_interval', '')
@@ -547,8 +547,8 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                     {"collapsed": True},
                 ),
                 
-                # === Heating Cycle Settings (v1.12.0, collapsed) ===
-                vol.Required("heating_cycle_settings"): data_entry_flow.section(
+                # === Thermal Analytics Settings (v1.11.0, renamed from heating_cycle_settings) ===
+                vol.Required("thermal_analytics_settings"): data_entry_flow.section(
                     vol.Schema({
                         vol.Optional('heating_cycle_history_days', default=options.get('heating_cycle_history_days', 7)): NumberSelector(
                             NumberSelectorConfig(min=1, max=30, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="d")

@@ -77,11 +77,8 @@ class ImmediateRefreshHandler:
             Dictionary with rate limit info, or empty dict if unavailable
         """
         try:
-            if RATELIMIT_FILE.exists():
-                def read_file():
-                    with open(RATELIMIT_FILE, 'r') as f:
-                        return json.load(f)
-                return await self.hass.async_add_executor_job(read_file)
+            from .data_loader import load_ratelimit_file
+            return await self.hass.async_add_executor_job(load_ratelimit_file) or {}
         except Exception as e:
             _LOGGER.debug(f"Failed to read rate limit file: {e}")
         return {}
@@ -281,6 +278,8 @@ class ImmediateRefreshHandler:
         Weather and home state are not needed for immediate entity refresh.
         """
         from .async_api import get_async_client
+        from .data_loader import get_current_home_id
+        from .const import get_data_file
         import tempfile
         import shutil
         
@@ -288,6 +287,10 @@ class ImmediateRefreshHandler:
         zones_data = await client.api_call("zoneStates")
         
         if zones_data:
+            # Get per-home file path
+            home_id = get_current_home_id()
+            zones_file = get_data_file("zones", home_id)
+            
             # Save to zones.json using atomic write
             def write_file():
                 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -297,7 +300,7 @@ class ImmediateRefreshHandler:
                 ) as tmp:
                     json.dump(zones_data, tmp, indent=2)
                     temp_path = tmp.name
-                shutil.move(temp_path, ZONES_FILE)
+                shutil.move(temp_path, zones_file)
             await self.hass.async_add_executor_job(write_file)
             _LOGGER.debug(f"Zone states refreshed ({len(zones_data.get('zoneStates', {}))} zones)")
             

@@ -5,20 +5,24 @@ replacing the blocking urllib-based calls for better Home Assistant integration.
 
 v1.6.0: Added async_sync() to replace subprocess-based tado_api.py sync.
 v1.6.2: Added API call tracking (was missing from v1.6.0 migration).
+v1.11.0: Refactored to use aiofiles for native async file I/O.
 """
+import asyncio
 import json
 import logging
+import os
+import shutil
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, Any
 
 import aiohttp
-import asyncio
+import aiofiles
+import aiofiles.os
 
 from .const import (
-    DOMAIN, DATA_DIR, CONFIG_FILE, ZONES_FILE, ZONES_INFO_FILE,
-    RATELIMIT_FILE, WEATHER_FILE, MOBILE_DEVICES_FILE, HOME_STATE_FILE,
-    OFFSETS_FILE, AC_CAPABILITIES_FILE, TADO_API_BASE, TADO_AUTH_URL, 
+    DOMAIN, DATA_DIR, CONFIG_FILE, TADO_API_BASE, TADO_AUTH_URL, 
     CLIENT_ID, API_ENDPOINT_DEVICES
 )
 from .api_call_tracker import (
@@ -67,7 +71,12 @@ def _get_tracker() -> Optional[APICallTracker]:
             retention_days = config_manager.get_api_history_retention_days()
         except (ImportError, AttributeError, TypeError):
             retention_days = 14
-        _tracker = APICallTracker(DATA_DIR, retention_days=retention_days)
+        
+        # Get home_id for per-home file path
+        from .data_loader import get_current_home_id
+        home_id = get_current_home_id()
+        
+        _tracker = APICallTracker(DATA_DIR, retention_days=retention_days, home_id=home_id)
     return _tracker
 
 async def _get_tracker_async() -> Optional[APICallTracker]:
@@ -117,42 +126,67 @@ class TadoAsyncClient:
         self._token_expiry: Optional[datetime] = None
         self._refresh_lock = asyncio.Lock()
         self._rate_limit: dict = {}
+        self._home_id: Optional[str] = None  # Cached home_id for per-home files
+    
+    def _get_data_file(self, base_name: str) -> Path:
+        """Get per-home data file path.
+        
+        Uses home_id suffix for multi-home support.
+        Falls back to legacy path if home_id not available.
+        
+        Args:
+            base_name: Base filename without extension (e.g., "zones", "weather")
+            
+        Returns:
+            Path to the data file
+        """
+        from .const import get_data_file
+        if self._home_id:
+            return get_data_file(base_name, self._home_id)
+        return get_data_file(base_name)
+    
+    async def _ensure_home_id(self) -> Optional[str]:
+        """Ensure home_id is loaded and cached."""
+        if self._home_id is None:
+            config = await self._load_config()
+            self._home_id = config.get("home_id")
+        return self._home_id
     
     async def _load_config(self) -> dict:
-        """Load config from file."""
+        """Load config from file using native async I/O.
+        
+        Note: config.json stays as legacy format (no home_id suffix)
+        because it's the bootstrap file needed before we know home_id.
+        """
         try:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, self._load_config_sync)
+            if not await aiofiles.os.path.exists(CONFIG_FILE):
+                return {"home_id": None, "refresh_token": None}
+            async with aiofiles.open(CONFIG_FILE, 'r') as f:
+                content = await f.read()
+                config = json.loads(content)
+                # Cache home_id when loading config
+                if config.get("home_id"):
+                    self._home_id = config["home_id"]
+                return config
         except Exception as e:
             _LOGGER.error(f"Failed to load config: {e}")
             return {"home_id": None, "refresh_token": None}
     
-    def _load_config_sync(self) -> dict:
-        """Load config synchronously (for executor)."""
-        if not CONFIG_FILE.exists():
-            return {"home_id": None, "refresh_token": None}
-        with open(CONFIG_FILE) as f:
-            return json.load(f)
-    
     async def _save_config(self, config: dict):
-        """Save config to file atomically."""
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self._save_config_sync, config)
-    
-    def _save_config_sync(self, config: dict):
-        """Save config synchronously (for executor)."""
-        import tempfile
-        import shutil
-        
-        CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        
-        with tempfile.NamedTemporaryFile(
-            mode='w', dir=CONFIG_FILE.parent, delete=False, suffix='.tmp'
-        ) as tmp:
-            json.dump(config, tmp, indent=2)
-            temp_path = tmp.name
-        
-        shutil.move(temp_path, CONFIG_FILE)
+        """Save config to file atomically using native async I/O."""
+        try:
+            # Ensure directory exists
+            await aiofiles.os.makedirs(CONFIG_FILE.parent, exist_ok=True)
+            
+            # Write to temp file then atomic rename
+            temp_path = CONFIG_FILE.with_suffix('.tmp')
+            async with aiofiles.open(temp_path, 'w') as f:
+                await f.write(json.dumps(config, indent=2))
+            
+            # Atomic move
+            await aiofiles.os.replace(temp_path, CONFIG_FILE)
+        except Exception as e:
+            _LOGGER.error(f"Failed to save config: {e}")
     
     def _parse_ratelimit_headers(self, headers: dict):
         """Parse Tado rate limit headers.
@@ -205,14 +239,17 @@ class TadoAsyncClient:
         
         _LOGGER.debug(f"Parsed rate limit: {self._rate_limit}")
     
-    def _load_ratelimit_sync(self) -> dict:
-        """Load rate limit file synchronously (for executor)."""
+    async def _load_ratelimit(self) -> dict:
+        """Load rate limit file using native async I/O."""
         try:
-            if RATELIMIT_FILE.exists():
-                with open(RATELIMIT_FILE) as f:
-                    return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
-            pass
+            await self._ensure_home_id()
+            ratelimit_path = self._get_data_file("ratelimit")
+            if await aiofiles.os.path.exists(ratelimit_path):
+                async with aiofiles.open(ratelimit_path, 'r') as f:
+                    content = await f.read()
+                    return json.loads(content)
+        except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
+            _LOGGER.debug(f"Could not load ratelimit file: {e}")
         return {}
     
     async def save_ratelimit(self, status: str = "ok"):
@@ -228,9 +265,8 @@ class TadoAsyncClient:
         """
         now_utc = datetime.now(timezone.utc)
         
-        # Load previous rate limit data to detect reset (async to avoid blocking)
-        loop = asyncio.get_event_loop()
-        prev_data = await loop.run_in_executor(None, self._load_ratelimit_sync)
+        # Load previous rate limit data to detect reset (native async)
+        prev_data = await self._load_ratelimit()
         
         # Use values from parsed headers, with sensible defaults
         limit = self._rate_limit.get("limit", 5000)
@@ -409,26 +445,25 @@ class TadoAsyncClient:
         }
         
         try:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, self._save_ratelimit_sync, data)
+            await self._save_ratelimit(data)
             _LOGGER.debug(f"Rate limit saved: {used}/{limit} ({percentage_used}%)")
         except Exception as e:
             _LOGGER.debug(f"Failed to save rate limit: {e}")
     
-    def _save_ratelimit_sync(self, data: dict):
-        """Save rate limit synchronously (for executor)."""
-        import tempfile
-        import shutil
+    async def _save_ratelimit(self, data: dict):
+        """Save rate limit using native async I/O with atomic write."""
+        ratelimit_path = self._get_data_file("ratelimit")
         
-        RATELIMIT_FILE.parent.mkdir(parents=True, exist_ok=True)
+        # Ensure directory exists
+        await aiofiles.os.makedirs(ratelimit_path.parent, exist_ok=True)
         
-        with tempfile.NamedTemporaryFile(
-            mode='w', dir=RATELIMIT_FILE.parent, delete=False, suffix='.tmp'
-        ) as tmp:
-            json.dump(data, tmp, indent=2)
-            temp_path = tmp.name
+        # Write to temp file then atomic rename
+        temp_path = ratelimit_path.with_suffix('.tmp')
+        async with aiofiles.open(temp_path, 'w') as f:
+            await f.write(json.dumps(data, indent=2))
         
-        shutil.move(temp_path, RATELIMIT_FILE)
+        # Atomic move
+        await aiofiles.os.replace(temp_path, ratelimit_path)
     
     async def get_access_token(self) -> Optional[str]:
         """Get valid access token with automatic refresh.
@@ -862,6 +897,9 @@ class TadoAsyncClient:
         sync_type = "quick" if quick else "full"
         _LOGGER.info(f"Tado CE async sync starting ({sync_type})")
         
+        # Ensure home_id is loaded for per-home file paths
+        await self._ensure_home_id()
+        
         try:
             # Always fetch zone states (most important)
             zones_data = await self.api_call("zoneStates")
@@ -870,7 +908,7 @@ class TadoAsyncClient:
                 await self.save_ratelimit("error")
                 return False
             
-            await self._save_json_file(ZONES_FILE, zones_data)
+            await self._save_json_file(self._get_data_file("zones"), zones_data)
             zone_count = len((zones_data.get('zoneStates') or {}).keys())
             _LOGGER.debug(f"Zone states saved ({zone_count} zones)")
             
@@ -878,21 +916,21 @@ class TadoAsyncClient:
             if weather_enabled:
                 weather_data = await self.api_call("weather")
                 if weather_data:
-                    await self._save_json_file(WEATHER_FILE, weather_data)
+                    await self._save_json_file(self._get_data_file("weather"), weather_data)
                     _LOGGER.debug("Weather data saved")
             
             # Fetch home state if enabled (needed for away mode)
             if home_state_sync_enabled:
                 home_state = await self.api_call("state")
                 if home_state:
-                    await self._save_json_file(HOME_STATE_FILE, home_state)
+                    await self._save_json_file(self._get_data_file("home_state"), home_state)
                     _LOGGER.debug(f"Home state saved (presence: {home_state.get('presence')})")
             
             # Fetch mobile devices on quick sync if frequent sync enabled
             if quick and mobile_devices_enabled and mobile_devices_frequent_sync:
                 mobile_data = await self.api_call("mobileDevices")
                 if mobile_data:
-                    await self._save_json_file(MOBILE_DEVICES_FILE, mobile_data)
+                    await self._save_json_file(self._get_data_file("mobile_devices"), mobile_data)
                     _LOGGER.debug(f"Mobile devices saved (frequent sync, {len(mobile_data)} devices)")
             
             # Full sync: also fetch zone info, mobile devices, offsets, AC caps
@@ -900,14 +938,14 @@ class TadoAsyncClient:
                 # Fetch zone info
                 zones_info = await self.api_call("zones")
                 if zones_info:
-                    await self._save_json_file(ZONES_INFO_FILE, zones_info)
+                    await self._save_json_file(self._get_data_file("zones_info"), zones_info)
                     _LOGGER.debug(f"Zone info saved ({len(zones_info)} zones)")
                     
                     # Fetch mobile devices if enabled
                     if mobile_devices_enabled:
                         mobile_data = await self.api_call("mobileDevices")
                         if mobile_data:
-                            await self._save_json_file(MOBILE_DEVICES_FILE, mobile_data)
+                            await self._save_json_file(self._get_data_file("mobile_devices"), mobile_data)
                             _LOGGER.debug(f"Mobile devices saved ({len(mobile_data)} devices)")
                     
                     # Fetch temperature offsets if enabled
@@ -934,34 +972,28 @@ class TadoAsyncClient:
             return False
     
     async def _save_json_file(self, file_path: Path, data: Any):
-        """Save data to JSON file atomically.
+        """Save data to JSON file atomically using native async I/O.
         
         Args:
             file_path: Path to save to.
             data: Data to serialize as JSON.
         """
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self._save_json_file_sync, file_path, data)
+        # Ensure directory exists
+        await aiofiles.os.makedirs(file_path.parent, exist_ok=True)
+        
+        # Write to temp file then atomic rename
+        temp_path = file_path.with_suffix('.tmp')
+        async with aiofiles.open(temp_path, 'w') as f:
+            await f.write(json.dumps(data, indent=2))
+        
+        # Atomic move
+        await aiofiles.os.replace(temp_path, file_path)
     
-    def _save_json_file_sync(self, file_path: Path, data: Any):
-        """Save JSON file synchronously (for executor)."""
-        import tempfile
-        import shutil
-        
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        with tempfile.NamedTemporaryFile(
-            mode='w', dir=file_path.parent, delete=False, suffix='.tmp'
-        ) as tmp:
-            json.dump(data, tmp, indent=2)
-            temp_path = tmp.name
-        
-        shutil.move(temp_path, file_path)
-    
-    def _load_json_file_sync(self, file_path: Path) -> Any:
-        """Load JSON file synchronously (for executor)."""
-        with open(file_path) as f:
-            return json.load(f)
+    async def _load_json_file(self, file_path: Path) -> Any:
+        """Load JSON file using native async I/O."""
+        async with aiofiles.open(file_path, 'r') as f:
+            content = await f.read()
+            return json.loads(content)
     
     async def _sync_offsets(self, zones_info: list):
         """Sync temperature offsets for all devices.
@@ -993,7 +1025,7 @@ class TadoAsyncClient:
                         _LOGGER.warning(f"Failed to fetch offset for device {serial}: {e}")
         
         if offsets:
-            await self._save_json_file(OFFSETS_FILE, offsets)
+            await self._save_json_file(self._get_data_file("offsets"), offsets)
             _LOGGER.debug(f"Offsets saved ({len(offsets)} zones)")
     
     async def _sync_ac_capabilities(self, zones_info: list):
@@ -1006,17 +1038,15 @@ class TadoAsyncClient:
             zones_info: List of zone info dicts from API.
         """
         # Check if cache already exists - AC capabilities don't change
-        if AC_CAPABILITIES_FILE.exists():
-            try:
-                loop = asyncio.get_event_loop()
-                existing = await loop.run_in_executor(
-                    None, self._load_json_file_sync, AC_CAPABILITIES_FILE
-                )
+        ac_caps_path = self._get_data_file("ac_capabilities")
+        try:
+            if await aiofiles.os.path.exists(ac_caps_path):
+                existing = await self._load_json_file(ac_caps_path)
                 if existing:
                     _LOGGER.debug(f"AC capabilities loaded from cache ({len(existing)} zones)")
                     return
-            except Exception as e:
-                _LOGGER.debug(f"AC capabilities cache corrupted, fetching fresh: {e}")
+        except Exception as e:
+            _LOGGER.debug(f"AC capabilities cache corrupted, fetching fresh: {e}")
         
         ac_capabilities = {}
         
@@ -1038,7 +1068,7 @@ class TadoAsyncClient:
                 _LOGGER.warning(f"Failed to fetch AC capabilities for zone {zone_id}: {e}")
         
         if ac_capabilities:
-            await self._save_json_file(AC_CAPABILITIES_FILE, ac_capabilities)
+            await self._save_json_file(self._get_data_file("ac_capabilities"), ac_capabilities)
             _LOGGER.debug(f"AC capabilities saved ({len(ac_capabilities)} zones)")
 
     async def add_meter_reading(self, reading: int, date: str = None) -> bool:

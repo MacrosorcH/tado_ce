@@ -91,9 +91,10 @@ class TadoDeviceTracker(TrackerEntity):
     def update(self):
         """Update device tracker state from JSON file."""
         try:
-            with open(MOBILE_DEVICES_FILE) as f:
-                devices = json.load(f)
-                
+            # Use data_loader for per-home file support
+            devices = load_mobile_devices_file()
+            
+            if devices:
                 for device in devices:
                     if device.get('id') == self._device_id:
                         self._device_data = device

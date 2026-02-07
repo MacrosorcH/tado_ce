@@ -56,11 +56,22 @@ def _get_file_path(base_name: str) -> Path:
     """Get file path with home_id support and fallback.
     
     Tries per-home file first, falls back to legacy file.
+    Also auto-detects per-home files if _current_home_id not set yet.
     """
+    # If home_id is set, use it directly
     if _current_home_id:
         per_home_path = get_data_file(base_name, _current_home_id)
         if per_home_path.exists():
             return per_home_path
+    
+    # Auto-detect per-home files (for when home_id not set yet)
+    # Look for files matching pattern: {base_name}_*.json
+    import glob
+    pattern = str(DATA_DIR / f"{base_name}_*.json")
+    matches = glob.glob(pattern)
+    if matches:
+        # Return first match (should only be one per-home file)
+        return Path(matches[0])
     
     # Fallback to legacy path
     return get_legacy_file(base_name)

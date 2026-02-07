@@ -2,9 +2,11 @@
 
 Analyzes heating acceleration and approach behavior for improved preheat estimation.
 """
+from __future__ import annotations
+
 import logging
 from datetime import timedelta
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, List, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .heating_cycle_models import HeatingCycle, TemperatureReading
@@ -34,7 +36,7 @@ class SecondOrderAnalyzer:
     
     def calculate_acceleration(
         self,
-        cycles: list[HeatingCycle]
+        cycles: List["HeatingCycle"]
     ) -> Optional[float]:
         """Calculate average heating acceleration.
         
@@ -74,7 +76,7 @@ class SecondOrderAnalyzer:
     
     def _calculate_cycle_acceleration(
         self,
-        cycle: HeatingCycle
+        cycle: "HeatingCycle"
     ) -> Optional[float]:
         """Calculate acceleration for a single cycle.
         
@@ -133,7 +135,7 @@ class SecondOrderAnalyzer:
     
     def _calculate_rate_from_readings(
         self,
-        readings: list[TemperatureReading]
+        readings: List["TemperatureReading"]
     ) -> Optional[float]:
         """Calculate heating rate from a list of readings.
         
@@ -165,7 +167,7 @@ class SecondOrderAnalyzer:
     
     def calculate_approach_factor(
         self,
-        cycles: list[HeatingCycle]
+        cycles: List["HeatingCycle"]
     ) -> Optional[float]:
         """Calculate approach deceleration factor.
         
@@ -208,7 +210,7 @@ class SecondOrderAnalyzer:
     
     def _calculate_cycle_approach_factor(
         self,
-        cycle: HeatingCycle
+        cycle: "HeatingCycle"
     ) -> Optional[float]:
         """Calculate approach factor for a single cycle.
         
@@ -256,10 +258,10 @@ class SecondOrderAnalyzer:
     
     def _get_readings_near_temp(
         self,
-        readings: list[TemperatureReading],
+        readings: List["TemperatureReading"],
         target_temp: float,
         tolerance: float = 0.3
-    ) -> list[TemperatureReading]:
+    ) -> List["TemperatureReading"]:
         """Get readings near a target temperature."""
         return [
             r for r in readings

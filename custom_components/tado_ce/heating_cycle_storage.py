@@ -2,11 +2,11 @@
 import asyncio
 import json
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import aiofiles
+import aiofiles.os
 
 from .heating_cycle_models import HeatingCycle
 
@@ -29,7 +29,8 @@ class HeatingCycleStorage:
         """Load cycle data from disk with migration support."""
         try:
             # Try new path first (with home_id)
-            if os.path.exists(self._storage_path):
+            path_exists = await aiofiles.os.path.exists(self._storage_path)
+            if path_exists:
                 async with aiofiles.open(self._storage_path, 'r') as f:
                     content = await f.read()
                     loaded_data = json.loads(content)
@@ -44,7 +45,8 @@ class HeatingCycleStorage:
                 legacy_path = self._hass.config.path(
                     ".storage/tado_ce/heating_cycle_history.json"
                 )
-                if os.path.exists(legacy_path):
+                legacy_exists = await aiofiles.os.path.exists(legacy_path)
+                if legacy_exists:
                     _LOGGER.info(
                         "Migrating heating cycle history from legacy path: %s",
                         legacy_path
@@ -67,7 +69,7 @@ class HeatingCycleStorage:
             # Rename corrupted file
             corrupted_path = f"{self._storage_path}.corrupted"
             try:
-                await asyncio.to_thread(os.rename, self._storage_path, corrupted_path)
+                await aiofiles.os.rename(self._storage_path, corrupted_path)
                 _LOGGER.info("Renamed corrupted file to %s", corrupted_path)
             except FileNotFoundError:
                 pass
@@ -155,6 +157,10 @@ class HeatingCycleStorage:
         
         return active
     
+    async def get_all_zone_ids(self) -> list[str]:
+        """Get all zone IDs with stored cycle data."""
+        return list(self._data["zones"].keys())
+    
     async def _cleanup_old_cycles(self, zone_id: str) -> None:
         """Remove cycles older than 2x rolling window."""
         cutoff = datetime.now(timezone.utc) - timedelta(days=14)  # 2x default window
@@ -177,9 +183,12 @@ class HeatingCycleStorage:
     
     async def _save_to_disk(self) -> None:
         """Save cycle data to disk with atomic write."""
+        import os
         try:
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(self._storage_path), exist_ok=True)
+            # Ensure directory exists (async)
+            await aiofiles.os.makedirs(
+                os.path.dirname(self._storage_path), exist_ok=True
+            )
             
             # Write to temp file
             temp_path = f"{self._storage_path}.tmp"
@@ -187,7 +196,7 @@ class HeatingCycleStorage:
                 await f.write(json.dumps(self._data, indent=2))
             
             # Atomic move
-            await asyncio.to_thread(os.replace, temp_path, self._storage_path)
+            await aiofiles.os.replace(temp_path, self._storage_path)
             
             _LOGGER.debug("Saved heating cycle history to %s", self._storage_path)
         except Exception as e:

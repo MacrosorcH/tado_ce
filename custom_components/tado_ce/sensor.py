@@ -1,7 +1,10 @@
 """Tado CE Sensors."""
+from __future__ import annotations
+
 import json
 import logging
 from datetime import timedelta
+from typing import Optional
 
 from homeassistant.components.sensor import (
     SensorEntity,
@@ -145,31 +148,28 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                         TadoMoldRiskSensor(zone_id, zone_name, zone_type),
                         TadoComfortLevelSensor(zone_id, zone_name, zone_type),
                     ])
-                    # v1.11.0: Heating Cycle Analysis sensors (always enabled for HEATING zones)
+                    # v1.11.0: Thermal Analytics sensors (only for zones with TRV devices)
+                    # SU02 (Smart Thermostat) doesn't have TRV, so no thermal analytics
                     heating_cycle_coordinator = hass.data.get(DOMAIN, {}).get('heating_cycle_coordinator')
-                    if heating_cycle_coordinator:
+                    if heating_cycle_coordinator and zone_id in zones_with_trv:
                         sensors.extend([
-                            TadoInertiaTimeSensor(heating_cycle_coordinator, zone_id, zone_name, zone_type),
-                            TadoHeatingRateAnalysisSensor(heating_cycle_coordinator, zone_id, zone_name, zone_type),
-                            TadoPreheatEstimateSensor(heating_cycle_coordinator, zone_id, zone_name, zone_type),
-                            TadoConfidenceScoreSensor(heating_cycle_coordinator, zone_id, zone_name, zone_type),
+                            TadoThermalInertiaSensor(heating_cycle_coordinator, zone_id, zone_name, zone_type),
+                            TadoAvgHeatingRateSensor(heating_cycle_coordinator, zone_id, zone_name, zone_type),
+                            TadoPreheatTimeSensor(heating_cycle_coordinator, zone_id, zone_name, zone_type),
+                            TadoAnalysisConfidenceSensor(heating_cycle_coordinator, zone_id, zone_name, zone_type),
+                            TadoHeatingAccelerationSensor(heating_cycle_coordinator, zone_id, zone_name, zone_type),
+                            TadoApproachFactorSensor(heating_cycle_coordinator, zone_id, zone_name, zone_type),
                         ])
                     # v1.9.0: Smart Comfort sensors (opt-in)
+                    # v1.11.0: Removed TadoThermalRateSensor, TadoTimeToTargetSensor (replaced by heating cycle analysis)
                     if config_manager.get_smart_comfort_enabled():
-                        # Heating/Cooling Rate - useful for all zones with temperature sensor
                         sensors.extend([
-                            TadoHeatingRateSensor(zone_id, zone_name, zone_type),
-                            TadoCoolingRateSensor(zone_id, zone_name, zone_type),
-                            TadoHeatingEfficiencySensor(zone_id, zone_name, zone_type),
-                            TadoHistoricalTempSensor(zone_id, zone_name, zone_type),
+                            TadoHistoricalDeviationSensor(zone_id, zone_name, zone_type),
                             TadoNextScheduleTimeSensor(zone_id, zone_name, zone_type),
                             TadoNextScheduleTempSensor(zone_id, zone_name, zone_type),
                             TadoPreheatAdvisorSensor(zone_id, zone_name, zone_type),
                             TadoSmartComfortTargetSensor(zone_id, zone_name, zone_type),
                         ])
-                        # Time to Target - only for zones with TRV (heating control)
-                        if zone_id in zones_with_trv:
-                            sensors.append(TadoTimeToTargetSensor(zone_id, zone_name, zone_type))
                     
                 elif zone_type == 'AIR_CONDITIONING':
                     sensors.extend([
@@ -182,14 +182,11 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                         TadoMoldRiskSensor(zone_id, zone_name, zone_type),
                         TadoComfortLevelSensor(zone_id, zone_name, zone_type),
                     ])
-                    # v1.9.0: Smart Comfort sensors for AC (opt-in, always create for AC zones)
+                    # v1.9.0: Smart Comfort sensors for AC (opt-in)
+                    # v1.11.0: Removed TadoThermalRateSensor, TadoTimeToTargetSensor (replaced by heating cycle analysis)
                     if config_manager.get_smart_comfort_enabled():
                         sensors.extend([
-                            TadoHeatingRateSensor(zone_id, zone_name, zone_type),
-                            TadoCoolingRateSensor(zone_id, zone_name, zone_type),
-                            TadoTimeToTargetSensor(zone_id, zone_name, zone_type),
-                            TadoHeatingEfficiencySensor(zone_id, zone_name, zone_type),
-                            TadoHistoricalTempSensor(zone_id, zone_name, zone_type),
+                            TadoHistoricalDeviationSensor(zone_id, zone_name, zone_type),
                             TadoNextScheduleTimeSensor(zone_id, zone_name, zone_type),
                             TadoNextScheduleTempSensor(zone_id, zone_name, zone_type),
                             TadoPreheatAdvisorSensor(zone_id, zone_name, zone_type),
@@ -259,8 +256,10 @@ def _has_boiler_flow_temperature_data():
     Tado and the boiler will have this data.
     """
     try:
-        with open(ZONES_FILE) as f:
-            data = json.load(f)
+        # Use data_loader for per-home file support
+        data = load_zones_file()
+        if not data:
+            return False
         
         # Use 'or {}' pattern for null safety
         zone_states = data.get('zoneStates') or {}
@@ -293,10 +292,13 @@ class TadoHomeIdSensor(SensorEntity):
     
     def update(self):
         try:
-            with open(CONFIG_FILE) as f:
-                config = json.load(f)
+            # Use data_loader for per-home file support
+            config = load_config_file()
+            if config:
                 self._attr_native_value = config.get("home_id")
                 self._attr_available = self._attr_native_value is not None
+            else:
+                self._attr_available = False
         except Exception:
             self._attr_available = False
 
@@ -358,14 +360,17 @@ class TadoApiUsageSensor(SensorEntity):
     
     def update(self):
         try:
-            with open(RATELIMIT_FILE) as f:
-                self._data = json.load(f)
+            # Use data_loader for per-home file support
+            self._data = load_ratelimit_file()
+            if self._data:
                 used = self._data.get("used")
                 if used is not None:
                     self._attr_native_value = int(used)
                     self._attr_available = True
                 else:
                     self._attr_available = False
+            else:
+                self._attr_available = False
             
             # Load call history from tracker and convert to local timezone
             try:
@@ -382,7 +387,11 @@ class TadoApiUsageSensor(SensorEntity):
                 except (AttributeError, TypeError):
                     pass
                 
-                tracker = APICallTracker(DATA_DIR, retention_days=retention_days)
+                # Get home_id for per-home file path
+                from .data_loader import get_current_home_id
+                home_id = get_current_home_id()
+                
+                tracker = APICallTracker(DATA_DIR, retention_days=retention_days, home_id=home_id)
                 raw_history = tracker.get_recent_calls(limit=50)
                 
                 # Convert timestamps to local timezone for display
@@ -443,8 +452,11 @@ class TadoApiResetSensor(SensorEntity):
             from datetime import datetime, timezone, timedelta
             from homeassistant.util import dt as dt_util
             
-            with open(RATELIMIT_FILE) as f:
-                data = json.load(f)
+            # Use data_loader for per-home file support
+            data = load_ratelimit_file()
+            if not data:
+                self._attr_available = False
+                return
                 
             self._reset_human = data.get("reset_human")
             self._reset_seconds = data.get("reset_seconds")
@@ -546,19 +558,21 @@ class TadoApiLimitSensor(SensorEntity):
     
     def update(self):
         try:
-            with open(RATELIMIT_FILE) as f:
-                data = json.load(f)
+            # Use data_loader for per-home file support
+            data = load_ratelimit_file()
+            if data:
                 self._attr_native_value = data.get("limit")
                 self._attr_available = self._attr_native_value is not None
+            else:
+                self._attr_available = False
             
             # Load recent API calls from history (last 100 calls only to avoid DB size issues)
             try:
                 from datetime import datetime, timedelta
                 from homeassistant.util import dt as dt_util
                 
-                with open(API_CALL_HISTORY_FILE) as f:
-                    history = json.load(f)
-                    
+                history = load_api_call_history_file()
+                if history:
                     # Flatten all calls from all dates
                     all_calls = []
                     for date_key, calls in history.items():
@@ -627,9 +641,13 @@ class TadoApiStatusSensor(SensorEntity):
     
     def update(self):
         try:
-            with open(RATELIMIT_FILE) as f:
-                data = json.load(f)
+            # Use data_loader for per-home file support
+            data = load_ratelimit_file()
+            if data:
                 self._attr_native_value = data.get("status", "unknown")
+                self._attr_available = True
+            else:
+                self._attr_native_value = "unknown"
                 self._attr_available = True
         except Exception:
             self._attr_native_value = "error"
@@ -654,12 +672,16 @@ class TadoTokenStatusSensor(SensorEntity):
     
     def update(self):
         try:
-            with open(CONFIG_FILE) as f:
-                config = json.load(f)
+            # Use data_loader for per-home file support
+            config = load_config_file()
+            if config:
                 if config.get("refresh_token"):
                     self._attr_native_value = "valid"
                 else:
                     self._attr_native_value = "missing"
+                self._attr_available = True
+            else:
+                self._attr_native_value = "missing"
                 self._attr_available = True
         except Exception:
             self._attr_native_value = "error"
@@ -691,13 +713,16 @@ class TadoZoneCountSensor(SensorEntity):
     
     def update(self):
         try:
-            with open(ZONES_INFO_FILE) as f:
-                zones = json.load(f)
+            # Use data_loader for per-home file support
+            zones = load_zones_info_file()
+            if zones:
                 self._attr_native_value = len(zones)
                 self._heating_zones = len([z for z in zones if z.get('type') == 'HEATING'])
                 self._hot_water_zones = len([z for z in zones if z.get('type') == 'HOT_WATER'])
                 self._ac_zones = len([z for z in zones if z.get('type') == 'AIR_CONDITIONING'])
                 self._attr_available = True
+            else:
+                self._attr_available = False
         except Exception:
             self._attr_available = False
 
@@ -716,8 +741,9 @@ class TadoLastSyncSensor(SensorEntity):
     
     def update(self):
         try:
-            with open(RATELIMIT_FILE) as f:
-                data = json.load(f)
+            # Use data_loader for per-home file support
+            data = load_ratelimit_file()
+            if data:
                 last_updated = data.get("last_updated")
                 if last_updated:
                     from datetime import datetime, timezone
@@ -732,6 +758,8 @@ class TadoLastSyncSensor(SensorEntity):
                     self._attr_available = True
                 else:
                     self._attr_available = False
+            else:
+                self._attr_available = False
         except Exception:
             self._attr_available = False
 
@@ -756,13 +784,16 @@ class TadoOutsideTemperatureSensor(SensorEntity):
     
     def update(self):
         try:
-            with open(WEATHER_FILE) as f:
-                data = json.load(f)
+            # Use data_loader for per-home file support
+            data = load_weather_file()
+            if data:
                 # Use 'or {}' pattern for null safety
                 temp_data = data.get('outsideTemperature') or {}
                 self._attr_native_value = temp_data.get('celsius')
                 self._timestamp = temp_data.get('timestamp')
                 self._attr_available = self._attr_native_value is not None
+            else:
+                self._attr_available = False
         except Exception:
             self._attr_available = False
 
@@ -785,13 +816,16 @@ class TadoSolarIntensitySensor(SensorEntity):
     
     def update(self):
         try:
-            with open(WEATHER_FILE) as f:
-                data = json.load(f)
+            # Use data_loader for per-home file support
+            data = load_weather_file()
+            if data:
                 # Use 'or {}' pattern for null safety
                 solar_data = data.get('solarIntensity') or {}
                 self._attr_native_value = solar_data.get('percentage')
                 self._timestamp = solar_data.get('timestamp')
                 self._attr_available = self._attr_native_value is not None
+            else:
+                self._attr_available = False
         except Exception:
             self._attr_available = False
 
@@ -835,14 +869,17 @@ class TadoWeatherStateSensor(SensorEntity):
     
     def update(self):
         try:
-            with open(WEATHER_FILE) as f:
-                data = json.load(f)
+            # Use data_loader for per-home file support
+            data = load_weather_file()
+            if data:
                 # Use 'or {}' pattern for null safety
                 weather_data = data.get('weatherState') or {}
                 self._raw_state = weather_data.get('value')
                 self._timestamp = weather_data.get('timestamp')
                 self._attr_native_value = WEATHER_STATE_MAP.get(self._raw_state, self._raw_state)
                 self._attr_available = self._attr_native_value is not None
+            else:
+                self._attr_available = False
         except Exception:
             self._attr_available = False
 
@@ -889,11 +926,13 @@ class TadoBaseSensor(SensorEntity):
     def _get_zone_data(self):
         """Get zone data from file."""
         try:
-            with open(ZONES_FILE) as f:
-                data = json.load(f)
+            # Use data_loader for per-home file support
+            data = load_zones_file()
+            if data:
                 # Use 'or {}' pattern for null safety
                 zone_states = data.get('zoneStates') or {}
                 return zone_states.get(self._zone_id)
+            return None
         except Exception:
             return None
     
@@ -1037,8 +1076,11 @@ class TadoBoilerFlowTemperatureSensor(SensorEntity):
     def update(self):
         """Update boiler flow temperature from HEATING zones."""
         try:
-            with open(ZONES_FILE) as f:
-                data = json.load(f)
+            # Use data_loader for per-home file support
+            data = load_zones_file()
+            if not data:
+                self._attr_available = False
+                return
             
             # Look for boilerFlowTemperature in any zone
             # Use 'or {}' pattern for null safety
@@ -1190,8 +1232,9 @@ class TadoBatterySensor(SensorEntity):
     
     def update(self):
         try:
-            with open(ZONES_INFO_FILE) as f:
-                zones_info = json.load(f)
+            # Use data_loader for per-home file support
+            zones_info = load_zones_info_file()
+            if zones_info:
                 for zone in zones_info:
                     for device in zone.get('devices', []):
                         if device.get('shortSerialNo') == self._device_serial:
@@ -1251,8 +1294,9 @@ class TadoDeviceConnectionSensor(SensorEntity):
     
     def update(self):
         try:
-            with open(ZONES_INFO_FILE) as f:
-                zones_info = json.load(f)
+            # Use data_loader for per-home file support
+            zones_info = load_zones_info_file()
+            if zones_info:
                 for zone in zones_info:
                     for device in zone.get('devices', []):
                         if device.get('shortSerialNo') == self._device_serial:
@@ -1269,296 +1313,15 @@ class TadoDeviceConnectionSensor(SensorEntity):
 
 
 # ============ Smart Comfort Sensors (v1.9.0) ============
-
-class TadoHeatingRateSensor(TadoBaseSensor):
-    """Heating rate sensor - shows °C/hour when HVAC is active.
-    
-    For HEATING zones: Rate of temperature increase when heating.
-    For AC zones: Rate of temperature change when AC is running.
-    """
-    
-    def __init__(self, zone_id: str, zone_name: str, zone_type: str = "HEATING"):
-        super().__init__(zone_id, zone_name, zone_type)
-        self._attr_name = f"{zone_name} Heating Rate"
-        self._attr_unique_id = f"tado_ce_zone_{zone_id}_heating_rate"
-        self._attr_native_unit_of_measurement = "°C/h"
-        self._attr_icon = "mdi:thermometer-chevron-up"
-        self._attr_state_class = "measurement"
-        self._data_points = 0
-    
-    @property
-    def extra_state_attributes(self):
-        return {
-            "data_points": self._data_points,
-            "zone_type": self._zone_type,
-        }
-    
-    def update(self):
-        """Update heating rate from SmartComfortManager."""
-        try:
-            # v1.9.0: Use hass.data instead of global singleton for multi-home support
-            manager = self.hass.data.get(DOMAIN, {}).get('smart_comfort_manager') if self.hass else None
-            
-            if not manager or not manager.is_enabled:
-                self._attr_available = False
-                return
-            
-            rate = manager.get_heating_rate(self._zone_id)
-            if rate is not None:
-                self._attr_native_value = rate
-                self._attr_available = True
-                # Get data points count - show total readings used for rate calculation
-                zone = manager.get_zone(self._zone_id)
-                heating_readings = [r for r in zone.readings if r.is_heating]
-                # If no heating readings, we used ALL readings (Automation-controlled setup)
-                if len(heating_readings) == 0:
-                    self._data_points = len(zone.readings)
-                else:
-                    self._data_points = len(heating_readings)
-            else:
-                self._attr_native_value = None
-                self._attr_available = False
-                self._data_points = 0
-        except Exception as e:
-            _LOGGER.debug(f"Failed to update heating rate for zone {self._zone_id}: {e}")
-            self._attr_available = False
-
-
-class TadoCoolingRateSensor(TadoBaseSensor):
-    """Cooling rate sensor - shows °C/hour when HVAC is off.
-    
-    For HEATING zones: Rate of temperature decrease when heating is off (heat loss).
-    For AC zones: Rate of temperature change when AC is off.
-    """
-    
-    def __init__(self, zone_id: str, zone_name: str, zone_type: str = "HEATING"):
-        super().__init__(zone_id, zone_name, zone_type)
-        self._attr_name = f"{zone_name} Cooling Rate"
-        self._attr_unique_id = f"tado_ce_zone_{zone_id}_cooling_rate"
-        self._attr_native_unit_of_measurement = "°C/h"
-        self._attr_icon = "mdi:thermometer-chevron-down"
-        self._attr_state_class = "measurement"
-        self._data_points = 0
-    
-    @property
-    def extra_state_attributes(self):
-        return {
-            "data_points": self._data_points,
-            "zone_type": self._zone_type,
-        }
-    
-    def update(self):
-        """Update cooling rate from SmartComfortManager."""
-        try:
-            # v1.9.0: Use hass.data instead of global singleton for multi-home support
-            manager = self.hass.data.get(DOMAIN, {}).get('smart_comfort_manager') if self.hass else None
-            
-            if not manager or not manager.is_enabled:
-                self._attr_available = False
-                return
-            
-            rate = manager.get_cooling_rate(self._zone_id)
-            if rate is not None:
-                self._attr_native_value = rate
-                self._attr_available = True
-                # Get data points count
-                zone = manager.get_zone(self._zone_id)
-                cooling_readings = [r for r in zone.readings if not r.is_heating]
-                self._data_points = len(cooling_readings)
-            else:
-                self._attr_native_value = None
-                self._attr_available = False
-                self._data_points = 0
-        except Exception as e:
-            _LOGGER.debug(f"Failed to update cooling rate for zone {self._zone_id}: {e}")
-            self._attr_available = False
-
-
-class TadoHeatingEfficiencySensor(TadoBaseSensor):
-    """Heating efficiency sensor - compares current rate vs baseline.
-    
-    Shows percentage of baseline heating rate, helping identify:
-    - Slow heating (possible issues like open windows, poor insulation)
-    - Fast heating (external heat sources like sun, cooking)
-    
-    State: Percentage (100% = normal, <75% = slow, >125% = fast)
-    """
-    
-    # Thresholds for status determination
-    SLOW_THRESHOLD = 75   # Below 75% = slow
-    FAST_THRESHOLD = 125  # Above 125% = fast
-    
-    def __init__(self, zone_id: str, zone_name: str, zone_type: str = "HEATING"):
-        super().__init__(zone_id, zone_name, zone_type)
-        self._attr_name = f"{zone_name} Heating Efficiency"
-        self._attr_unique_id = f"tado_ce_zone_{zone_id}_heating_efficiency"
-        self._attr_native_unit_of_measurement = "%"
-        self._attr_icon = "mdi:gauge"
-        self._attr_state_class = "measurement"
-        
-        # Attributes
-        self._current_rate: float | None = None
-        self._baseline_rate: float | None = None
-        self._status: str = "unknown"
-    
-    @property
-    def extra_state_attributes(self):
-        return {
-            "current_rate": self._current_rate,
-            "baseline_rate": self._baseline_rate,
-            "status": self._status,
-            "zone_type": self._zone_type,
-        }
-    
-    @property
-    def icon(self):
-        """Dynamic icon based on status."""
-        if self._status == "slow":
-            return "mdi:gauge-low"
-        elif self._status == "fast":
-            return "mdi:gauge-full"
-        elif self._status == "normal":
-            return "mdi:gauge"
-        return "mdi:gauge-empty"
-    
-    def update(self):
-        """Update heating efficiency from SmartComfortManager."""
-        try:
-            manager = self.hass.data.get(DOMAIN, {}).get('smart_comfort_manager') if self.hass else None
-            
-            if not manager or not manager.is_enabled:
-                self._attr_available = False
-                return
-            
-            self._current_rate = manager.get_heating_rate(self._zone_id)
-            self._baseline_rate = manager.get_baseline_heating_rate(self._zone_id)
-            
-            # Need both rates to calculate efficiency
-            if self._current_rate is None or self._baseline_rate is None:
-                self._attr_native_value = None
-                self._attr_available = False
-                self._status = "unknown"
-                return
-            
-            # Avoid division by zero
-            if self._baseline_rate == 0:
-                # If baseline is 0 but current is positive, that's unusual
-                if self._current_rate > 0:
-                    self._attr_native_value = 999  # Cap at 999%
-                    self._status = "fast"
-                else:
-                    self._attr_native_value = 100  # Both zero = normal
-                    self._status = "normal"
-            else:
-                # Calculate efficiency percentage
-                efficiency = (self._current_rate / self._baseline_rate) * 100
-                self._attr_native_value = round(efficiency, 0)
-                
-                # Determine status
-                if efficiency < self.SLOW_THRESHOLD:
-                    self._status = "slow"
-                elif efficiency > self.FAST_THRESHOLD:
-                    self._status = "fast"
-                else:
-                    self._status = "normal"
-            
-            self._attr_available = True
-            
-        except Exception as e:
-            _LOGGER.debug(f"Failed to update heating efficiency for zone {self._zone_id}: {e}")
-            self._attr_available = False
-            self._status = "unknown"
-
-
-class TadoTimeToTargetSensor(TadoBaseSensor):
-    """Time to target sensor - estimated minutes to reach target temperature."""
-    
-    def __init__(self, zone_id: str, zone_name: str, zone_type: str = "HEATING"):
-        super().__init__(zone_id, zone_name, zone_type)
-        self._attr_name = f"{zone_name} Time to Target"
-        self._attr_unique_id = f"tado_ce_zone_{zone_id}_time_to_target"
-        self._attr_native_unit_of_measurement = "min"
-        self._attr_icon = "mdi:timer-outline"
-        self._current_temp = None
-        self._target_temp = None
-        self._outdoor_temp = None
-        self._weather_compensation = "none"
-    
-    @property
-    def extra_state_attributes(self):
-        return {
-            "current_temperature": self._current_temp,
-            "target_temperature": self._target_temp,
-            "outdoor_temperature": self._outdoor_temp,
-            "weather_compensation": self._weather_compensation,
-            "zone_type": self._zone_type,
-        }
-    
-    def update(self):
-        """Update time to target from SmartComfortManager."""
-        try:
-            # v1.9.0: Use hass.data instead of global singleton for multi-home support
-            manager = self.hass.data.get(DOMAIN, {}).get('smart_comfort_manager') if self.hass else None
-            
-            if not manager or not manager.is_enabled:
-                self._attr_available = False
-                return
-            
-            # Get weather compensation info
-            self._outdoor_temp = manager.get_outdoor_temperature()
-            self._weather_compensation = manager._weather_compensation
-            
-            # Get current and target temperature from zone data
-            zone_data = self._get_zone_data()
-            if not zone_data:
-                self._attr_available = False
-                return
-            
-            # Current temperature
-            sensor_data = zone_data.get('sensorDataPoints') or {}
-            self._current_temp = (sensor_data.get('insideTemperature') or {}).get('celsius')
-            
-            # Target temperature
-            setting = zone_data.get('setting') or {}
-            if setting.get('power') == 'ON':
-                self._target_temp = (setting.get('temperature') or {}).get('celsius')
-            else:
-                self._target_temp = None
-            
-            # Calculate time to target
-            if self._current_temp is not None and self._target_temp is not None:
-                # Use weather-compensated time if available
-                minutes = manager.get_compensated_time_to_target(
-                    self._zone_id,
-                    self._current_temp,
-                    self._target_temp,
-                    self._zone_type
-                )
-                # Fallback to non-compensated if compensation not configured
-                if minutes is None:
-                    minutes = manager.get_time_to_target(
-                        self._zone_id,
-                        self._current_temp,
-                        self._target_temp,
-                        self._zone_type
-                    )
-                if minutes is not None:
-                    self._attr_native_value = minutes
-                    self._attr_available = True
-                else:
-                    self._attr_native_value = None
-                    self._attr_available = False
-            else:
-                self._attr_native_value = None
-                self._attr_available = False
-                
-        except Exception as e:
-            _LOGGER.debug(f"Failed to update time to target for zone {self._zone_id}: {e}")
-            self._attr_available = False
+# v1.11.0: Removed TadoThermalRateSensor, TadoCoolingRateSensor, TadoHeatingEfficiencySensor, TadoTimeToTargetSensor
+# These instantaneous sensors have been replaced by the more accurate heating cycle analysis sensors:
+# - TadoAvgHeatingRateSensor (replaces TadoThermalRateSensor)
+# - TadoPreheatTimeSensor (replaces TadoTimeToTargetSensor)
+# See migration code in __init__.py for entity cleanup.
 
 # ============ Smart Comfort Insights Sensors (v1.9.0 Phase 3) ============
 
-class TadoHistoricalTempSensor(TadoBaseSensor):
+class TadoHistoricalDeviationSensor(TadoBaseSensor):
     """Historical temperature comparison sensor.
     
     Compares current temperature to the 7-day average at the same time of day.
@@ -1569,8 +1332,8 @@ class TadoHistoricalTempSensor(TadoBaseSensor):
     
     def __init__(self, zone_id: str, zone_name: str, zone_type: str = "HEATING"):
         super().__init__(zone_id, zone_name, zone_type)
-        self._attr_name = f"{zone_name} Historical Comparison"
-        self._attr_unique_id = f"tado_ce_zone_{zone_id}_historical_comparison"
+        self._attr_name = f"{zone_name} Historical Deviation"
+        self._attr_unique_id = f"tado_ce_zone_{zone_id}_historical_deviation"
         self._attr_native_unit_of_measurement = "°C"
         self._attr_icon = "mdi:chart-timeline-variant"
         self._attr_state_class = "measurement"
@@ -2778,7 +2541,7 @@ class TadoComfortLevelSensor(TadoBaseSensor):
 
 # ========== v1.11.0: Heating Cycle Analysis Sensors ==========
 
-class TadoInertiaTimeSensor(CoordinatorEntity, SensorEntity):
+class TadoThermalInertiaSensor(CoordinatorEntity, SensorEntity):
     """Sensor for thermal inertia time (delay before temperature rises)."""
     
     def __init__(self, coordinator, zone_id: str, zone_name: str, zone_type: str):
@@ -2787,8 +2550,8 @@ class TadoInertiaTimeSensor(CoordinatorEntity, SensorEntity):
         self._zone_id = zone_id
         self._zone_name = zone_name
         self._zone_type = zone_type
-        self._attr_name = f"{zone_name} Inertia Time"
-        self._attr_unique_id = f"tado_ce_zone_{zone_id}_inertia_time"
+        self._attr_name = f"{zone_name} Thermal Inertia"
+        self._attr_unique_id = f"tado_ce_zone_{zone_id}_thermal_inertia"
         self._attr_device_info = get_zone_device_info(zone_id, zone_name, zone_type)
         self._attr_native_unit_of_measurement = "min"
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -2821,7 +2584,7 @@ class TadoInertiaTimeSensor(CoordinatorEntity, SensorEntity):
         }
 
 
-class TadoHeatingRateAnalysisSensor(CoordinatorEntity, SensorEntity):
+class TadoAvgHeatingRateSensor(CoordinatorEntity, SensorEntity):
     """Sensor for heating rate (°C per minute)."""
     
     def __init__(self, coordinator, zone_id: str, zone_name: str, zone_type: str):
@@ -2830,8 +2593,8 @@ class TadoHeatingRateAnalysisSensor(CoordinatorEntity, SensorEntity):
         self._zone_id = zone_id
         self._zone_name = zone_name
         self._zone_type = zone_type
-        self._attr_name = f"{zone_name} Heating Rate Analysis"
-        self._attr_unique_id = f"tado_ce_zone_{zone_id}_heating_rate_analysis"
+        self._attr_name = f"{zone_name} Avg Heating Rate"
+        self._attr_unique_id = f"tado_ce_zone_{zone_id}_avg_heating_rate"
         self._attr_device_info = get_zone_device_info(zone_id, zone_name, zone_type)
         self._attr_native_unit_of_measurement = "°C/min"
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -2864,7 +2627,7 @@ class TadoHeatingRateAnalysisSensor(CoordinatorEntity, SensorEntity):
         }
 
 
-class TadoPreheatEstimateSensor(CoordinatorEntity, SensorEntity):
+class TadoPreheatTimeSensor(CoordinatorEntity, SensorEntity):
     """Sensor for estimated preheat time to reach target temperature."""
     
     def __init__(self, coordinator, zone_id: str, zone_name: str, zone_type: str):
@@ -2873,8 +2636,8 @@ class TadoPreheatEstimateSensor(CoordinatorEntity, SensorEntity):
         self._zone_id = zone_id
         self._zone_name = zone_name
         self._zone_type = zone_type
-        self._attr_name = f"{zone_name} Preheat Estimate"
-        self._attr_unique_id = f"tado_ce_zone_{zone_id}_preheat_estimate"
+        self._attr_name = f"{zone_name} Preheat Time"
+        self._attr_unique_id = f"tado_ce_zone_{zone_id}_preheat_time"
         self._attr_device_info = get_zone_device_info(zone_id, zone_name, zone_type)
         self._attr_native_unit_of_measurement = "min"
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -2929,15 +2692,17 @@ class TadoPreheatEstimateSensor(CoordinatorEntity, SensorEntity):
     def _get_zone_data(self):
         """Get zone data from file."""
         try:
-            with open(ZONES_FILE) as f:
-                data = json.load(f)
+            # Use data_loader for per-home file support
+            data = load_zones_file()
+            if data:
                 zone_states = data.get('zoneStates') or {}
                 return zone_states.get(self._zone_id)
+            return None
         except Exception:
             return None
 
 
-class TadoConfidenceScoreSensor(CoordinatorEntity, SensorEntity):
+class TadoAnalysisConfidenceSensor(CoordinatorEntity, SensorEntity):
     """Sensor for confidence score of preheat estimates (0-100%)."""
     
     def __init__(self, coordinator, zone_id: str, zone_name: str, zone_type: str):
@@ -2946,8 +2711,8 @@ class TadoConfidenceScoreSensor(CoordinatorEntity, SensorEntity):
         self._zone_id = zone_id
         self._zone_name = zone_name
         self._zone_type = zone_type
-        self._attr_name = f"{zone_name} Confidence Score"
-        self._attr_unique_id = f"tado_ce_zone_{zone_id}_confidence_score"
+        self._attr_name = f"{zone_name} Analysis Confidence"
+        self._attr_unique_id = f"tado_ce_zone_{zone_id}_analysis_confidence"
         self._attr_device_info = get_zone_device_info(zone_id, zone_name, zone_type)
         self._attr_native_unit_of_measurement = "%"
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -2981,3 +2746,102 @@ class TadoConfidenceScoreSensor(CoordinatorEntity, SensorEntity):
             "cycle_count": zone_data.get("cycle_count", 0),
             "completed_count": zone_data.get("completed_count", 0),
         }
+
+
+class TadoHeatingAccelerationSensor(CoordinatorEntity, SensorEntity):
+    """Sensor for heating acceleration (second-order analysis).
+
+    Measures how quickly the heating rate increases after heating starts.
+    Higher acceleration = faster response system.
+    """
+
+    def __init__(self, coordinator, zone_id: str, zone_name: str, zone_type: str):
+        """Initialize sensor with coordinator."""
+        super().__init__(coordinator)
+        self._zone_id = zone_id
+        self._zone_name = zone_name
+        self._zone_type = zone_type
+        self._attr_name = f"{zone_name} Heating Acceleration"
+        self._attr_unique_id = f"tado_ce_zone_{zone_id}_heating_acceleration"
+        self._attr_device_info = get_zone_device_info(zone_id, zone_name, zone_type)
+        self._attr_native_unit_of_measurement = "°C/h²"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:chart-bell-curve-cumulative"
+
+    @property
+    def native_value(self):
+        """Return sensor value from coordinator data."""
+        zone_data = self.coordinator.get_zone_data(self._zone_id)
+        if not zone_data:
+            return None
+        return zone_data.get("acceleration")
+
+    @property
+    def available(self) -> bool:
+        """Return if sensor is available."""
+        zone_data = self.coordinator.get_zone_data(self._zone_id)
+        return zone_data is not None and zone_data.get("acceleration") is not None
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional attributes."""
+        zone_data = self.coordinator.get_zone_data(self._zone_id)
+        if not zone_data:
+            return {}
+        return {
+            "cycle_count": zone_data.get("cycle_count", 0),
+            "completed_count": zone_data.get("completed_count", 0),
+        }
+
+
+class TadoApproachFactorSensor(CoordinatorEntity, SensorEntity):
+    """Sensor for approach deceleration factor (second-order analysis).
+
+    Measures how much the heating rate decreases as temperature
+    approaches the setpoint. Used to predict overshoot.
+
+    Factor interpretation:
+    - 100%: No deceleration, will likely overshoot
+    - 50%: 50% deceleration, controlled approach
+    - 0%: Complete stop before setpoint (rare)
+    """
+
+    def __init__(self, coordinator, zone_id: str, zone_name: str, zone_type: str):
+        """Initialize sensor with coordinator."""
+        super().__init__(coordinator)
+        self._zone_id = zone_id
+        self._zone_name = zone_name
+        self._zone_type = zone_type
+        self._attr_name = f"{zone_name} Approach Factor"
+        self._attr_unique_id = f"tado_ce_zone_{zone_id}_approach_factor"
+        self._attr_device_info = get_zone_device_info(zone_id, zone_name, zone_type)
+        self._attr_native_unit_of_measurement = "%"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:target"
+
+    @property
+    def native_value(self):
+        """Return sensor value from coordinator data."""
+        zone_data = self.coordinator.get_zone_data(self._zone_id)
+        if not zone_data:
+            return None
+        return zone_data.get("approach_factor")
+
+    @property
+    def available(self) -> bool:
+        """Return if sensor is available."""
+        zone_data = self.coordinator.get_zone_data(self._zone_id)
+        return zone_data is not None and zone_data.get("approach_factor") is not None
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional attributes."""
+        zone_data = self.coordinator.get_zone_data(self._zone_id)
+        if not zone_data:
+            return {}
+        return {
+            "cycle_count": zone_data.get("cycle_count", 0),
+            "completed_count": zone_data.get("completed_count", 0),
+            "overshoot_estimate": zone_data.get("overshoot_estimate"),
+        }
+

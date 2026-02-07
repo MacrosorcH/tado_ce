@@ -379,16 +379,19 @@ class TadoClimate(ClimateEntity):
             return
         
         try:
-            # Load home_id from config
-            with open(CONFIG_FILE) as f:
-                config = json.load(f)
+            # Load home_id from config (uses data_loader for per-home file support)
+            config = load_config_file()
+            if config:
                 self._home_id = config.get("home_id")
             
-            with open(ZONES_FILE) as f:
-                data = json.load(f)
+            # Load zones data (uses data_loader for per-home file support)
+            data = load_zones_file()
+            if data:
                 # Use 'or {}' pattern for null safety
                 zone_states = data.get('zoneStates') or {}
                 zone_data = zone_states.get(self._zone_id)
+            else:
+                zone_data = None
                 
                 if not zone_data:
                     self._attr_available = False
@@ -518,11 +521,10 @@ class TadoClimate(ClimateEntity):
                 self._offset_celsius = None
                 return
             
-            from .const import OFFSETS_FILE
-            if OFFSETS_FILE.exists():
-                with open(OFFSETS_FILE) as f:
-                    offsets = json.load(f)
-                    self._offset_celsius = offsets.get(self._zone_id)
+            # Use data_loader for per-home file support
+            offsets = load_offsets_file()
+            if offsets:
+                self._offset_celsius = offsets.get(self._zone_id)
             else:
                 self._offset_celsius = None
         except Exception:
@@ -536,8 +538,9 @@ class TadoClimate(ClimateEntity):
         regardless of whether mobile device tracking is enabled.
         """
         try:
-            with open(HOME_STATE_FILE) as f:
-                home_state = json.load(f)
+            # Use data_loader for per-home file support
+            home_state = load_home_state_file()
+            if home_state:
                 presence = home_state.get('presence', 'HOME')
                 self._attr_preset_mode = PRESET_HOME if presence == 'HOME' else PRESET_AWAY
         except Exception:
@@ -1179,129 +1182,133 @@ class TadoACClimate(ClimateEntity):
             return
         
         try:
-            with open(CONFIG_FILE) as f:
-                config = json.load(f)
+            # Load home_id from config (uses data_loader for per-home file support)
+            config = load_config_file()
+            if config:
                 self._home_id = config.get("home_id")
             
-            with open(ZONES_FILE) as f:
-                data = json.load(f)
+            # Load zones data (uses data_loader for per-home file support)
+            data = load_zones_file()
+            if data:
                 # Use 'or {}' pattern for null safety
                 zone_states = data.get('zoneStates') or {}
                 zone_data = zone_states.get(self._zone_id)
+            else:
+                zone_data = None
                 
-                if not zone_data:
-                    self._attr_available = False
-                    return
+            if not zone_data:
+                self._attr_available = False
+                return
+            
+            # Current temperature (use 'or {}' pattern for null safety)
+            sensor_data = zone_data.get('sensorDataPoints') or {}
+            self._attr_current_temperature = (
+                (sensor_data.get('insideTemperature') or {}).get('celsius')
+            )
+            
+            # Current humidity
+            self._attr_current_humidity = (
+                (sensor_data.get('humidity') or {}).get('percentage')
+            )
+            
+            # AC power state - API returns {'value': 'ON'/'OFF'} not percentage
+            activity_data = zone_data.get('activityDataPoints') or {}
+            ac_power = activity_data.get('acPower') or {}
+            ac_power_value = ac_power.get('value')  # 'ON' or 'OFF'
+            # Keep percentage for backwards compatibility attribute
+            self._ac_power_percentage = ac_power.get('percentage')
+            
+            # Setting
+            setting = zone_data.get('setting') or {}
+            power = setting.get('power')
+            self._overlay_type = zone_data.get('overlayType')
+            
+            if power == 'ON':
+                # Temperature
+                temp = (setting.get('temperature') or {}).get('celsius')
+                self._attr_target_temperature = temp
                 
-                # Current temperature (use 'or {}' pattern for null safety)
-                sensor_data = zone_data.get('sensorDataPoints') or {}
-                self._attr_current_temperature = (
-                    (sensor_data.get('insideTemperature') or {}).get('celsius')
-                )
+                # Mode
+                tado_mode = setting.get('mode')
+                self._attr_hvac_mode = TADO_TO_HA_HVAC_MODE.get(tado_mode, HVACMode.AUTO)
                 
-                # Current humidity
-                self._attr_current_humidity = (
-                    (sensor_data.get('humidity') or {}).get('percentage')
-                )
+                # Fan - API returns fanLevel (newer firmware) or fanSpeed (older firmware)
+                fan_level = setting.get('fanLevel') or setting.get('fanSpeed')
+                self._attr_fan_mode = TADO_TO_HA_FAN.get(fan_level, FAN_AUTO)
                 
-                # AC power state - API returns {'value': 'ON'/'OFF'} not percentage
-                activity_data = zone_data.get('activityDataPoints') or {}
-                ac_power = activity_data.get('acPower') or {}
-                ac_power_value = ac_power.get('value')  # 'ON' or 'OFF'
-                # Keep percentage for backwards compatibility attribute
-                self._ac_power_percentage = ac_power.get('percentage')
-                
-                # Setting
-                setting = zone_data.get('setting') or {}
-                power = setting.get('power')
-                self._overlay_type = zone_data.get('overlayType')
-                
-                if power == 'ON':
-                    # Temperature
-                    temp = (setting.get('temperature') or {}).get('celsius')
-                    self._attr_target_temperature = temp
-                    
-                    # Mode
-                    tado_mode = setting.get('mode')
-                    self._attr_hvac_mode = TADO_TO_HA_HVAC_MODE.get(tado_mode, HVACMode.AUTO)
-                    
-                    # Fan - API returns fanLevel (newer firmware) or fanSpeed (older firmware)
-                    fan_level = setting.get('fanLevel') or setting.get('fanSpeed')
-                    self._attr_fan_mode = TADO_TO_HA_FAN.get(fan_level, FAN_AUTO)
-                    
-                    # Swing - API returns verticalSwing/horizontalSwing (not swing)
-                    # Map to unified swing mode: off/vertical/horizontal/both
-                    vertical_swing = setting.get('verticalSwing', 'OFF')
-                    horizontal_swing = setting.get('horizontalSwing', 'OFF')
-                    v_on = vertical_swing != 'OFF'
-                    h_on = horizontal_swing != 'OFF'
-                    if v_on and h_on:
-                        self._attr_swing_mode = "both"
-                    elif v_on:
-                        self._attr_swing_mode = "vertical"
-                    elif h_on:
-                        self._attr_swing_mode = "horizontal"
-                    else:
-                        self._attr_swing_mode = "off"
-                    
-                    # HVAC action - based on acPower.value ('ON'/'OFF')
-                    # v1.10.0: Use helper method for hvac_action calculation
-                    ac_power_on = (ac_power_value == 'ON')
-                    api_hvac_action = self._calculate_hvac_action(hvac_mode=self._attr_hvac_mode, ac_power_on=ac_power_on)
-                    
-                    # v1.10.0: Sequence-based optimistic state handling (Issue #44 fix)
-                    # Preserve optimistic state if we have an active optimistic sequence
-                    # and API hasn't confirmed our expected state yet
-                    should_preserve = False
-                    
-                    if self._optimistic_sequence is not None:
-                        # Check if API has confirmed our expected mode and action
-                        if self._attr_hvac_mode == self._expected_hvac_mode and api_hvac_action == self._expected_hvac_action:
-                            # API confirmed our expected state - clear optimistic state
-                            _LOGGER.debug(f"AC {self._zone_name}: API confirmed optimistic state (mode={self._attr_hvac_mode}, action={api_hvac_action}), clearing")
-                            self._clear_optimistic_state()
-                        else:
-                            # API hasn't caught up yet - PRESERVE optimistic state
-                            should_preserve = True
-                            _LOGGER.debug(
-                                f"AC {self._zone_name}: Preserving optimistic state "
-                                f"(expected mode={self._expected_hvac_mode}, action={self._expected_hvac_action}; "
-                                f"API shows mode={self._attr_hvac_mode}, action={api_hvac_action})"
-                            )
-                    
-                    # Apply state based on preservation decision
-                    if should_preserve:
-                        # Keep optimistic mode and action until API confirms
-                        self._attr_hvac_mode = self._expected_hvac_mode
-                        self._attr_hvac_action = self._expected_hvac_action
-                        _LOGGER.debug(f"AC {self._zone_name}: Using optimistic state: mode={self._attr_hvac_mode}, action={self._attr_hvac_action}")
-                    else:
-                        self._attr_hvac_action = api_hvac_action
+                # Swing - API returns verticalSwing/horizontalSwing (not swing)
+                # Map to unified swing mode: off/vertical/horizontal/both
+                vertical_swing = setting.get('verticalSwing', 'OFF')
+                horizontal_swing = setting.get('horizontalSwing', 'OFF')
+                v_on = vertical_swing != 'OFF'
+                h_on = horizontal_swing != 'OFF'
+                if v_on and h_on:
+                    self._attr_swing_mode = "both"
+                elif v_on:
+                    self._attr_swing_mode = "vertical"
+                elif h_on:
+                    self._attr_swing_mode = "horizontal"
                 else:
-                    # Power is OFF - keep last temperature for reference
-                    # v1.10.0: Sequence-based optimistic state handling for AC OFF (Issue #44 fix)
-                    if self._optimistic_sequence is not None:
-                        if self._expected_hvac_mode == HVACMode.OFF:
-                            # We expected OFF and API confirms OFF - clear optimistic state
-                            _LOGGER.debug(f"AC {self._zone_name}: API confirmed OFF mode, clearing optimistic state")
-                            self._clear_optimistic_state()
-                            self._attr_hvac_mode = HVACMode.OFF
-                            self._attr_hvac_action = HVACAction.OFF
-                        else:
-                            # We expected a different mode but API shows OFF
-                            # PRESERVE optimistic state - API hasn't caught up yet
-                            _LOGGER.debug(f"AC {self._zone_name}: Preserving optimistic state (expected={self._expected_hvac_mode}, API shows OFF)")
-                            self._attr_hvac_mode = self._expected_hvac_mode
-                            self._attr_hvac_action = self._expected_hvac_action
+                    self._attr_swing_mode = "off"
+                
+                # HVAC action - based on acPower.value ('ON'/'OFF')
+                # v1.10.0: Use helper method for hvac_action calculation
+                ac_power_on = (ac_power_value == 'ON')
+                api_hvac_action = self._calculate_hvac_action(hvac_mode=self._attr_hvac_mode, ac_power_on=ac_power_on)
+                
+                # v1.10.0: Sequence-based optimistic state handling (Issue #44 fix)
+                # Preserve optimistic state if we have an active optimistic sequence
+                # and API hasn't confirmed our expected state yet
+                should_preserve = False
+                
+                if self._optimistic_sequence is not None:
+                    # Check if API has confirmed our expected mode and action
+                    if self._attr_hvac_mode == self._expected_hvac_mode and api_hvac_action == self._expected_hvac_action:
+                        # API confirmed our expected state - clear optimistic state
+                        _LOGGER.debug(f"AC {self._zone_name}: API confirmed optimistic state (mode={self._attr_hvac_mode}, action={api_hvac_action}), clearing")
+                        self._clear_optimistic_state()
                     else:
-                        # No optimistic state - trust API
+                        # API hasn't caught up yet - PRESERVE optimistic state
+                        should_preserve = True
+                        _LOGGER.debug(
+                            f"AC {self._zone_name}: Preserving optimistic state "
+                            f"(expected mode={self._expected_hvac_mode}, action={self._expected_hvac_action}; "
+                            f"API shows mode={self._attr_hvac_mode}, action={api_hvac_action})"
+                        )
+                
+                # Apply state based on preservation decision
+                if should_preserve:
+                    # Keep optimistic mode and action until API confirms
+                    self._attr_hvac_mode = self._expected_hvac_mode
+                    self._attr_hvac_action = self._expected_hvac_action
+                    _LOGGER.debug(f"AC {self._zone_name}: Using optimistic state: mode={self._attr_hvac_mode}, action={self._attr_hvac_action}")
+                else:
+                    self._attr_hvac_action = api_hvac_action
+            else:
+                # Power is OFF - keep last temperature for reference
+                # v1.10.0: Sequence-based optimistic state handling for AC OFF (Issue #44 fix)
+                if self._optimistic_sequence is not None:
+                    if self._expected_hvac_mode == HVACMode.OFF:
+                        # We expected OFF and API confirms OFF - clear optimistic state
+                        _LOGGER.debug(f"AC {self._zone_name}: API confirmed OFF mode, clearing optimistic state")
+                        self._clear_optimistic_state()
                         self._attr_hvac_mode = HVACMode.OFF
                         self._attr_hvac_action = HVACAction.OFF
-                
-                self._attr_available = True
-                
-                # v1.9.0: Record temperature for Smart Comfort analytics
-                self._record_smart_comfort_data(ac_power_value)
+                    else:
+                        # We expected a different mode but API shows OFF
+                        # PRESERVE optimistic state - API hasn't caught up yet
+                        _LOGGER.debug(f"AC {self._zone_name}: Preserving optimistic state (expected={self._expected_hvac_mode}, API shows OFF)")
+                        self._attr_hvac_mode = self._expected_hvac_mode
+                        self._attr_hvac_action = self._expected_hvac_action
+                else:
+                    # No optimistic state - trust API
+                    self._attr_hvac_mode = HVACMode.OFF
+                    self._attr_hvac_action = HVACAction.OFF
+            
+            self._attr_available = True
+            
+            # v1.9.0: Record temperature for Smart Comfort analytics
+            self._record_smart_comfort_data(ac_power_value)
                 
         except Exception as e:
             _LOGGER.warning(f"Failed to update {self.name}: {e}")
