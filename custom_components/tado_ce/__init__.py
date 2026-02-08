@@ -1641,6 +1641,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     await hass.config_entries.async_forward_entry_setups(entry, platforms_to_load)
     
+    # Auto-assign areas to zone devices (v2.0.0)
+    # This runs after platforms are loaded so devices are already created
+    try:
+        from .area_manager import async_assign_zone_areas
+        from .data_loader import load_zones_info_file
+        
+        zones_info = load_zones_info_file()
+        if zones_info:
+            await async_assign_zone_areas(hass, home_id or "unknown", zones_info)
+        else:
+            _LOGGER.debug("No zones_info available for area assignment")
+    except Exception as e:
+        _LOGGER.warning(f"Failed to auto-assign areas: {e}")
+        # Non-critical feature - continue setup
+    
     # Register services
     await _async_register_services(hass)
     
