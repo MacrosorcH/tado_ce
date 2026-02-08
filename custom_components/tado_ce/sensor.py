@@ -695,7 +695,7 @@ class TadoTokenStatusSensor(SensorEntity):
     @property
     def icon(self):
         if self._attr_native_value == "valid":
-            return "mdi:key-check"
+            return "mdi:key"
         return "mdi:key-alert"
     
     def update(self):

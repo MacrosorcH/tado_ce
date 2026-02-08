@@ -1648,7 +1648,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         from .data_loader import load_zones_info_file
         
         _LOGGER.info("Tado CE: Starting auto-assign areas")
-        zones_info = load_zones_info_file()
+        zones_info = await hass.async_add_executor_job(load_zones_info_file)
         if zones_info:
             await async_assign_zone_areas(hass, home_id or "unknown", zones_info)
         else:
