@@ -797,7 +797,7 @@ class TadoNextSyncSensor(SensorEntity):
     """Sensor showing next API sync time."""
     
     def __init__(self):
-        self._attr_name = "Tado CE Next Sync"
+        self._attr_name = "Next Sync"
         self._attr_unique_id = "tado_ce_next_sync"
         self._attr_icon = "mdi:clock-outline"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
@@ -877,7 +877,7 @@ class TadoPollingIntervalSensor(SensorEntity):
     """Sensor showing current polling interval."""
     
     def __init__(self):
-        self._attr_name = "Tado CE Polling Interval"
+        self._attr_name = "Polling Interval"
         self._attr_unique_id = "tado_ce_polling_interval"
         self._attr_icon = "mdi:timer-outline"
         self._attr_native_unit_of_measurement = "min"
@@ -945,7 +945,7 @@ class TadoCallHistorySensor(SensorEntity):
     """Sensor showing API call history."""
     
     def __init__(self):
-        self._attr_name = "Tado CE Call History"
+        self._attr_name = "Call History"
         self._attr_unique_id = "tado_ce_call_history"
         self._attr_icon = "mdi:history"
         self._attr_native_unit_of_measurement = "calls"
@@ -1094,7 +1094,7 @@ class TadoApiCallBreakdownSensor(SensorEntity):
     """Sensor showing API call breakdown by type."""
     
     def __init__(self):
-        self._attr_name = "Tado CE API Call Breakdown"
+        self._attr_name = "API Call Breakdown"
         self._attr_unique_id = "tado_ce_api_call_breakdown"
         self._attr_icon = "mdi:chart-bar"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
