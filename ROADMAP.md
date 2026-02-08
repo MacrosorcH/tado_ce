@@ -60,9 +60,9 @@ Major release enabling full multi-home support.
 **Setup & Polish:**
 - [ ] **Auto-assign Areas** - Suggest HA Areas based on zone names during setup ([#14](https://github.com/hiall-fyi/tado_ce/issues/14))
 - [ ] **Setup wizard improvements** - Streamlined flow with better error messages
-- [ ] **Delete tado_api.py** - File deprecated in v1.6.0, now fully removed
-- [ ] **Delete error_handler.py** - Only used by tado_api.py, remove together
-- [ ] **Cleanup orphan data files** - Remove legacy files without home_id suffix, delete api.log, consolidate smart_comfort/smart_heating caches
+- [x] **Delete tado_api.py** - File deprecated in v1.6.0, removed in v2.0.0
+- [x] **Delete error_handler.py** - Only used by tado_api.py, removed in v2.0.0
+- [x] **Cleanup orphan data files** - Legacy files migrated to per-home format (e.g., `zones.json` → `zones_{home_id}.json`) in v2.0.0
 
 **Local API (Experimental):**
 - [ ] **Local-first, cloud-fallback** - Use local API when available, fall back to cloud
