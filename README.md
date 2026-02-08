@@ -145,35 +145,50 @@ All services available in **Developer Tools > Services** with full parameter doc
 
 ## Smart Polling
 
-**v2.0.0**: Adaptive Smart Polling automatically adjusts polling frequency based on your remaining API quota in real-time.
+**v2.0.0**: Adaptive Smart Polling - real-time interval calculation based on remaining API quota.
 
-### How It Works
+### The Design Philosophy
 
-The integration calculates optimal polling interval by distributing remaining API calls evenly across time until reset:
+- **Real-time Adaptive**: Calculates interval before each sync based on remaining quota, distributes remaining calls over remaining time, self-healing for any usage pattern
+- **Universal**: Works for ANY quota tier (100, 200, 500, 5000, 20000+) - no hardcoded tiers or special cases
+- **Simple & Predictable**: Easy to understand, transparent through debug logging
 
-```
-interval = (seconds_until_reset / remaining_calls) * safety_buffer
-```
+### What This Means For You
 
-- **Safety Buffer**: 10% reserve (uses 90% of remaining quota)
-- **Min Interval**: 5 minutes (prevent excessive polling)
-- **Max Interval**: 120 minutes (ensure reasonable updates)
-- **Universal**: Works with any API tier (100, 200, 500, 5000, 20000+)
+| Quota | Typical Interval | Daily Utilization |
+|-------|------------------|-------------------|
+| 100 | ~16 min (vs old 30 min!) | ~90 calls (90%) |
+| 200 | ~8 min | ~180 calls |
+| 5000+ | 5-10 min | Prevents excessive polling |
+
+**Self-healing**: If you make manual API calls, it automatically slows down. End of day uses remaining quota efficiently.
+
+### Safety Mechanisms
+
+- **Minimum interval**: 5 min (prevents excessive polling even with high quotas)
+- **Maximum interval**: 120 min (ensures reasonable update frequency)
+- **Safety buffer**: 10% reserve for manual operations
+- **Low quota protection**: Automatically slows down when quota is low
+- **Critical quota**: Skips syncs to preserve remaining calls
+
+### Optional Features Impact
+
+- **Weather sensors**: Automatically accounts for extra API call
+- **Mobile device tracking**: Automatically adjusts for additional calls
+- **Smart Comfort**: No impact (local computation only)
 
 ### Custom Intervals
 
-You can override adaptive polling with fixed intervals:
-- **Custom Day Interval**: Fixed interval during day hours (7am-11pm default)
-- **Custom Night Interval**: Fixed interval during night hours (11pm-7am default)
-
-Configure in **Settings > Devices & Services > Tado CE > Configure > Polling Schedule**.
+Override adaptive polling with fixed intervals in **Settings > Devices & Services > Tado CE > Configure > Polling Schedule**:
+- Custom Day Interval (7am-11pm default)
+- Custom Night Interval (11pm-7am default)
 
 ### Monitoring
 
-New sensors in v2.0.0 let you monitor polling behavior:
-- `sensor.tado_ce_polling_interval` - Current interval with source (adaptive/custom/default)
-- `sensor.tado_ce_next_sync` - Next scheduled sync time with countdown
-- `sensor.tado_ce_call_history` - API call statistics and history
+New sensors let you monitor polling behavior:
+- `sensor.tado_ce_polling_interval` - Current interval with source
+- `sensor.tado_ce_next_sync` - Next sync time with countdown
+- `sensor.tado_ce_call_history` - API call statistics
 
 ---
 
