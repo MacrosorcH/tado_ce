@@ -18,7 +18,8 @@ import homeassistant.helpers.config_validation as cv
 
 from .const import (
     DOMAIN, DATA_DIR, CONFIG_FILE, RATELIMIT_FILE, TADO_API_BASE, TADO_AUTH_URL, CLIENT_ID, API_ENDPOINT_DEVICES,
-    MIN_POLLING_INTERVAL, MAX_POLLING_INTERVAL, POLLING_SAFETY_BUFFER
+    MIN_POLLING_INTERVAL, MAX_POLLING_INTERVAL, POLLING_SAFETY_BUFFER,
+    QUOTA_RESERVE_CALLS, QUOTA_RESERVE_PERCENT
 )
 from .config_manager import ConfigurationManager
 from .auth_manager import get_auth_manager
@@ -146,6 +147,51 @@ def _calculate_adaptive_interval(ratelimit_data: dict, config_manager: Configura
     
     return int(interval_minutes)
 
+
+def should_pause_polling(ratelimit_data: dict, config_manager: ConfigurationManager) -> tuple[bool, str]:
+    """Check if polling should be paused to reserve quota for manual operations.
+    
+    v2.0.0: Quota Reserve Protection - pauses polling when quota is critically low
+    to ensure users can still perform manual operations (set temperature, etc.)
+    
+    Args:
+        ratelimit_data: Rate limit data with 'remaining', 'used', 'reset_seconds'
+        config_manager: Configuration manager for feature settings
+        
+    Returns:
+        Tuple of (should_pause: bool, reason: str)
+        - should_pause: True if polling should be paused
+        - reason: Human-readable explanation (empty if not pausing)
+    """
+    # Get remaining quota based on mode
+    if config_manager.get_test_mode_enabled():
+        # Test Mode: use 100 as daily limit
+        used = ratelimit_data.get("used", 0)
+        remaining = max(0, 100 - used)
+        daily_limit = 100
+    else:
+        # Normal mode: use actual API values
+        remaining = ratelimit_data.get("remaining", 100)
+        used = ratelimit_data.get("used", 0)
+        daily_limit = remaining + used if (remaining + used) > 0 else 100
+    
+    # Calculate reserve threshold: max of absolute minimum or percentage
+    reserve_threshold = max(QUOTA_RESERVE_CALLS, int(daily_limit * QUOTA_RESERVE_PERCENT))
+    
+    # Check if we should pause
+    if remaining <= reserve_threshold:
+        reset_seconds = ratelimit_data.get("reset_seconds", 0)
+        hours = reset_seconds // 3600
+        minutes = (reset_seconds % 3600) // 60
+        
+        reason = (
+            f"Quota critically low ({remaining} remaining, reserve threshold={reserve_threshold}). "
+            f"Polling paused until reset in {hours}h {minutes}m. "
+            f"Manual operations (set temperature, etc.) still available."
+        )
+        return True, reason
+    
+    return False, ""
 
 async def async_detect_reset_from_history(hass: HomeAssistant) -> datetime | None:
     """Detect API reset time from Home Assistant sensor history.
@@ -1456,24 +1502,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         Replaces subprocess-based sync with native async calls.
         """
-        # Check if polling should be paused due to Test Mode limit
-        if config_manager.get_test_mode_enabled():
-            try:
-                if await aiofiles.os.path.exists(RATELIMIT_FILE):
-                    async with aiofiles.open(RATELIMIT_FILE, 'r') as f:
-                        content = await f.read()
-                        data = json.loads(content)
-                    used = data.get("used", 0)
-                    if used >= 100:
-                        _LOGGER.warning(
-                            f"Tado CE: Test Mode limit reached ({used}/100 calls). "
-                            "Polling paused until quota resets."
-                        )
-                        # Re-schedule to check again later
-                        await async_schedule_next_sync()
-                        return
-            except Exception as e:
-                _LOGGER.error(f"Failed to check Test Mode limit: {e}")
+        # v2.0.0: Universal Quota Reserve Protection
+        # Replaces the old Test Mode-only check with a universal solution
+        try:
+            # Use cached ratelimit data to avoid extra file I/O
+            ratelimit_data = cached_ratelimit[0]
+            if ratelimit_data is None:
+                await async_load_ratelimit()
+                ratelimit_data = cached_ratelimit[0]
+            
+            if ratelimit_data:
+                should_pause, reason = should_pause_polling(ratelimit_data, config_manager)
+                if should_pause:
+                    _LOGGER.warning(f"Tado CE: {reason}")
+                    # Re-schedule to check again later
+                    await async_schedule_next_sync()
+                    return
+        except Exception as e:
+            _LOGGER.debug(f"Could not check quota reserve: {e}")
         
         # Determine if this should be a full sync
         do_full_sync = False

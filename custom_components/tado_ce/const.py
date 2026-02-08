@@ -225,6 +225,11 @@ MIN_POLLING_INTERVAL = 5        # minutes (prevent excessive polling for high qu
 MAX_POLLING_INTERVAL = 120      # minutes (ensure reasonable updates even with low quota)
 POLLING_SAFETY_BUFFER = 0.90    # Reserve 10% quota for manual calls and unexpected usage
 
+# v2.0.0: Quota Reserve Protection Constants
+# When remaining quota falls below threshold, pause polling to reserve for manual operations
+QUOTA_RESERVE_CALLS = 5         # Minimum reserved calls (absolute floor)
+QUOTA_RESERVE_PERCENT = 0.05    # Reserve 5% of daily limit (whichever is larger)
+
 # v1.11.0: Mold Risk Enhancement - Window U-values (W/m²K)
 # Standard thermal transmittance values for different window types
 WINDOW_U_VALUES = {

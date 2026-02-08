@@ -145,7 +145,7 @@ All services available in **Developer Tools > Services** with full parameter doc
 
 ## Smart Polling
 
-**v2.0.0**: Adaptive Smart Polling - real-time interval calculation based on remaining API quota.
+**v2.0.0**: Adaptive Smart Polling with Quota Reserve Protection - real-time interval calculation based on remaining API quota.
 
 ### The Design Philosophy
 
@@ -169,7 +169,7 @@ All services available in **Developer Tools > Services** with full parameter doc
 - **Maximum interval**: 120 min (ensures reasonable update frequency)
 - **Safety buffer**: 10% reserve for manual operations
 - **Low quota protection**: Automatically slows down when quota is low
-- **Critical quota**: Skips syncs to preserve remaining calls
+- **Quota Reserve Protection**: Pauses polling when quota critically low (≤5% or ≤5 calls), reserves quota for manual operations (set temperature, etc.), automatically resumes after API reset
 
 ### Optional Features Impact
 

@@ -17,6 +17,7 @@ Major release with adaptive polling, enhanced mold risk, thermal analytics, and 
 - [x] **Universal quota support** - Works for any tier (100, 200, 500, 5000, 20000+)
 - [x] **Self-healing behavior** - Automatically adapts to manual calls and HA restarts
 - [x] **Transparent logging** - Full visibility into interval calculations
+- [x] **Quota Reserve Protection** - Pauses polling when quota critically low, reserves for manual operations
 
 **Note**: Originally planned for v2.0.0, but included in v2.0.0 based on user validation.
 

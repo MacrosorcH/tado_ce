@@ -26,6 +26,7 @@ New sensors automatically created for all HEATING zones with TRV devices:
 ### Smart Polling
 - **Adaptive polling interval**: Automatically adjusts based on remaining API quota
 - **Universal quota support**: Works with any API tier (100, 200, 500, 5000, 20000+)
+- **Quota Reserve Protection**: Pauses polling when quota critically low (≤5% or ≤5 calls), reserves quota for manual operations
 
 ### Enhanced Mold Risk
 - **Surface temperature calculation**: Uses outdoor temp + window U-value for accurate cold spot detection
