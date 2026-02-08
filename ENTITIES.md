@@ -168,6 +168,7 @@ Global sensors for the Tado CE Hub device.
 | `sensor.tado_ce_next_sync` | Diagnostic | Next scheduled sync timestamp (v1.12.0) |
 | `sensor.tado_ce_polling_interval` | Diagnostic | Current polling interval in minutes (v1.12.0) |
 | `sensor.tado_ce_call_history` | Diagnostic | API call history with statistics (v1.12.0) |
+| `sensor.tado_ce_api_call_breakdown` | Diagnostic | API call breakdown by endpoint type (v1.12.0) |
 
 ### API Reset Sensor Attributes (v1.8.0)
 
@@ -213,6 +214,16 @@ Global sensors for the Tado CE Hub device.
 | `calls_per_hour` | `15.2` | Average calls per hour (last 24h) |
 | `calls_today` | `245` | Total calls today (UTC day) |
 | `most_called_endpoint` | `zoneStates (1234 calls)` | Most frequently called endpoint |
+
+### API Call Breakdown Sensor Attributes (v1.12.0)
+
+| Attribute | Example | Description |
+|-----------|---------|-------------|
+| `breakdown_24h` | `{"zoneStates": 50, "home": 10}` | API calls by type in last 24 hours |
+| `breakdown_today` | `{"zoneStates": 30, "home": 5}` | API calls by type today (UTC day) |
+| `breakdown_total` | `{"zoneStates": 500, "home": 100}` | Total API calls by type (all history) |
+| `top_3_types` | `[{"type": "zoneStates", "count": 50}]` | Top 3 most called endpoint types |
+| `chart_data` | `[{"type": "zoneStates", "count": 50}]` | Formatted data for visualization |
 
 ## Weather Sensors
 
