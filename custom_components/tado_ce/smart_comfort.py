@@ -1341,10 +1341,10 @@ _manager: Optional[SmartComfortManager] = None
 
 
 def cleanup_smart_comfort_manager() -> bool:
-    """Clean up the global SmartComfortManager.
+    """Clean up the global SmartComfortManager (sync version for executor).
     
-    MUST be called in async_unload_entry() to prevent memory leaks
-    when integration is reloaded or removed.
+    NOTE: This performs blocking I/O (save_to_file). 
+    Use async_cleanup_smart_comfort_manager() from async context.
     
     Returns:
         True if manager was cleaned up, False if no manager existed
@@ -1355,6 +1355,31 @@ def cleanup_smart_comfort_manager() -> bool:
         _manager.save_to_file()
         _manager = None
         _LOGGER.debug("Cleaned up SmartComfortManager")
+        return True
+    return False
+
+
+async def async_cleanup_smart_comfort_manager(hass: "HomeAssistant") -> bool:
+    """Clean up the global SmartComfortManager (async version).
+    
+    MUST be called in async_unload_entry() to prevent memory leaks
+    when integration is reloaded or removed.
+    
+    This wraps the blocking save_to_file() in executor to avoid
+    blocking I/O warning in async context.
+    
+    Args:
+        hass: Home Assistant instance
+        
+    Returns:
+        True if manager was cleaned up, False if no manager existed
+    """
+    global _manager
+    if _manager is not None:
+        # Save data before cleanup - run in executor to avoid blocking I/O
+        await hass.async_add_executor_job(_manager.save_to_file)
+        _manager = None
+        _LOGGER.debug("Cleaned up SmartComfortManager (async)")
         return True
     return False
 

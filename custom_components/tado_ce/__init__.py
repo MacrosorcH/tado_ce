@@ -1005,15 +1005,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         f"  Entry data: {entry.data}"
     )
     
-    # Log file system state for debugging
+    # Log file system state for debugging (run in executor to avoid blocking I/O)
     from .const import LEGACY_DATA_DIR, ZONES_INFO_FILE, ZONES_FILE
+    
+    def _check_file_system_state():
+        """Check file system state (blocking I/O)."""
+        return {
+            "data_dir_exists": DATA_DIR.exists(),
+            "config_file_exists": CONFIG_FILE.exists(),
+            "zones_file_exists": ZONES_FILE.exists(),
+            "zones_info_file_exists": ZONES_INFO_FILE.exists(),
+            "legacy_data_dir_exists": LEGACY_DATA_DIR.exists(),
+        }
+    
+    fs_state = await hass.async_add_executor_job(_check_file_system_state)
     _LOGGER.info(
         "=== Setup File System State ===\n"
-        f"  DATA_DIR: {DATA_DIR} (exists: {DATA_DIR.exists()})\n"
-        f"  CONFIG_FILE: {CONFIG_FILE} (exists: {CONFIG_FILE.exists()})\n"
-        f"  ZONES_FILE: {ZONES_FILE} (exists: {ZONES_FILE.exists()})\n"
-        f"  ZONES_INFO_FILE: {ZONES_INFO_FILE} (exists: {ZONES_INFO_FILE.exists()})\n"
-        f"  LEGACY_DATA_DIR: {LEGACY_DATA_DIR} (exists: {LEGACY_DATA_DIR.exists()})"
+        f"  DATA_DIR: {DATA_DIR} (exists: {fs_state['data_dir_exists']})\n"
+        f"  CONFIG_FILE: {CONFIG_FILE} (exists: {fs_state['config_file_exists']})\n"
+        f"  ZONES_FILE: {ZONES_FILE} (exists: {fs_state['zones_file_exists']})\n"
+        f"  ZONES_INFO_FILE: {ZONES_INFO_FILE} (exists: {fs_state['zones_info_file_exists']})\n"
+        f"  LEGACY_DATA_DIR: {LEGACY_DATA_DIR} (exists: {fs_state['legacy_data_dir_exists']})"
     )
     
     # CRITICAL: Check for duplicate entries and remove old ones (v1.1.0 leftovers)
@@ -1071,15 +1083,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # v1.5.2: Migrate data from legacy location if needed
     # This handles cases where migration didn't run (e.g., fresh install with old data)
-    if LEGACY_DATA_DIR.exists() and not DATA_DIR.exists():
+    # Run in executor to avoid blocking I/O
+    def _migrate_legacy_data():
+        """Migrate data from legacy location (blocking I/O)."""
+        import shutil
+        if not LEGACY_DATA_DIR.exists() or DATA_DIR.exists():
+            return []
+        
         _LOGGER.info("=== Setup-time Data Migration ===")
         _LOGGER.info("Migrating data directory from legacy location to .storage/tado_ce/")
-        import shutil
         try:
             DATA_DIR.mkdir(parents=True, exist_ok=True)
             _LOGGER.info(f"  Created DATA_DIR: {DATA_DIR}")
         except Exception as e:
             _LOGGER.error(f"  Failed to create DATA_DIR: {e}")
+            return []
         
         migrated_files = []
         for file in LEGACY_DATA_DIR.glob("*.json"):
@@ -1088,13 +1106,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 migrated_files.append(file.name)
             except Exception as e:
                 _LOGGER.error(f"  Failed to migrate {file.name}: {e}")
-        _LOGGER.info(f"  Migrated files: {migrated_files}")
+        return migrated_files
     
-    # Ensure data directory exists
-    try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        _LOGGER.error(f"Failed to create DATA_DIR: {e}")
+    migrated = await hass.async_add_executor_job(_migrate_legacy_data)
+    if migrated:
+        _LOGGER.info(f"  Migrated files: {migrated}")
+    
+    # Ensure data directory exists (run in executor to avoid blocking I/O)
+    def _ensure_data_dir():
+        """Ensure data directory exists (blocking I/O)."""
+        try:
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            _LOGGER.error(f"Failed to create DATA_DIR: {e}")
+    
+    await hass.async_add_executor_job(_ensure_data_dir)
     
     # Initialize configuration manager
     config_manager = ConfigurationManager(entry, hass)
@@ -1355,8 +1381,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                                 new_identifiers={(DOMAIN, new_zone_identifier)}
                             )
     
-    # Check if config file exists
-    if not CONFIG_FILE.exists():
+    # Check if config file exists (run in executor to avoid blocking I/O)
+    config_exists = await hass.async_add_executor_job(CONFIG_FILE.exists)
+    if not config_exists:
         _LOGGER.warning(
             "Tado CE config file not found. "
             "Use Settings > Devices & Services > Add Integration > Tado CE to authenticate."
@@ -1500,8 +1527,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await async_schedule_next_sync()
     
     # Initial sync (only if config exists)
-    _LOGGER.info(f"Tado CE: Checking config file at {CONFIG_FILE}, exists={CONFIG_FILE.exists()}")
-    if CONFIG_FILE.exists():
+    # Reuse config_exists from earlier check to avoid blocking I/O
+    _LOGGER.info(f"Tado CE: Checking config file at {CONFIG_FILE}, exists={config_exists}")
+    if config_exists:
         _LOGGER.info("Tado CE: Starting initial sync...")
         await async_sync_tado()
         _LOGGER.info("Tado CE: Initial sync completed")
@@ -2157,8 +2185,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     cleanup_executor()
     
     # Clean up Smart Comfort manager (saves data before cleanup)
-    from .smart_comfort import cleanup_smart_comfort_manager
-    cleanup_smart_comfort_manager()
+    from .smart_comfort import async_cleanup_smart_comfort_manager
+    await async_cleanup_smart_comfort_manager(hass)
     
     # v1.11.0: Cancel heating cycle timeout check timer
     if DOMAIN in hass.data and 'heating_cycle_timeout_cancel' in hass.data[DOMAIN]:
