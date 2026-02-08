@@ -85,6 +85,9 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     sensors.append(TadoLastSyncSensor())
     
     # API Monitoring Sensors (Discussion #86, Issue #65)
+    sensors.append(TadoNextSyncSensor())
+    sensors.append(TadoPollingIntervalSensor())
+    sensors.append(TadoCallHistorySensor())
     sensors.append(TadoApiCallBreakdownSensor())
     
     # Boiler Flow Temperature sensor (Hub device - only if data available)
@@ -787,6 +790,306 @@ class TadoLastSyncSensor(SensorEntity):
                 self._attr_available = False
         except Exception:
             self._attr_available = False
+
+
+
+    class TadoNextSyncSensor(SensorEntity):
+        """Sensor showing next API sync time."""
+
+        def __init__(self):
+            self._attr_name = "Tado CE Next Sync"
+            self._attr_unique_id = "tado_ce_next_sync"
+            self._attr_icon = "mdi:clock-outline"
+            self._attr_device_class = SensorDeviceClass.TIMESTAMP
+            self._attr_device_info = get_hub_device_info()
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
+            self._attr_available = False
+            self._attr_native_value = None
+            self._countdown = None
+            self._current_interval = None
+
+        @property
+        def extra_state_attributes(self):
+            return {
+                "countdown": self._countdown,
+                "current_interval_minutes": self._current_interval,
+            }
+
+        def update(self):
+            try:
+                from datetime import datetime, timezone, timedelta
+                from homeassistant.util import dt as dt_util
+
+                # Use data_loader for per-home file support
+                data = load_ratelimit_file()
+                if not data:
+                    self._attr_available = False
+                    return
+
+                last_updated = data.get("last_updated")
+                if not last_updated:
+                    self._attr_available = False
+                    return
+
+                # Parse last sync time
+                if last_updated.endswith('Z'):
+                    last_sync = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
+                elif '+' in last_updated or last_updated.endswith('00:00'):
+                    last_sync = datetime.fromisoformat(last_updated)
+                else:
+                    last_sync = datetime.fromisoformat(last_updated).replace(tzinfo=timezone.utc)
+
+                # Get current polling interval from config
+                from homeassistant.config_entries import ConfigEntry
+                entries = self.hass.config_entries.async_entries(DOMAIN) if self.hass else []
+                if entries:
+                    from .config_manager import ConfigurationManager
+                    from . import get_polling_interval
+                    config_manager = ConfigurationManager(entries[0])
+                    self._current_interval = get_polling_interval(config_manager)
+
+                    # Calculate next sync time
+                    next_sync_time = last_sync + timedelta(minutes=self._current_interval)
+                    self._attr_native_value = next_sync_time
+                    self._attr_available = True
+
+                    # Calculate countdown
+                    now = datetime.now(timezone.utc)
+                    time_until = next_sync_time - now
+                    if time_until.total_seconds() > 0:
+                        minutes = int(time_until.total_seconds() // 60)
+                        seconds = int(time_until.total_seconds() % 60)
+                        self._countdown = f"{minutes}m {seconds}s"
+                    else:
+                        self._countdown = "Overdue"
+                else:
+                    self._attr_available = False
+                    self._current_interval = None
+                    self._countdown = None
+
+            except Exception as e:
+                _LOGGER.debug(f"Failed to update Next Sync sensor: {e}")
+                self._attr_available = False
+                self._attr_native_value = None
+
+
+    class TadoPollingIntervalSensor(SensorEntity):
+        """Sensor showing current polling interval."""
+
+        def __init__(self):
+            self._attr_name = "Tado CE Polling Interval"
+            self._attr_unique_id = "tado_ce_polling_interval"
+            self._attr_icon = "mdi:timer-outline"
+            self._attr_native_unit_of_measurement = "min"
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+            self._attr_device_info = get_hub_device_info()
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
+            self._attr_available = False
+            self._attr_native_value = None
+            self._source = None
+            self._day_interval = None
+            self._night_interval = None
+            self._is_night_mode = None
+
+        @property
+        def extra_state_attributes(self):
+            return {
+                "source": self._source,
+                "day_interval": self._day_interval,
+                "night_interval": self._night_interval,
+                "is_night_mode": self._is_night_mode,
+            }
+
+        def update(self):
+            try:
+                from homeassistant.config_entries import ConfigEntry
+
+                entries = self.hass.config_entries.async_entries(DOMAIN) if self.hass else []
+                if not entries:
+                    self._attr_available = False
+                    return
+
+                from .config_manager import ConfigurationManager
+                from . import get_polling_interval, is_night_time
+
+                config_manager = ConfigurationManager(entries[0])
+
+                # Get current interval
+                self._attr_native_value = get_polling_interval(config_manager)
+                self._attr_available = True
+
+                # Get day/night intervals
+                self._day_interval = config_manager.get_custom_day_interval()
+                self._night_interval = config_manager.get_custom_night_interval()
+
+                # Check if currently in night mode
+                self._is_night_mode = is_night_time(config_manager)
+
+                # Determine source
+                if self._day_interval and self._night_interval:
+                    self._source = "Custom (Day/Night)"
+                elif self._day_interval:
+                    self._source = "Custom (Day only)"
+                elif self._night_interval:
+                    self._source = "Custom (Night only)"
+                else:
+                    self._source = "Adaptive (Smart Polling)"
+
+            except Exception as e:
+                _LOGGER.debug(f"Failed to update Polling Interval sensor: {e}")
+                self._attr_available = False
+                self._attr_native_value = None
+
+
+    class TadoCallHistorySensor(SensorEntity):
+        """Sensor showing API call history."""
+
+        def __init__(self):
+            self._attr_name = "Tado CE Call History"
+            self._attr_unique_id = "tado_ce_call_history"
+            self._attr_icon = "mdi:history"
+            self._attr_native_unit_of_measurement = "calls"
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
+            self._attr_device_info = get_hub_device_info()
+            self._attr_available = False
+            self._attr_native_value = None
+            self._history = []
+            self._history_period_days = 14
+            self._oldest_call = None
+            self._newest_call = None
+            self._calls_per_hour = None
+            self._calls_today = None
+            self._most_called_endpoint = None
+
+        @property
+        def extra_state_attributes(self):
+            return {
+                "history": self._history,
+                "history_period_days": self._history_period_days,
+                "oldest_call": self._oldest_call,
+                "newest_call": self._newest_call,
+                "calls_per_hour": self._calls_per_hour,
+                "calls_today": self._calls_today,
+                "most_called_endpoint": self._most_called_endpoint,
+            }
+
+        def update(self):
+            try:
+                from datetime import datetime, timezone, timedelta
+                from homeassistant.util import dt as dt_util
+
+                # Get retention days from config
+                try:
+                    from .config_manager import ConfigurationManager
+                    config_manager = ConfigurationManager(None)
+                    self._history_period_days = config_manager.get_api_history_retention_days()
+                except (AttributeError, TypeError):
+                    self._history_period_days = 14
+
+                # Load call history
+                history_data = load_api_call_history_file()
+                if not history_data:
+                    self._attr_available = True
+                    self._attr_native_value = 0
+                    self._history = []
+                    return
+
+                # Flatten all calls from all dates
+                all_calls = []
+                for date_key, calls in history_data.items():
+                    all_calls.extend(calls)
+
+                if not all_calls:
+                    self._attr_available = True
+                    self._attr_native_value = 0
+                    self._history = []
+                    return
+
+                # Sort by timestamp (newest first)
+                all_calls.sort(key=lambda x: x["timestamp"], reverse=True)
+
+                # Set state to total call count
+                self._attr_native_value = len(all_calls)
+                self._attr_available = True
+
+                # Store recent calls (last 100) with local timezone conversion
+                recent_calls = []
+                for call in all_calls[:100]:
+                    call_copy = call.copy()
+                    try:
+                        ts = datetime.fromisoformat(call["timestamp"])
+                        if ts.tzinfo is None:
+                            ts = ts.replace(tzinfo=dt_util.UTC)
+                        local_ts = dt_util.as_local(ts)
+                        call_copy["timestamp"] = local_ts.strftime("%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        pass
+                    recent_calls.append(call_copy)
+                self._history = recent_calls
+
+                # Calculate oldest/newest call timestamps
+                try:
+                    oldest_ts = datetime.fromisoformat(all_calls[-1]["timestamp"])
+                    if oldest_ts.tzinfo is None:
+                        oldest_ts = oldest_ts.replace(tzinfo=dt_util.UTC)
+                    self._oldest_call = dt_util.as_local(oldest_ts).strftime("%Y-%m-%d %H:%M:%S")
+
+                    newest_ts = datetime.fromisoformat(all_calls[0]["timestamp"])
+                    if newest_ts.tzinfo is None:
+                        newest_ts = newest_ts.replace(tzinfo=dt_util.UTC)
+                    self._newest_call = dt_util.as_local(newest_ts).strftime("%Y-%m-%d %H:%M:%S")
+                except Exception as e:
+                    _LOGGER.debug(f"Failed to parse oldest/newest timestamps: {e}")
+                    self._oldest_call = None
+                    self._newest_call = None
+
+                # Calculate calls per hour (last 24h)
+                try:
+                    now = datetime.now(timezone.utc)
+                    cutoff = now - timedelta(hours=24)
+                    last_24h_calls = [
+                        c for c in all_calls
+                        if datetime.fromisoformat(c["timestamp"]).replace(tzinfo=timezone.utc) > cutoff
+                    ]
+                    if last_24h_calls:
+                        self._calls_per_hour = round(len(last_24h_calls) / 24, 1)
+                    else:
+                        self._calls_per_hour = 0
+                except Exception as e:
+                    _LOGGER.debug(f"Failed to calculate calls per hour: {e}")
+                    self._calls_per_hour = None
+
+                # Calculate calls today (UTC day)
+                try:
+                    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    self._calls_today = len(history_data.get(today_str, []))
+                except Exception as e:
+                    _LOGGER.debug(f"Failed to calculate calls today: {e}")
+                    self._calls_today = None
+
+                # Find most called endpoint
+                try:
+                    endpoint_counts = {}
+                    for call in all_calls:
+                        endpoint = call.get("type_name", "unknown")
+                        endpoint_counts[endpoint] = endpoint_counts.get(endpoint, 0) + 1
+
+                    if endpoint_counts:
+                        most_called = max(endpoint_counts.items(), key=lambda x: x[1])
+                        self._most_called_endpoint = f"{most_called[0]} ({most_called[1]} calls)"
+                    else:
+                        self._most_called_endpoint = None
+                except Exception as e:
+                    _LOGGER.debug(f"Failed to find most called endpoint: {e}")
+                    self._most_called_endpoint = None
+
+            except Exception as e:
+                _LOGGER.error(f"Failed to update Call History sensor: {e}")
+                self._attr_available = False
+                self._attr_native_value = None
+
+
 
 # ============ API Monitoring Sensors (Discussion #86, Issue #65) ============
 
