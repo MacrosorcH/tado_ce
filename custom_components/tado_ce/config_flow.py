@@ -229,7 +229,6 @@ class TadoCEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _create_entry(self, home_id: str, home_name: str):
         """Create the config entry and save credentials."""
-        import json
         
         # v1.7.0: Set unique_id based on home_id for multi-home support
         await self.async_set_unique_id(f"tado_ce_{home_id}")

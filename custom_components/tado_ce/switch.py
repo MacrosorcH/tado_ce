@@ -1,19 +1,14 @@
 """Tado CE Switch Platform (Child Lock + Early Start)."""
-import json
 import logging
 import time
 from datetime import timedelta
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
 
-from .const import (
-    DOMAIN, ZONES_INFO_FILE, CONFIG_FILE, MOBILE_DEVICES_FILE,
-    API_ENDPOINT_DEVICES
-)
+from .const import DOMAIN, API_ENDPOINT_DEVICES
 from .device_manager import get_hub_device_info, get_zone_device_info
-from .data_loader import load_zones_info_file, load_config_file
+from .data_loader import load_zones_info_file
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
@@ -89,7 +84,6 @@ class TadoAwayModeSwitch(SwitchEntity):
             Debounce window = config value + 2.0 buffer, or 17.0 as fallback.
         """
         try:
-            from homeassistant.core import HomeAssistant
             if hasattr(self, 'hass') and self.hass:
                 config_manager = self.hass.data.get(DOMAIN, {}).get('config_manager')
                 if config_manager:
@@ -155,7 +149,6 @@ class TadoAwayModeSwitch(SwitchEntity):
                 _LOGGER.debug(f"Could not read home_state.json, trying mobile_devices: {e}")
             
             # Fallback: check mobile devices location (if geo tracking enabled)
-            from .data_loader import load_mobile_devices_file
             mobile_devices = load_mobile_devices_file()
             
             if mobile_devices:
@@ -279,7 +272,6 @@ class TadoEarlyStartSwitch(SwitchEntity):
             Debounce window = config value + 2.0 buffer, or 17.0 as fallback.
         """
         try:
-            from homeassistant.core import HomeAssistant
             if hasattr(self, 'hass') and self.hass:
                 config_manager = self.hass.data.get(DOMAIN, {}).get('config_manager')
                 if config_manager:
@@ -444,7 +436,6 @@ class TadoChildLockSwitch(SwitchEntity):
             Debounce window = config value + 2.0 buffer, or 17.0 as fallback.
         """
         try:
-            from homeassistant.core import HomeAssistant
             if hasattr(self, 'hass') and self.hass:
                 config_manager = self.hass.data.get(DOMAIN, {}).get('config_manager')
                 if config_manager:

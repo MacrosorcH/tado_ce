@@ -1,6 +1,5 @@
 """Tado CE Water Heater Platform."""
 import asyncio
-import json
 import logging
 import time
 from datetime import timedelta
@@ -12,9 +11,7 @@ from homeassistant.components.water_heater import (
 from homeassistant.const import STATE_OFF, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 
-from .const import (
-    DOMAIN, ZONES_FILE, ZONES_INFO_FILE, CONFIG_FILE
-)
+from .const import DOMAIN
 from .device_manager import get_zone_device_info
 from .data_loader import load_zones_file, load_zones_info_file, load_config_file
 

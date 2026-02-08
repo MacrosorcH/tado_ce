@@ -6,12 +6,11 @@ import asyncio
 import json
 import logging
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
-from .const import DATA_DIR, RATELIMIT_FILE, ZONES_FILE
+from .const import DATA_DIR
 
 _LOGGER = logging.getLogger(__name__)
 

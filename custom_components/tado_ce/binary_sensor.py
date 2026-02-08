@@ -1,5 +1,4 @@
 """Tado CE Binary Sensors."""
-import json
 import logging
 from datetime import timedelta
 
@@ -9,7 +8,6 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN, ZONES_FILE, ZONES_INFO_FILE
 from .device_manager import get_hub_device_info, get_zone_device_info
 from .data_loader import load_zones_file, load_zones_info_file, get_zone_names
 

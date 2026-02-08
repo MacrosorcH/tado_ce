@@ -9,9 +9,8 @@ Features:
 - Clears overlay when target temperature is reached or schedule starts
 - Tracks which overlays were set by this manager (won't clear user-set overlays)
 """
-import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from homeassistant.core import HomeAssistant, callback, Event

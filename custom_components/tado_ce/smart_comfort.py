@@ -15,8 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
-import math
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
@@ -1561,10 +1560,7 @@ async def async_load_baseline_from_statistics(
         return {}
     
     try:
-        from homeassistant.components.recorder.statistics import (
-            statistics_during_period,
-            get_last_statistics,
-        )
+        from homeassistant.components.recorder.statistics import statistics_during_period
         from homeassistant.components.recorder import get_instance
         from homeassistant.util import dt as dt_util
         

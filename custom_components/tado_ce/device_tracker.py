@@ -1,5 +1,4 @@
 """Tado CE Device Tracker (Presence Detection)."""
-import json
 import logging
 from datetime import timedelta
 
@@ -7,7 +6,6 @@ from homeassistant.components.device_tracker import SourceType
 from homeassistant.components.device_tracker.config_entry import TrackerEntity
 from homeassistant.core import HomeAssistant
 
-from .const import MOBILE_DEVICES_FILE
 from .device_manager import get_hub_device_info
 from .data_loader import load_mobile_devices_file
 

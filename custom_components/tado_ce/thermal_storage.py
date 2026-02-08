@@ -3,17 +3,16 @@
 Combines smart_comfort_cache and heating_cycle_history into a single storage system.
 Handles migration from old formats automatically.
 """
-import asyncio
 import json
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional
 
 import aiofiles
 import aiofiles.os
 
-from .heating_cycle_models import HeatingCycle, TemperatureReading
+from .heating_cycle_models import HeatingCycle
 
 _LOGGER = logging.getLogger(__name__)
 

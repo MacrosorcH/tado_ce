@@ -4,7 +4,6 @@ import json
 import logging
 import time
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import aiofiles
 import aiofiles.os
@@ -13,16 +12,14 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers.event import async_track_time_interval
 import homeassistant.helpers.config_validation as cv
 
 from .const import (
-    DOMAIN, DATA_DIR, CONFIG_FILE, RATELIMIT_FILE, TADO_API_BASE, TADO_AUTH_URL, CLIENT_ID, API_ENDPOINT_DEVICES,
+    DOMAIN, DATA_DIR, CONFIG_FILE, RATELIMIT_FILE,
     MIN_POLLING_INTERVAL, MAX_POLLING_INTERVAL, POLLING_SAFETY_BUFFER,
     QUOTA_RESERVE_CALLS, QUOTA_RESERVE_PERCENT
 )
 from .config_manager import ConfigurationManager
-from .auth_manager import get_auth_manager
 from .async_api import get_async_client
 
 _LOGGER = logging.getLogger(__name__)
@@ -963,7 +960,6 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             
             def _migrate_legacy_files():
                 """Migrate legacy files to per-home format in executor."""
-                import shutil
                 migrated = []
                 deleted = []
                 

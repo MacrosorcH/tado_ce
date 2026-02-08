@@ -5,7 +5,6 @@ import json
 import logging
 from datetime import datetime, timedelta, date
 from pathlib import Path
-from typing import Any
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.config_entries import ConfigEntry

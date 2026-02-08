@@ -10,9 +10,6 @@ v1.11.0: Refactored to use aiofiles for native async file I/O.
 import asyncio
 import json
 import logging
-import os
-import shutil
-import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, Any
@@ -22,7 +19,7 @@ import aiofiles
 import aiofiles.os
 
 from .const import (
-    DOMAIN, DATA_DIR, CONFIG_FILE, TADO_API_BASE, TADO_AUTH_URL, 
+    DATA_DIR, CONFIG_FILE, TADO_API_BASE, TADO_AUTH_URL, 
     CLIENT_ID, API_ENDPOINT_DEVICES
 )
 from .api_call_tracker import (

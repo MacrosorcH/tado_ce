@@ -1,6 +1,5 @@
 """Analysis of heating cycle data to extract metrics."""
 import logging
-from datetime import timedelta
 from typing import Optional
 
 from .heating_cycle_models import HeatingCycle

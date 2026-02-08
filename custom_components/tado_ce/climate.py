@@ -1,6 +1,5 @@
 """Tado CE Climate Platform - Supports Heating and AC zones."""
 import asyncio
-import json
 import logging
 import time
 from datetime import timedelta
@@ -15,20 +14,15 @@ from homeassistant.components.climate.const import (
     FAN_MEDIUM,
     FAN_LOW,
     SWING_ON,
-    SWING_OFF,
     PRESET_HOME,
     PRESET_AWAY,
 )
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.components.climate import ATTR_HVAC_MODE
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import (
-    DOMAIN, ZONES_FILE, ZONES_INFO_FILE, CONFIG_FILE, HOME_STATE_FILE,
-    DEFAULT_ZONE_NAMES
-)
+from .const import DOMAIN
 from .device_manager import get_zone_device_info
 from .async_api import get_async_client
 from .data_loader import (

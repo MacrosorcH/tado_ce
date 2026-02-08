@@ -7,7 +7,6 @@ from homeassistant.helpers.entity import EntityCategory
 
 from .const import DOMAIN
 from .device_manager import get_zone_device_info, get_hub_device_info
-from .config_manager import ConfigurationManager
 from .data_loader import load_zones_info_file
 
 _LOGGER = logging.getLogger(__name__)

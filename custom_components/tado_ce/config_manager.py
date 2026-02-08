@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional, Dict, Tuple
 from homeassistant.config_entries import ConfigEntry
 
-from .const import CONFIG_FILE, WEATHER_COMPENSATION_PRESETS, SMART_COMFORT_PRESETS
+from .const import CONFIG_FILE
 
 _LOGGER = logging.getLogger(__name__)
 

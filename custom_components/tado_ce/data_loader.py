@@ -10,12 +10,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from .const import (
-    ZONES_FILE, ZONES_INFO_FILE, WEATHER_FILE, MOBILE_DEVICES_FILE,
-    CONFIG_FILE, RATELIMIT_FILE, HOME_STATE_FILE, OFFSETS_FILE,
-    AC_CAPABILITIES_FILE, API_CALL_HISTORY_FILE, DATA_DIR,
-    get_data_file, get_legacy_file
-)
+from .const import DATA_DIR, get_data_file, get_legacy_file
 
 _LOGGER = logging.getLogger(__name__)
 

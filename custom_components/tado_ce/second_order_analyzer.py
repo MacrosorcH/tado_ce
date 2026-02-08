@@ -5,7 +5,6 @@ Analyzes heating acceleration and approach behavior for improved preheat estimat
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
 from typing import Optional, List, TYPE_CHECKING
 
 if TYPE_CHECKING:
