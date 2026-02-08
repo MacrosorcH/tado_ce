@@ -23,6 +23,13 @@ All notable changes to Tado CE will be documented in this file.
 - **Fixed Smart Boost button not finding climate entity** - Smart Boost now uses entity registry lookup with name-based fallback, consistent with water heater timer fix
 - **Improved heating rate fallback chain** - Preheat Advisor and Smart Boost now prioritize HeatingCycleCoordinator data, falling back to SmartComfortManager when unavailable
 
+### Code Quality Improvements
+- **Improved error handling** - File loading now uses specific exception handling (FileNotFoundError, PermissionError, JSONDecodeError) instead of generic Exception catching
+- **Added coordinator availability logging** - Warning logged when TRV zones can't create thermal analytics sensors due to coordinator unavailability
+- **Sequence number overflow protection** - Global sequence counter resets at sys.maxsize to prevent memory issues in long-running instances
+- **Entity freshness memory leak prevention** - Periodic cleanup task (every 5 minutes) removes expired entries from entity freshness tracking dict
+- **Fixed setup timeout issue** - Changed cleanup task from blocking while loop to proper Home Assistant timer pattern using async_track_time_interval
+
 ### Technical Changes
 - **100% Native Async I/O** - All file operations now use `aiofiles` instead of `run_in_executor`
 - **Per-Home File Migration** - Legacy files renamed to per-home format (e.g., `zones.json` → `zones_{home_id}.json`)
