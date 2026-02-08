@@ -2,6 +2,37 @@
 
 Complete list of all entities created by Tado CE integration.
 
+## 📋 v2.0.0 Changes
+
+### Entity Descriptions (UX Enhancement)
+All sensors and binary sensors now include helpful descriptions visible in Home Assistant's entity info panel:
+- **What it measures**: Clear explanation of what each sensor tracks
+- **How to interpret values**: Guidance on understanding sensor readings
+- **Context and usage**: When and why you might use this sensor
+
+**Implementation**: Descriptions appear automatically in the entity info panel (ℹ️ icon) for all ~30+ sensors and binary sensors. No configuration needed.
+
+**Reference**: Addresses Issue #91 - Makes Smart Comfort and other sensors more discoverable and easier to understand for new users.
+
+### Thermal Analytics (TRV Zones Only)
+New sensors automatically created for all HEATING zones with TRV devices:
+- **Thermal Inertia** (`sensor.{zone}_thermal_inertia`): Delay before temperature starts rising
+- **Avg Heating Rate** (`sensor.{zone}_avg_heating_rate`): Temperature increase per minute
+- **Preheat Time** (`sensor.{zone}_preheat_time`): Estimated minutes to reach target
+- **Analysis Confidence** (`sensor.{zone}_analysis_confidence`): Reliability score (0-100%)
+- **Heating Acceleration** (`sensor.{zone}_heating_acceleration`): Rate of change in heating speed
+- **Approach Factor** (`sensor.{zone}_approach_factor`): Deceleration near target
+
+### Smart Polling
+- **Adaptive polling interval**: Automatically adjusts based on remaining API quota
+- **Universal quota support**: Works with any API tier (100, 200, 500, 5000, 20000+)
+
+### Enhanced Mold Risk
+- **Surface temperature calculation**: Uses outdoor temp + window U-value for accurate cold spot detection
+- **Window type config**: Single Pane, Double Pane (default), Triple Pane, Passive House
+
+---
+
 ## 📋 v1.9.0 Changes
 
 ### Environment Sensors (Always Enabled)
