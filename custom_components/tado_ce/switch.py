@@ -67,7 +67,7 @@ class TadoAwayModeSwitch(SwitchEntity):
     """
     
     def __init__(self):
-        self._attr_name = "Tado CE Away Mode"
+        self._attr_name = "Away Mode"
         self._attr_unique_id = "tado_ce_away_mode"
         self._attr_icon = "mdi:home-export-outline"
         self._attr_is_on = False  # False = Home, True = Away

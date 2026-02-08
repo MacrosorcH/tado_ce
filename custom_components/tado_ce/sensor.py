@@ -291,7 +291,7 @@ class TadoHomeIdSensor(SensorEntity):
     """Sensor showing Tado Home ID."""
     
     def __init__(self):
-        self._attr_name = "Tado CE Home ID"
+        self._attr_name = "Home ID"
         self._attr_unique_id = "tado_ce_home_id"
         self._attr_icon = "mdi:home"
         self._attr_device_info = get_hub_device_info()
@@ -316,7 +316,7 @@ class TadoApiUsageSensor(SensorEntity):
     """Sensor for Tado API usage tracking."""
     
     def __init__(self):
-        self._attr_name = "Tado CE API Usage"
+        self._attr_name = "API Usage"
         self._attr_unique_id = "tado_ce_api_usage"
         self._attr_native_unit_of_measurement = "calls"
         self._attr_state_class = "measurement"
@@ -448,7 +448,7 @@ class TadoApiResetSensor(SensorEntity):
     """Sensor showing API rate limit reset time."""
     
     def __init__(self):
-        self._attr_name = "Tado CE API Reset"
+        self._attr_name = "API Reset"
         self._attr_unique_id = "tado_ce_api_reset"
         self._attr_icon = "mdi:timer-refresh"
         self._attr_device_class = "timestamp"
@@ -574,7 +574,7 @@ class TadoApiLimitSensor(SensorEntity):
     """Sensor showing Tado API daily limit."""
     
     def __init__(self):
-        self._attr_name = "Tado CE API Limit"
+        self._attr_name = "API Limit"
         self._attr_unique_id = "tado_ce_api_limit"
         self._attr_icon = "mdi:speedometer"
         self._attr_native_unit_of_measurement = "calls"
@@ -653,7 +653,7 @@ class TadoApiStatusSensor(SensorEntity):
     """Sensor showing Tado API status."""
     
     def __init__(self):
-        self._attr_name = "Tado CE API Status"
+        self._attr_name = "API Status"
         self._attr_unique_id = "tado_ce_api_status"
         self._attr_device_info = get_hub_device_info()
         self._attr_available = False
@@ -685,7 +685,7 @@ class TadoTokenStatusSensor(SensorEntity):
     """Sensor showing Tado token status."""
     
     def __init__(self):
-        self._attr_name = "Tado CE Token Status"
+        self._attr_name = "Token Status"
         self._attr_unique_id = "tado_ce_token_status"
         self._attr_device_info = get_hub_device_info()
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -719,7 +719,7 @@ class TadoZoneCountSensor(SensorEntity):
     """Sensor showing number of Tado zones."""
     
     def __init__(self):
-        self._attr_name = "Tado CE Zone Count"
+        self._attr_name = "Zone Count"
         self._attr_unique_id = "tado_ce_zone_count"
         self._attr_icon = "mdi:home-thermometer"
         self._attr_native_unit_of_measurement = "zones"
@@ -758,7 +758,7 @@ class TadoLastSyncSensor(SensorEntity):
     """Sensor showing last sync time."""
     
     def __init__(self):
-        self._attr_name = "Tado CE Last Sync"
+        self._attr_name = "Last Sync"
         self._attr_unique_id = "tado_ce_last_sync"
         self._attr_icon = "mdi:sync"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
@@ -903,6 +903,7 @@ class TadoPollingIntervalSensor(SensorEntity):
     def update(self):
         try:
             from homeassistant.config_entries import ConfigEntry
+            from datetime import datetime
             
             entries = self.hass.config_entries.async_entries(DOMAIN) if self.hass else []
             if not entries:
@@ -910,7 +911,7 @@ class TadoPollingIntervalSensor(SensorEntity):
                 return
             
             from .config_manager import ConfigurationManager
-            from . import get_polling_interval, is_night_time
+            from . import get_polling_interval
             
             config_manager = ConfigurationManager(entries[0])
             
@@ -922,8 +923,11 @@ class TadoPollingIntervalSensor(SensorEntity):
             self._day_interval = config_manager.get_custom_day_interval()
             self._night_interval = config_manager.get_custom_night_interval()
             
-            # Check if currently in night mode
-            self._is_night_mode = is_night_time(config_manager)
+            # Check if currently in night mode based on config hours
+            current_hour = datetime.now().hour
+            day_start = config_manager.get_day_start_hour()
+            night_start = config_manager.get_night_start_hour()
+            self._is_night_mode = not (day_start <= current_hour < night_start)
             
             # Determine source
             if self._day_interval and self._night_interval:
@@ -1219,7 +1223,7 @@ class TadoOutsideTemperatureSensor(SensorEntity):
     """Outside temperature from Tado weather data."""
     
     def __init__(self):
-        self._attr_name = "Tado CE Outside Temperature"
+        self._attr_name = "Outside Temperature"
         self._attr_unique_id = "tado_ce_outside_temperature"
         self._attr_device_class = SensorDeviceClass.TEMPERATURE
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -1251,7 +1255,7 @@ class TadoSolarIntensitySensor(SensorEntity):
     """Solar intensity from Tado weather data."""
     
     def __init__(self):
-        self._attr_name = "Tado CE Solar Intensity"
+        self._attr_name = "Solar Intensity"
         self._attr_unique_id = "tado_ce_solar_intensity"
         self._attr_icon = "mdi:white-balance-sunny"
         self._attr_native_unit_of_measurement = PERCENTAGE
@@ -1283,7 +1287,7 @@ class TadoWeatherStateSensor(SensorEntity):
     """Weather state from Tado weather data."""
     
     def __init__(self):
-        self._attr_name = "Tado CE Weather"
+        self._attr_name = "Weather"
         self._attr_unique_id = "tado_ce_weather_state"
         self._attr_icon = "mdi:weather-partly-cloudy"
         self._attr_available = False
@@ -1506,7 +1510,7 @@ class TadoBoilerFlowTemperatureSensor(SensorEntity):
     """
     
     def __init__(self):
-        self._attr_name = "Tado CE Boiler Flow Temperature"
+        self._attr_name = "Boiler Flow Temperature"
         self._attr_unique_id = "tado_ce_boiler_flow_temperature"
         self._attr_device_class = SensorDeviceClass.TEMPERATURE
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS

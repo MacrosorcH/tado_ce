@@ -55,7 +55,7 @@ class TadoHomeSensor(BinarySensorEntity):
     """Binary sensor for Tado Home/Away status."""
     
     def __init__(self):
-        self._attr_name = "Tado CE Home"
+        self._attr_name = "Home"
         self._attr_unique_id = "tado_ce_home"
         self._attr_device_class = BinarySensorDeviceClass.PRESENCE
         self._attr_available = False

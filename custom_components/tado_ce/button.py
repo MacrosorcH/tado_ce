@@ -79,7 +79,7 @@ class TadoResumeAllSchedulesButton(ButtonEntity):
         """Initialize the button."""
         self.hass = hass
         
-        self._attr_name = "Tado CE Resume All Schedules"
+        self._attr_name = "Resume All Schedules"
         self._attr_unique_id = "tado_ce_resume_all_schedules"
         self._attr_device_info = get_hub_device_info()
         self._attr_icon = "mdi:calendar-refresh"
@@ -138,7 +138,7 @@ class TadoRefreshACCapabilitiesButton(ButtonEntity):
         """Initialize the button."""
         self.hass = hass
         
-        self._attr_name = "Tado CE Refresh AC Capabilities"
+        self._attr_name = "Refresh AC Capabilities"
         self._attr_unique_id = "tado_ce_refresh_ac_capabilities"
         self._attr_device_info = get_hub_device_info()
         self._attr_entity_category = EntityCategory.CONFIG
