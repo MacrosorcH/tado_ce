@@ -36,7 +36,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
         async_add_entities(trackers, True)
         _LOGGER.info(f"Tado CE device trackers loaded: {len(trackers)}")
     else:
-        _LOGGER.info("Tado CE: No devices with geo tracking enabled")
+        _LOGGER.debug("Tado CE: No devices with geo tracking enabled")
 
 
 class TadoDeviceTracker(TrackerEntity):

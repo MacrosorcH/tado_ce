@@ -26,7 +26,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     config_manager = ConfigurationManager(entry)
     
     # Check if Smart Comfort is enabled (required for Preheat Now sensor)
-    smart_comfort_enabled = entry.options.get('smart_comfort_enabled', False)
+    smart_comfort_enabled = config_manager.get_smart_comfort_enabled()
     
     sensors = []
     

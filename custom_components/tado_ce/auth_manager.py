@@ -143,7 +143,7 @@ class AuthManager:
                 self._consecutive_failures += 1
                 return None
             
-            _LOGGER.info("Refreshing access token...")
+            _LOGGER.debug("Refreshing access token...")
             
             # Call Tado OAuth token endpoint
             data = urlencode({
@@ -180,7 +180,7 @@ class AuthManager:
                 # CRITICAL FIX: Notify all waiting threads
                 self._refresh_condition.notify_all()
                 
-                _LOGGER.info("Access token refreshed successfully")
+                _LOGGER.debug("Access token refreshed successfully")
                 return new_access_token
                 
         except Exception as e:
@@ -284,7 +284,7 @@ class AuthManager:
         This should be called when an API call returns 401/403.
         """
         with self._lock:
-            _LOGGER.info("Invalidating cached token")
+            _LOGGER.debug("Invalidating cached token")
             self._access_token = None
             self._token_expiry = None
     
@@ -356,6 +356,6 @@ def get_auth_manager(config_file: Path, client_id: str, auth_url: str) -> AuthMa
         # Second check (with lock) - ensure only one thread creates instance
         if _auth_manager is None:
             _auth_manager = AuthManager(config_file, client_id, auth_url)
-            _LOGGER.info("Global AuthManager created (thread-safe)")
+            _LOGGER.debug("Global AuthManager created (thread-safe)")
         
         return _auth_manager

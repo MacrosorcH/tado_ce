@@ -2160,16 +2160,16 @@ class TadoPreheatAdvisorSensor(TadoBaseSensor):
             cycle_heating_rate = None
             cycle_confidence = None
             
-            # v2.0.0: Get UFH buffer from options (only for selected zones)
+            # v2.0.0: Get UFH buffer from config_manager (only for selected zones)
             ufh_buffer = 0
-            for entry in self.hass.config_entries.async_entries(DOMAIN):
-                ufh_buffer_global = entry.options.get('ufh_buffer_minutes', 0)
-                ufh_zones = entry.options.get('ufh_zones', [])
+            config_manager = self.hass.data.get(DOMAIN, {}).get('config_manager')
+            if config_manager:
+                ufh_buffer_global = config_manager.get_ufh_buffer_minutes()
+                ufh_zones = config_manager.get_ufh_zones()
                 # Apply buffer only if: buffer > 0 AND (no zones selected OR this zone is selected)
                 if ufh_buffer_global > 0:
                     if not ufh_zones or self._zone_id in ufh_zones:
                         ufh_buffer = ufh_buffer_global
-                break
             
             if heating_cycle_coordinator:
                 zone_data_cycle = heating_cycle_coordinator.get_zone_data(self._zone_id)

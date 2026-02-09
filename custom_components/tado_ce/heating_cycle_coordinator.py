@@ -54,19 +54,19 @@ class HeatingCycleCoordinator(DataUpdateCoordinator):
     
     async def async_setup(self) -> None:
         """Setup coordinator - load storage and resume active cycles."""
-        _LOGGER.info("HeatingCycleCoordinator: Starting async_setup for home %s", self._home_id)
+        _LOGGER.debug("HeatingCycleCoordinator: Starting async_setup for home %s", self._home_id)
         
         await self._storage.async_load()
-        _LOGGER.info("HeatingCycleCoordinator: Storage loaded")
+        _LOGGER.debug("HeatingCycleCoordinator: Storage loaded")
         
         # Resume active cycles
         active_cycles = await self._storage.get_active_cycles()
-        _LOGGER.info("HeatingCycleCoordinator: Found %d active cycles to resume", len(active_cycles))
+        _LOGGER.debug("HeatingCycleCoordinator: Found %d active cycles to resume", len(active_cycles))
         
         for zone_id, cycle in active_cycles.items():
             detector = self._get_or_create_detector(zone_id)
             detector.resume_cycle(cycle)
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Resumed active cycle for zone %s from %s",
                 zone_id,
                 cycle.start_time.isoformat()
@@ -74,12 +74,12 @@ class HeatingCycleCoordinator(DataUpdateCoordinator):
         
         # Load historical data for all zones with completed cycles
         all_zone_ids = await self._storage.get_all_zone_ids()
-        _LOGGER.info("HeatingCycleCoordinator: Loading historical data for %d zones", len(all_zone_ids))
+        _LOGGER.debug("HeatingCycleCoordinator: Loading historical data for %d zones", len(all_zone_ids))
         
         for zone_id in all_zone_ids:
             await self._async_update_zone_data(zone_id)
         
-        _LOGGER.info("HeatingCycleCoordinator: async_setup complete")
+        _LOGGER.debug("HeatingCycleCoordinator: async_setup complete")
     
     def _get_or_create_detector(self, zone_id: str) -> HeatingCycleDetector:
         """Get or create detector for zone."""
@@ -87,22 +87,87 @@ class HeatingCycleCoordinator(DataUpdateCoordinator):
             self._detectors[zone_id] = HeatingCycleDetector(zone_id, self._config)
         return self._detectors[zone_id]
     
-    async def on_setpoint_change(
-        self, zone_id: str, new_target: float, timestamp: Optional[datetime] = None
+    async def on_zone_update(
+        self, zone_id: str, target_temp: float, current_temp: float,
+        timestamp: Optional[datetime] = None
     ) -> None:
-        """Handle setpoint change event."""
+        """Handle zone update event - ATOMIC operation for setpoint and temperature.
+        
+        v2.0.0 fix: This method replaces separate on_setpoint_change and on_temperature_update
+        calls to eliminate race conditions. Both operations are handled atomically
+        within a single lock acquisition, ensuring correct order:
+        1. First check/start cycle based on setpoint
+        2. Then record temperature reading
+        
+        Args:
+            zone_id: Zone ID
+            target_temp: Target temperature (setpoint)
+            current_temp: Current room temperature
+            timestamp: Time of the update
+        """
         if timestamp is None:
             timestamp = datetime.now(timezone.utc)
         
         _LOGGER.debug(
-            "Zone %s: Setpoint change received: %.1f°C",
+            "Zone %s: Zone update received - target=%.1f°C, current=%.1f°C",
             zone_id,
-            new_target
+            target_temp,
+            current_temp
         )
         
         async with self._lock:
             detector = self._get_or_create_detector(zone_id)
-            cycle_started = detector.check_setpoint_change(new_target, timestamp)
+            
+            # Step 1: Check setpoint change (may start new cycle)
+            cycle_started = detector.check_setpoint_change(target_temp, timestamp, current_temp)
+            
+            if cycle_started:
+                _LOGGER.debug(
+                    "Zone %s: New cycle started, target=%.1f°C, current=%.1f°C",
+                    zone_id,
+                    target_temp,
+                    current_temp
+                )
+            
+            # Step 2: Record temperature reading (only if cycle is active)
+            detector.on_temperature_update(current_temp, timestamp)
+            
+            # Step 3: Check if cycle completed
+            completed_cycle = detector.check_cycle_complete()
+            if completed_cycle:
+                await self._storage.save_cycle(zone_id, completed_cycle)
+                _LOGGER.info(
+                    "Zone %s: Cycle completed and saved",
+                    zone_id
+                )
+                # Trigger data update for sensors
+                await self._async_update_zone_data(zone_id)
+    
+    async def on_setpoint_change(
+        self, zone_id: str, new_target: float, current_temp: float = None,
+        timestamp: Optional[datetime] = None
+    ) -> None:
+        """Handle setpoint change event (legacy method, prefer on_zone_update).
+        
+        Args:
+            zone_id: Zone ID
+            new_target: New target temperature
+            current_temp: Current room temperature (optional, for restart detection)
+            timestamp: Time of the change
+        """
+        if timestamp is None:
+            timestamp = datetime.now(timezone.utc)
+        
+        _LOGGER.debug(
+            "Zone %s: Setpoint change received: %.1f°C (current=%.1f°C)",
+            zone_id,
+            new_target,
+            current_temp if current_temp else 0
+        )
+        
+        async with self._lock:
+            detector = self._get_or_create_detector(zone_id)
+            cycle_started = detector.check_setpoint_change(new_target, timestamp, current_temp)
             
             if cycle_started:
                 _LOGGER.debug(
@@ -114,7 +179,7 @@ class HeatingCycleCoordinator(DataUpdateCoordinator):
     async def on_temperature_update(
         self, zone_id: str, temp: float, timestamp: Optional[datetime] = None
     ) -> None:
-        """Handle temperature update event."""
+        """Handle temperature update event (legacy method, prefer on_zone_update)."""
         if timestamp is None:
             timestamp = datetime.now(timezone.utc)
         
