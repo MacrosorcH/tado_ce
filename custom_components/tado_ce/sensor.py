@@ -3163,13 +3163,13 @@ class TadoPreheatTimeSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Return sensor value from coordinator data."""
-        # Get current and target temps from zone data
-        zone_data = self._get_zone_data()
-        if not zone_data:
+        # Get current and target temps from cached zone state (avoids blocking I/O)
+        zone_state = self.coordinator.get_zone_state(self._zone_id)
+        if not zone_state:
             return None
         
-        current_temp = zone_data.get("sensorDataPoints", {}).get("insideTemperature", {}).get("celsius")
-        target_temp = zone_data.get("setting", {}).get("temperature", {}).get("celsius")
+        current_temp = zone_state.get("current_temp")
+        target_temp = zone_state.get("target_temp")
         
         if current_temp is None or target_temp is None:
             return None
@@ -3203,18 +3203,6 @@ class TadoPreheatTimeSensor(CoordinatorEntity, SensorEntity):
             "completed_count": zone_data.get("completed_count", 0),
             "confidence_score": zone_data.get("confidence_score", 0.0),
         }
-    
-    def _get_zone_data(self):
-        """Get zone data from file."""
-        try:
-            # Use data_loader for per-home file support
-            data = load_zones_file()
-            if data:
-                zone_states = data.get('zoneStates') or {}
-                return zone_states.get(self._zone_id)
-            return None
-        except Exception:
-            return None
 
 
 class TadoAnalysisConfidenceSensor(CoordinatorEntity, SensorEntity):

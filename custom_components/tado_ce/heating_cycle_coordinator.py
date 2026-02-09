@@ -41,7 +41,8 @@ class HeatingCycleCoordinator(DataUpdateCoordinator):
         self._analyzer = HeatingCycleAnalyzer(config.min_cycles)
         self._second_order = SecondOrderAnalyzer(config.min_cycles)
         self._detectors: dict[str, HeatingCycleDetector] = {}
-        self._zone_data: dict[str, dict] = {}
+        self._zone_data: dict[str, dict] = {}  # Analysis data (heating rate, cycles, etc.)
+        self._zone_states: dict[str, dict] = {}  # Cached zone states (current_temp, target_temp)
         self._lock = asyncio.Lock()
         
     async def _async_update_data(self) -> dict:
@@ -114,6 +115,13 @@ class HeatingCycleCoordinator(DataUpdateCoordinator):
             target_temp,
             current_temp
         )
+        
+        # Cache zone states for sensors (avoids blocking I/O in native_value)
+        self._zone_states[zone_id] = {
+            "current_temp": current_temp,
+            "target_temp": target_temp,
+            "timestamp": timestamp,
+        }
         
         async with self._lock:
             detector = self._get_or_create_detector(zone_id)
@@ -264,6 +272,17 @@ class HeatingCycleCoordinator(DataUpdateCoordinator):
     def get_zone_data(self, zone_id: str) -> Optional[dict]:
         """Get analysis data for a zone."""
         return self._zone_data.get(zone_id)
+    
+    def get_zone_state(self, zone_id: str) -> Optional[dict]:
+        """Get cached zone state (current_temp, target_temp).
+        
+        Returns cached state from last on_zone_update call.
+        Used by sensors to avoid blocking I/O in native_value property.
+        
+        Returns:
+            Dict with current_temp, target_temp, timestamp, or None if not cached.
+        """
+        return self._zone_states.get(zone_id)
     
     async def get_cycles(self, zone_id: str) -> list[HeatingCycle]:
         """Get completed cycles for a zone within rolling window."""
