@@ -226,12 +226,15 @@ class TadoClimate(ClimateEntity):
         self._expected_hvac_mode = None
         self._expected_hvac_action = None
     
-    def _set_optimistic_state(self, hvac_mode: HVACMode, hvac_action: HVACAction, target_temp: float = None):
+    async def _set_optimistic_state(self, hvac_mode: HVACMode, hvac_action: HVACAction, target_temp: float = None):
         """Set optimistic state with sequence number tracking.
         
         v1.10.0: Updated for coordinator-aware optimistic updates (Issue #44 fix).
         Instead of time-based tracking, we now use sequence numbers and mark
         the entity as fresh in the coordinator to prevent stale data overwrites.
+        
+        v2.0.0: Changed to async to ensure mark_entity_fresh completes before
+        async_write_ha_state() triggers update().
         
         Args:
             hvac_mode: The HVAC mode we expect API to confirm
@@ -256,11 +259,11 @@ class TadoClimate(ClimateEntity):
         self._expected_hvac_mode = hvac_mode
         self._expected_hvac_action = hvac_action
         
-        # Mark entity as fresh in coordinator
+        # Mark entity as fresh in coordinator - MUST await to ensure freshness is set
+        # before async_write_ha_state() triggers update()
         mark_entity_fresh = self.hass.data.get(DOMAIN, {}).get('mark_entity_fresh')
         if mark_entity_fresh:
-            # Schedule async call (we're in sync context)
-            asyncio.create_task(mark_entity_fresh(self.entity_id))
+            await mark_entity_fresh(self.entity_id)
         
         _LOGGER.debug(
             f"{self._zone_name}: Set optimistic state: mode={hvac_mode}, action={hvac_action}, seq={self._optimistic_sequence}"
@@ -273,9 +276,9 @@ class TadoClimate(ClimateEntity):
         
         Priority:
         1. If hvac_mode == OFF → OFF
-        2. If in optimistic window with expected action → return expected action
-        3. If heating_power > 0 → HEATING (API confirms active heating)
-        4. If hvac_mode == HEAT and target provided → HEATING (optimistic)
+        2. If target_temp provided (optimistic call) → HEATING
+        3. If in optimistic window with expected action → return expected action
+        4. If heating_power > 0 → HEATING (API confirms active heating)
         5. If hvac_mode == HEAT and target > current + 0.5 → HEATING (temperature fallback)
         6. Otherwise → IDLE
         
@@ -290,6 +293,12 @@ class TadoClimate(ClimateEntity):
         if self._attr_hvac_mode == HVACMode.OFF:
             return HVACAction.OFF
         
+        # v2.0.0: If target_temp is provided (optimistic call), assume HEATING
+        # This MUST be checked before _expected_hvac_action to ensure new
+        # optimistic updates override stale expected actions
+        if target_temp is not None and self._attr_hvac_mode == HVACMode.HEAT:
+            return HVACAction.HEATING
+        
         # v1.10.0: If we have optimistic state with expected action, use it
         # This ensures optimistic updates work even when current temp >= target
         if self._expected_hvac_action is not None:
@@ -297,11 +306,6 @@ class TadoClimate(ClimateEntity):
         
         # API confirms heating (highest priority when available)
         if self._heating_power and self._heating_power > 0:
-            return HVACAction.HEATING
-        
-        # v1.10.0: If target_temp is provided (optimistic call), assume HEATING
-        # This handles the case where user sets temp but current >= target
-        if target_temp is not None and self._attr_hvac_mode == HVACMode.HEAT:
             return HVACAction.HEATING
         
         # Temperature-aware fallback for HEAT mode
@@ -619,7 +623,7 @@ class TadoClimate(ClimateEntity):
         new_hvac_action = self._calculate_hvac_action(target_temp=temperature)
         self._attr_hvac_action = new_hvac_action
         # Set optimistic state with sequence number and mark entity fresh
-        self._set_optimistic_state(HVACMode.HEAT, new_hvac_action, target_temp=temperature)
+        await self._set_optimistic_state(HVACMode.HEAT, new_hvac_action, target_temp=temperature)
         _LOGGER.debug(f"Optimistic update: {self._zone_name} target_temp={temperature}, hvac_action={self._attr_hvac_action}")
         self.async_write_ha_state()
         
@@ -685,7 +689,7 @@ class TadoClimate(ClimateEntity):
             new_hvac_action = self._calculate_hvac_action(target_temp=temp)
             self._attr_hvac_action = new_hvac_action
             # v1.10.0: Use new optimistic state tracking with sequence numbers (Issue #44 fix)
-            self._set_optimistic_state(HVACMode.HEAT, new_hvac_action, target_temp=temp)
+            await self._set_optimistic_state(HVACMode.HEAT, new_hvac_action, target_temp=temp)
             self.async_write_ha_state()
             
             # v1.9.2: Await API call with timeout (fixes #44)
@@ -723,7 +727,7 @@ class TadoClimate(ClimateEntity):
             self._overlay_type = "MANUAL"
             # v1.10.0: Use new optimistic state tracking with sequence numbers (Issue #44 fix)
             # For OFF mode, we expect API to confirm quickly
-            self._set_optimistic_state(HVACMode.OFF, HVACAction.OFF)
+            await self._set_optimistic_state(HVACMode.OFF, HVACAction.OFF)
             self.async_write_ha_state()
             
             # v1.9.2: Await API call with timeout (fixes #44)
@@ -758,7 +762,7 @@ class TadoClimate(ClimateEntity):
             self._attr_hvac_action = HVACAction.IDLE
             # v1.10.0: Use new optimistic state tracking with sequence numbers (Issue #44 fix)
             # For AUTO mode, we expect API to confirm quickly
-            self._set_optimistic_state(HVACMode.AUTO, HVACAction.IDLE)
+            await self._set_optimistic_state(HVACMode.AUTO, HVACAction.IDLE)
             self.async_write_ha_state()
             
             # v1.9.2: Await API call with timeout (fixes #44)
@@ -1033,12 +1037,15 @@ class TadoACClimate(ClimateEntity):
         self._expected_hvac_mode = None
         self._expected_hvac_action = None
     
-    def _set_optimistic_state(self, hvac_mode: HVACMode, hvac_action: HVACAction, target_temp: float = None):
+    async def _set_optimistic_state(self, hvac_mode: HVACMode, hvac_action: HVACAction, target_temp: float = None):
         """Set optimistic state with sequence number tracking.
         
         v1.10.0: Updated for coordinator-aware optimistic updates (Issue #44 fix).
         Instead of time-based tracking, we now use sequence numbers and mark
         the entity as fresh in the coordinator to prevent stale data overwrites.
+        
+        v2.0.0: Changed to async to ensure mark_entity_fresh completes before
+        async_write_ha_state() triggers update().
         
         Args:
             hvac_mode: The HVAC mode we expect API to confirm
@@ -1063,11 +1070,11 @@ class TadoACClimate(ClimateEntity):
         self._expected_hvac_mode = hvac_mode
         self._expected_hvac_action = hvac_action
         
-        # Mark entity as fresh in coordinator
+        # Mark entity as fresh in coordinator - MUST await to ensure freshness is set
+        # before async_write_ha_state() triggers update()
         mark_entity_fresh = self.hass.data.get(DOMAIN, {}).get('mark_entity_fresh')
         if mark_entity_fresh:
-            # Schedule async call (we're in sync context)
-            asyncio.create_task(mark_entity_fresh(self.entity_id))
+            await mark_entity_fresh(self.entity_id)
         
         _LOGGER.debug(
             f"AC {self._zone_name}: Set optimistic state: mode={hvac_mode}, action={hvac_action}, seq={self._optimistic_sequence}"
@@ -1366,7 +1373,7 @@ class TadoACClimate(ClimateEntity):
         
         self._overlay_type = "MANUAL"
         # v1.10.0: Use new optimistic state tracking with sequence numbers (Issue #44 fix)
-        self._set_optimistic_state(self._attr_hvac_mode, new_hvac_action, target_temp=temperature)
+        await self._set_optimistic_state(self._attr_hvac_mode, new_hvac_action, target_temp=temperature)
         _LOGGER.debug(f"AC Optimistic update: {self._zone_name} target_temp={temperature}, hvac_action={new_hvac_action}")
         self.async_write_ha_state()
         
@@ -1407,7 +1414,7 @@ class TadoACClimate(ClimateEntity):
             self._attr_hvac_action = HVACAction.OFF
             self._overlay_type = "MANUAL"
             # v1.10.0: Use new optimistic state tracking with sequence numbers (Issue #44 fix)
-            self._set_optimistic_state(HVACMode.OFF, HVACAction.OFF)
+            await self._set_optimistic_state(HVACMode.OFF, HVACAction.OFF)
             self.async_write_ha_state()
             
             setting = {
@@ -1447,7 +1454,7 @@ class TadoACClimate(ClimateEntity):
             # The actual state will be updated when zones.json is refreshed.
             self._attr_hvac_action = HVACAction.IDLE
             # v1.10.0: Use new optimistic state tracking with sequence numbers (Issue #44 fix)
-            self._set_optimistic_state(HVACMode.AUTO, HVACAction.IDLE)
+            await self._set_optimistic_state(HVACMode.AUTO, HVACAction.IDLE)
             self.async_write_ha_state()
             
             # v1.9.2: Await API call with timeout (fixes #44)
@@ -1505,7 +1512,7 @@ class TadoACClimate(ClimateEntity):
             self._attr_hvac_action = new_hvac_action
             
             # v1.10.0: Use new optimistic state tracking with sequence numbers (Issue #44 fix)
-            self._set_optimistic_state(hvac_mode, new_hvac_action)
+            await self._set_optimistic_state(hvac_mode, new_hvac_action)
             self.async_write_ha_state()
             
             # v1.9.2: Await API call with timeout (fixes #44)
@@ -1553,7 +1560,7 @@ class TadoACClimate(ClimateEntity):
         self._attr_hvac_action = new_hvac_action
         
         # v1.10.0: Use new optimistic state tracking with sequence numbers (Issue #44 fix)
-        self._set_optimistic_state(self._attr_hvac_mode, new_hvac_action)
+        await self._set_optimistic_state(self._attr_hvac_mode, new_hvac_action)
         self.async_write_ha_state()
         
         tado_fan = HA_TO_TADO_FAN.get(fan_mode, 'AUTO')
@@ -1621,7 +1628,7 @@ class TadoACClimate(ClimateEntity):
         self._attr_hvac_action = new_hvac_action
         
         # v1.10.0: Use new optimistic state tracking with sequence numbers (Issue #44 fix)
-        self._set_optimistic_state(self._attr_hvac_mode, new_hvac_action)
+        await self._set_optimistic_state(self._attr_hvac_mode, new_hvac_action)
         self.async_write_ha_state()
         
         # v1.9.2: Await API call with timeout (fixes #44)
