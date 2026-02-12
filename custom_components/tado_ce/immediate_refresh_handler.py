@@ -21,7 +21,8 @@ SIGNAL_ZONES_UPDATED = "tado_ce_zones_updated"
 REFRESH_ENTITY_TYPES = {
     "climate",      # Temperature and HVAC mode changes
     "switch",       # Switch toggles
-    "water_heater"  # Hot water state changes
+    "water_heater", # Hot water state changes
+    "select"        # v2.0.2: Presence mode changes
 }
 
 # Rate limiting thresholds
@@ -50,6 +51,7 @@ class ImmediateRefreshHandler:
         
         # Debounce mechanism for batch updates
         self._pending_refresh: bool = False
+        self._pending_home_state_refresh: bool = False  # v2.0.2: Track if home state refresh needed
         self._debounce_task: Optional[object] = None
         self._debounce_delay = 15.0  # v1.6.1: Default 15 seconds (was 1s), configurable via options
     
@@ -184,7 +186,7 @@ class ImmediateRefreshHandler:
         
         return True
     
-    async def trigger_refresh(self, entity_id: str, reason: str = "state_change", force: bool = False, skip_debounce: bool = False):
+    async def trigger_refresh(self, entity_id: str, reason: str = "state_change", force: bool = False, skip_debounce: bool = False, include_home_state: bool = False):
         """Trigger immediate refresh for an entity.
         
         Uses debouncing to batch multiple rapid changes into a single refresh.
@@ -194,6 +196,7 @@ class ImmediateRefreshHandler:
             reason: Reason for refresh (for logging)
             force: If True, skip entity type check (for buttons like Resume All Schedules)
             skip_debounce: If True, execute refresh immediately without debounce delay
+            include_home_state: If True, also fetch home state (for presence mode changes)
         """
         if not force and not self.should_refresh(entity_id):
             _LOGGER.debug(f"Entity {entity_id} does not trigger immediate refresh")
@@ -218,6 +221,9 @@ class ImmediateRefreshHandler:
         # Mark refresh as pending
         self._pending_refresh = True
         self._last_refresh_per_entity[entity_id] = datetime.now()
+        
+        # v2.0.2: Track if home state refresh is needed
+        self._pending_home_state_refresh = include_home_state
         
         # Schedule debounced refresh
         async def _debounced_refresh():
@@ -245,7 +251,8 @@ class ImmediateRefreshHandler:
             _LOGGER.info(f"Executing debounced refresh (triggered by: {reason})")
             
             try:
-                await self._async_fetch_zone_states()
+                # v2.0.2: Pass include_home_state flag
+                await self._async_fetch_zone_states(include_home_state=self._pending_home_state_refresh)
                 
                 self._global_last_refresh = datetime.now()
                 
@@ -253,7 +260,8 @@ class ImmediateRefreshHandler:
                     _LOGGER.info(f"Immediate refresh recovered after {self._consecutive_failures} failures")
                     self._consecutive_failures = 0
                 
-                _LOGGER.debug("Immediate refresh completed (1 API call)")
+                api_calls = 2 if self._pending_home_state_refresh else 1
+                _LOGGER.debug(f"Immediate refresh completed ({api_calls} API call(s))")
                 
                 # v1.9.3: Notify all climate entities to update immediately
                 # This fixes the grey loading state issue (#44) where entities
@@ -270,11 +278,14 @@ class ImmediateRefreshHandler:
         
         self._debounce_task = asyncio.create_task(_debounced_refresh())
     
-    async def _async_fetch_zone_states(self):
+    async def _async_fetch_zone_states(self, include_home_state: bool = False):
         """Fetch zone states using async API and save to file.
         
         This is more efficient than subprocess - only 1 API call for zoneStates.
-        Weather and home state are not needed for immediate entity refresh.
+        Weather is not needed for immediate entity refresh.
+        
+        Args:
+            include_home_state: If True, also fetch home state (for presence mode changes)
         """
         from .async_api import get_async_client
         from .data_loader import get_current_home_id
@@ -305,6 +316,21 @@ class ImmediateRefreshHandler:
             
             # Save rate limit info for API Usage sensor immediate update
             await client.save_ratelimit()
+            
+            # v2.0.2: Fetch home state if requested (for presence mode changes)
+            if include_home_state:
+                home_state = await client.api_call("state")
+                if home_state:
+                    home_state_file = get_data_file("home_state", home_id)
+                    def write_home_state():
+                        with tempfile.NamedTemporaryFile(
+                            mode='w', dir=DATA_DIR, delete=False, suffix='.tmp'
+                        ) as tmp:
+                            json.dump(home_state, tmp, indent=2)
+                            temp_path = tmp.name
+                        shutil.move(temp_path, home_state_file)
+                    await self.hass.async_add_executor_job(write_home_state)
+                    _LOGGER.debug(f"Home state refreshed (presence: {home_state.get('presence')})")
         else:
             raise Exception("Failed to fetch zone states")
     

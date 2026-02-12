@@ -1031,6 +1031,57 @@ class TadoAsyncClient:
             _LOGGER.error(f"Error setting presence lock: {e}")
             return False
     
+    async def delete_presence_lock(self) -> bool:
+        """Delete presence lock to resume geofencing (Auto mode).
+        
+        v2.0.2: New API method for Discussion #102 (@wyx087).
+        Deleting the presence lock allows geofencing to resume control.
+        """
+        config = await self._load_config()
+        home_id = config.get("home_id")
+        if not home_id:
+            return False
+        
+        token = await self.get_access_token()
+        if not token:
+            return False
+        
+        url = f"{TADO_API_BASE}/homes/{home_id}/presenceLock"
+        headers = {
+            "Authorization": f"Bearer {token}",
+        }
+        tracker = await _get_tracker_async()
+        
+        try:
+            async with self._session.delete(url, headers=headers) as resp:
+                self._parse_ratelimit_headers(dict(resp.headers))
+                
+                # Track the call asynchronously
+                if tracker:
+                    await tracker.async_record_call(CALL_TYPE_PRESENCE_LOCK, resp.status)
+                
+                if resp.status in (200, 204):
+                    _LOGGER.info("Presence lock deleted (Auto mode - geofencing resumed)")
+                    return True
+                
+                # 422 means presenceLock doesn't exist (already in auto mode)
+                # This is success since the end state is what we want
+                if resp.status == 422:
+                    _LOGGER.info("Presence lock already deleted (already in Auto mode)")
+                    return True
+                
+                # Log response body for debugging other errors
+                try:
+                    body = await resp.text()
+                    _LOGGER.error(f"Failed to delete presence lock: {resp.status}, body: {body}")
+                except:
+                    _LOGGER.error(f"Failed to delete presence lock: {resp.status}")
+                return False
+                
+        except Exception as e:
+            _LOGGER.error(f"Error deleting presence lock: {e}")
+            return False
+    
     def get_rate_limit(self) -> dict:
         """Get current rate limit info."""
         return self._rate_limit.copy()

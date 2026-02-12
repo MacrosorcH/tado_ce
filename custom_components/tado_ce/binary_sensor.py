@@ -9,7 +9,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.core import HomeAssistant
 
 from .device_manager import get_hub_device_info, get_zone_device_info
-from .data_loader import load_zones_file, load_zones_info_file, get_zone_names
+from .data_loader import load_zones_file, load_zones_info_file, load_home_state_file, get_zone_names
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
@@ -57,7 +57,15 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
 
 
 class TadoHomeSensor(BinarySensorEntity):
-    """Binary sensor for Tado Home/Away status."""
+    """Binary sensor for Tado Home/Away status.
+    
+    v2.0.2: Now reads from home_state.json (source of truth for presence)
+    instead of zones.json tadoMode. Falls back to zones.json if home_state
+    is not available (e.g., home_state_sync_enabled=false).
+    
+    Also listens to SIGNAL_ZONES_UPDATED for immediate refresh after
+    presence mode changes.
+    """
     
     def __init__(self):
         self._attr_name = "Home"
@@ -68,29 +76,81 @@ class TadoHomeSensor(BinarySensorEntity):
         # Use hub device info for global entities
         self._attr_device_info = get_hub_device_info()
         self._tado_mode = None
+        self._presence_locked = None  # v2.0.2: Track if presence is locked (manual override)
+        self._data_source = None  # v2.0.2: Track which data source is being used
+        self._remove_signal_listener = None  # v2.0.2: Signal listener cleanup
+    
+    async def async_added_to_hass(self):
+        """Register signal listener when entity is added.
+        
+        v2.0.2: Listen to SIGNAL_ZONES_UPDATED for immediate refresh
+        after presence mode changes.
+        """
+        from homeassistant.helpers.dispatcher import async_dispatcher_connect
+        from .immediate_refresh_handler import SIGNAL_ZONES_UPDATED
+        
+        self._remove_signal_listener = async_dispatcher_connect(
+            self.hass, SIGNAL_ZONES_UPDATED, self._handle_zones_updated
+        )
+        _LOGGER.debug("TadoHomeSensor: Registered signal listener for zones_updated")
+    
+    async def async_will_remove_from_hass(self):
+        """Clean up signal listener when entity is removed."""
+        if self._remove_signal_listener:
+            self._remove_signal_listener()
+            self._remove_signal_listener = None
+            _LOGGER.debug("TadoHomeSensor: Removed signal listener")
+    
+    def _handle_zones_updated(self):
+        """Handle zones_updated signal - schedule immediate update.
+        
+        v2.0.2: Called when immediate refresh completes after presence mode change.
+        """
+        self.schedule_update_ha_state(force_refresh=True)
     
     @property
     def extra_state_attributes(self):
         return {
             "tado_mode": self._tado_mode,
+            "presence_locked": self._presence_locked,
+            "data_source": self._data_source,
         }
     
     def update(self):
+        """Update from home_state.json (primary) or zones.json (fallback).
+        
+        v2.0.2: Changed to read from home_state.json as source of truth.
+        Falls back to zones.json tadoMode if home_state is not available.
+        """
         try:
-            # Use data_loader for per-home file support
+            # Primary: Read from home_state.json (source of truth for presence)
+            home_state = load_home_state_file()
+            if home_state:
+                presence = home_state.get('presence', 'HOME')
+                self._presence_locked = home_state.get('presenceLocked', False)
+                self._attr_is_on = presence == 'HOME'
+                self._tado_mode = presence  # Keep tado_mode attribute for compatibility
+                self._data_source = "home_state"
+                self._attr_available = True
+                return
+            
+            # Fallback: Read from zones.json tadoMode
+            # This is used when home_state_sync_enabled=false
             data = load_zones_file()
             if data:
-                # Get tado mode from first zone
-                # Use 'or {}' pattern for null safety
                 zone_states = data.get('zoneStates') or {}
                 for zone_id, zone_data in zone_states.items():
                     self._tado_mode = zone_data.get('tadoMode')
                     if self._tado_mode:
                         self._attr_is_on = self._tado_mode == 'HOME'
+                        self._presence_locked = zone_data.get('geolocationOverride', False)
+                        self._data_source = "zones"
                         self._attr_available = True
                         return
+            
             self._attr_available = False
-        except Exception:
+        except Exception as e:
+            _LOGGER.warning(f"TadoHomeSensor update failed: {e}")
             self._attr_available = False
 
 

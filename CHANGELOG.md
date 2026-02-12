@@ -2,6 +2,30 @@
 
 All notable changes to Tado CE will be documented in this file.
 
+## [2.0.2] - 2026-02-12
+
+**Presence Mode Select & Overlay Mode Fix**
+
+### ⚠️ Breaking Changes
+
+- **Presence Mode Select** - `switch.tado_ce_away_mode` replaced by `select.tado_ce_presence_mode` ([Discussion #102](https://github.com/hiall-fyi/tado_ce/discussions/102) - @wyx087)
+  - Migration: Update automations from `switch.turn_on/turn_off` to `select.select_option`
+  - New "Auto" option resumes geofencing (was not possible with switch)
+
+- **Overlay Mode Default** - Changed from `MANUAL` to `TADO_MODE` ([#101](https://github.com/hiall-fyi/tado_ce/issues/101) - @leoogermenia)
+  - Temperature changes now respect per-device "Manual Control" settings in Tado app
+  - Users relying on infinite override should set "Until you cancel" in Tado app
+
+### Features
+- **Presence Mode Select** - New `select.tado_ce_presence_mode` with 3 options:
+  - `auto` - Resume geofencing (deletes presence lock)
+  - `home` - Manual Home mode
+  - `away` - Manual Away mode
+
+### Improvements
+- **TADO_MODE Termination** - Overlay behavior now follows Tado app settings per device
+- **DELETE API** - New `delete_presence_lock()` method for resuming geofencing
+
 ## [2.0.1] - 2026-02-12
 
 **Mold Risk Percentage Sensor, Hot Water Fix & Bootstrap Reserve**

@@ -298,7 +298,48 @@ Global sensors for the Tado CE Hub device.
 | Entity | Type | Description | API Calls |
 |--------|------|-------------|-----------|
 | `binary_sensor.tado_ce_home` | Binary Sensor | Home/Away status (read-only, from geofencing) | 0 |
-| `switch.tado_ce_away_mode` | Switch | Toggle Home/Away manually | 1 per toggle |
+| `select.tado_ce_presence_mode` | Select | Presence mode: auto (geofencing), home, away | 1 per change |
+
+**v2.0.2 Breaking Change:** `switch.tado_ce_away_mode` replaced by `select.tado_ce_presence_mode`
+
+### Presence Mode Options
+
+| Option | Description |
+|--------|-------------|
+| `auto` | Resume geofencing (deletes presence lock) |
+| `home` | Manual Home mode (overrides geofencing) |
+| `away` | Manual Away mode (overrides geofencing) |
+
+### Understanding Geofencing vs Presence Mode
+
+**Important:** Geofencing is a Tado account-level setting configured in the Tado app, not in this integration.
+
+| Scenario | "Auto" Mode Behavior |
+|----------|---------------------|
+| Geofencing **enabled** in Tado app | Tado automatically switches Home/Away based on mobile device locations |
+| Geofencing **disabled** in Tado app | Stays in current state (typically Home) - no automatic switching |
+
+**How Presence Lock Works:**
+- **"home" or "away"**: Creates a presence lock that overrides geofencing. Even if geofencing is enabled, Tado won't automatically change the state.
+- **"auto"**: Deletes the presence lock. If geofencing is enabled, Tado resumes automatic control. If geofencing is disabled, nothing changes automatically.
+
+**Note:** The "Home/Away State Sync" option in Tado CE integration settings only controls whether the integration syncs the home/away state from Tado - it does not enable or disable geofencing itself.
+
+### Migration from v2.0.1
+
+```yaml
+# Old (v2.0.1)
+- service: switch.turn_on
+  target:
+    entity_id: switch.tado_ce_away_mode
+
+# New (v2.0.2)
+- service: select.select_option
+  target:
+    entity_id: select.tado_ce_presence_mode
+  data:
+    option: "away"
+```
 
 ## Per Zone - Climate
 
@@ -628,7 +669,7 @@ Toggle weather sensors on/off in integration options:
 ### Hub Entities (Keep Prefix)
 - `sensor.tado_ce_api_usage`
 - `sensor.tado_ce_api_reset`
-- `switch.tado_ce_away_mode`
+- `select.tado_ce_presence_mode` (v2.0.2, replaces `switch.tado_ce_away_mode`)
 - `sensor.tado_ce_outside_temperature` (if enabled)
 
 **Note:** Entity IDs are preserved during upgrade - automations continue to work.

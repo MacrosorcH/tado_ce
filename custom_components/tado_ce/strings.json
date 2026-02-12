@@ -26,6 +26,21 @@
           "zone_type": { "name": "Zone type" }
         }
       }
+    },
+    "select": {
+      "presence_mode": {
+        "name": "Presence Mode",
+        "state": {
+          "auto": "Auto (Geofencing)",
+          "home": "Home",
+          "away": "Away"
+        },
+        "state_attributes": {
+          "presence": { "name": "Current presence" },
+          "presence_locked": { "name": "Presence locked" },
+          "api_calls_per_change": { "name": "API calls per change" }
+        }
+      }
     }
   },
   "selector": {

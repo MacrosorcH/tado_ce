@@ -1627,7 +1627,7 @@ Optional Features include:
 **What it does:** Syncs home/away presence state.
 
 **Requirements:**
-- Geofencing enabled in Tado app
+- None (works regardless of Tado app geofencing setting)
 
 **Configuration:**
 1. Go to Settings → Devices & Services → Tado CE → Configure
@@ -1635,8 +1635,47 @@ Optional Features include:
 3. Restart Home Assistant
 
 **Entities Created:**
-- `switch.away_mode` - Toggle away mode
-- Climate entities show "away" preset
+- `select.tado_ce_presence_mode` - Control presence mode (auto/home/away)
+- `binary_sensor.tado_ce_home` - Read-only home/away status
+- Climate entities show "home"/"away" preset
+
+### Understanding Geofencing vs Presence Mode
+
+**Important:** Geofencing is a Tado account-level setting configured in the Tado app, not in this integration.
+
+| Scenario | "Auto" Mode Behavior |
+|----------|---------------------|
+| Geofencing **enabled** in Tado app | Tado automatically switches Home/Away based on mobile device locations |
+| Geofencing **disabled** in Tado app | Stays in current state (typically Home) - no automatic switching |
+
+**How Presence Lock Works:**
+- **"home" or "away"**: Creates a presence lock that overrides geofencing. Even if geofencing is enabled, Tado won't automatically change the state.
+- **"auto"**: Deletes the presence lock. If geofencing is enabled, Tado resumes automatic control. If geofencing is disabled, nothing changes automatically.
+
+**Note:** The "Home/Away State Sync" option in Tado CE integration settings only controls whether the integration syncs the home/away state from Tado - it does not enable or disable geofencing itself.
+
+### Presence Mode Behavior Scenarios
+
+Understanding how "Auto" mode behaves is crucial, especially when geofencing is disabled:
+
+| Initial State | Action | Geofencing ON | Geofencing OFF |
+|--------------|--------|---------------|----------------|
+| Home (locked) | → Auto | Based on phone location | **Stays Home** |
+| Away (locked) | → Auto | Based on phone location | **Stays Away** |
+| Home (locked) | → Away | Forced Away | Forced Away |
+| Away (locked) | → Home | Forced Home | Forced Home |
+
+**Common Misconception:**
+```
+Home → Away → Auto = Back to Home?  ❌ WRONG (when geofencing OFF)
+Home → Away → Auto = Stays Away     ✅ CORRECT (when geofencing OFF)
+```
+
+**Why?** When geofencing is disabled, Tado has no way to determine your actual location. The "Auto" option simply removes the presence lock - it doesn't change the presence state. The state remains whatever it was before unlocking.
+
+**Recommendation:** If you have geofencing disabled in the Tado app:
+- Use "Home" or "Away" directly instead of "Auto"
+- Or use Home Assistant automations with other presence detection (router, BLE, etc.) to control the presence mode
 
 ### Configuration
 
@@ -1644,7 +1683,7 @@ Optional Features include:
 |--------|---------|-----------|-------------|
 | Enable Schedule Calendar | Off | 0 | Calendar entities showing heating schedules |
 | Enable Mobile Device Tracking | Off | 1/full sync | Device tracker entities |
-| Enable Home State Sync | Off | 0 | Required for Away Mode switch and presets |
+| Enable Home State Sync | Off | 0 | Required for Presence Mode select and presets |
 | Sync Mobile Devices Frequently | Off | +1/sync | Sync mobile devices every quick sync |
 
 ### Usage Scenarios
@@ -1730,9 +1769,11 @@ automation:
         for:
           minutes: 30
     action:
-      - service: switch.turn_on
+      - service: select.select_option
         target:
-          entity_id: switch.away_mode
+          entity_id: select.tado_ce_presence_mode
+        data:
+          option: "away"
       - service: notify.mobile_app
         data:
           message: "Everyone left - Away mode activated"
@@ -1743,9 +1784,11 @@ automation:
         entity_id: group.family_devices
         to: "home"
     action:
-      - service: switch.turn_off
+      - service: select.select_option
         target:
-          entity_id: switch.away_mode
+          entity_id: select.tado_ce_presence_mode
+        data:
+          option: "home"
       - service: notify.mobile_app
         data:
           message: "Someone arrived - Home mode activated"
@@ -1771,9 +1814,11 @@ automation:
         entity_id: input_boolean.vacation_mode
         to: "on"
     action:
-      - service: switch.turn_on
+      - service: select.select_option
         target:
-          entity_id: switch.away_mode
+          entity_id: select.tado_ce_presence_mode
+        data:
+          option: "away"
       - service: climate.set_temperature
         target:
           entity_id: all
@@ -1786,9 +1831,11 @@ automation:
         entity_id: input_boolean.vacation_mode
         to: "off"
     action:
-      - service: switch.turn_off
+      - service: select.select_option
         target:
-          entity_id: switch.away_mode
+          entity_id: select.tado_ce_presence_mode
+        data:
+          option: "auto"  # Resume geofencing (if enabled in Tado app)
       - service: climate.set_preset_mode
         target:
           entity_id: all

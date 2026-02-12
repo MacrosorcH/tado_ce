@@ -76,13 +76,24 @@ Major release with adaptive polling, thermal analytics, enhanced mold risk, adap
 
 ---
 
-## v2.0.2 - Presence Mode Select Entity
+## v2.0.2 - Presence Mode Select Entity & Overlay Mode Fix
+
+### ✅ All Completed
 
 **Presence Mode Enhancement** ([Discussion #102](https://github.com/hiall-fyi/tado_ce/discussions/102) - @wyx087):
-- [ ] **Presence Mode Select** - Replace `switch.tado_ce_away_mode` with `select.tado_ce_presence_mode`
-- [ ] **3 Options** - `auto` (resume geofencing), `home` (manual), `away` (manual)
-- [ ] **DELETE API** - Add `delete_presence_lock()` to resume geofencing (Auto mode)
-- [ ] **Breaking Change** - Existing automations using `switch.tado_ce_away_mode` will need updating
+- [x] **Presence Mode Select** - Replace `switch.tado_ce_away_mode` with `select.tado_ce_presence_mode`
+- [x] **3 Options** - `auto` (resume geofencing), `home` (manual), `away` (manual)
+- [x] **DELETE API** - Add `delete_presence_lock()` to resume geofencing (Auto mode)
+- [x] **Breaking Change** - Existing automations using `switch.tado_ce_away_mode` will need updating
+
+**Overlay Mode Fix** ([#101](https://github.com/hiall-fyi/tado_ce/issues/101) - @leoogermenia):
+- [x] **Change Default to TADO_MODE** - Remove hardcoded `MANUAL` termination, use `TADO_MODE` instead
+- [x] **Respect Tado App Settings** - Overlay behavior now follows per-device "Manual Control" setting in Tado app
+- [x] **Zero Config** - No new settings needed, users configure overlay mode in Tado app as intended
+- [x] **Both Heating & AC** - Applied to `TadoClimate` and `TadoACClimate` classes
+- [x] **Breaking Change** - Users relying on infinite `MANUAL` override should update Tado app settings
+- [ ] **Both Heating & AC** - Apply to `TadoClimate` and `TadoACClimate` classes
+- [ ] **Breaking Change** - Users relying on infinite `MANUAL` override should update Tado app settings
 
 ---
 

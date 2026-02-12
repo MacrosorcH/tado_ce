@@ -1,4 +1,8 @@
-"""Tado CE Switch Platform (Child Lock + Early Start)."""
+"""Tado CE Switch Platform (Child Lock + Early Start).
+
+v2.0.2: Removed TadoAwayModeSwitch - replaced by select.tado_ce_presence_mode
+        (Discussion #102 - @wyx087)
+"""
 import logging
 import time
 from datetime import timedelta
@@ -21,8 +25,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     
     switches = []
     
-    # Add Away Mode switch (global, 1 API call per toggle)
-    switches.append(TadoAwayModeSwitch())
+    # v2.0.2: Away Mode switch removed - replaced by select.tado_ce_presence_mode
     
     if zones_info:
         for zone in zones_info:
@@ -54,197 +57,9 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
         _LOGGER.info("Tado CE: No switches found")
 
 
-class TadoAwayModeSwitch(SwitchEntity):
-    """Tado CE Away Mode Switch Entity.
-    
-    Allows manual control of Home/Away status.
-    Uses 1 API call per toggle.
-    """
-    
-    def __init__(self):
-        self._attr_name = "Away Mode"
-        self._attr_unique_id = "tado_ce_away_mode"
-        self._attr_icon = "mdi:home-export-outline"
-        self._attr_is_on = False  # False = Home, True = Away
-        self._attr_available = True
-        self._attr_device_info = get_hub_device_info()
-        self._presence_locked = False
-        
-        # v1.9.6: Optimistic update tracking (parity with climate entities)
-        self._optimistic_set_at: float | None = None
-
-    # ========== v1.9.6: Helper Methods ==========
-    
-    def _is_within_optimistic_window(self) -> bool:
-        """Check if we're within the optimistic update window.
-        
-        v1.9.6: Extracted to helper method for consistency with climate entities.
-        v2.0.1: DRY refactor - uses shared get_optimistic_window().
-        
-        Returns:
-            True if _optimistic_set_at is set and elapsed time < optimistic window.
-        """
-        if self._optimistic_set_at is None:
-            return False
-        from . import get_optimistic_window
-        elapsed = time.time() - self._optimistic_set_at
-        return elapsed < get_optimistic_window(self.hass) if self.hass else elapsed < 17.0
-
-    # ========== End Helper Methods ==========
-    
-    @property
-    def icon(self):
-        return "mdi:home-export-outline" if self._attr_is_on else "mdi:home"
-    
-    @property
-    def extra_state_attributes(self):
-        return {
-            "description": "Toggle Home/Away mode manually",
-            "presence_locked": self._presence_locked,
-            "api_calls_per_toggle": 1,
-        }
-    
-    def update(self):
-        """Update away mode state from home state file.
-        
-        v1.9.6: Added optimistic window protection (parity with climate entities).
-        """
-        # v1.9.6: Preserve optimistic state if within window
-        if self._is_within_optimistic_window():
-            _LOGGER.debug("Away Mode: Preserving optimistic state (within window)")
-            return
-        
-        # Window expired, clear optimistic tracking
-        if self._optimistic_set_at is not None:
-            self._optimistic_set_at = None
-        
-        try:
-            # Try to read from home state file first (most reliable)
-            try:
-                from .data_loader import load_home_state_file, load_mobile_devices_file
-                home_state = load_home_state_file()
-                if home_state:
-                    presence = home_state.get('presence', 'HOME')
-                    self._presence_locked = home_state.get('presenceLocked', False)
-                    # Away mode is ON when presence is AWAY
-                    self._attr_is_on = (presence == 'AWAY')
-                    self._attr_available = True
-                    return
-            except Exception as e:
-                _LOGGER.debug(f"Could not read home_state.json, trying mobile_devices: {e}")
-            
-            # Fallback: check mobile devices location (if geo tracking enabled)
-            mobile_devices = load_mobile_devices_file()
-            
-            if mobile_devices:
-                # Check if any device is at home
-                any_at_home = False
-                for device in mobile_devices:
-                    location = device.get('location') or {}
-                    if location.get('atHome', False):
-                        any_at_home = True
-                        break
-                
-                # Away mode is ON when no one is home
-                self._attr_is_on = not any_at_home
-                self._attr_available = True
-            else:
-                # No mobile devices data, keep last known state
-                pass
-                
-        except Exception as e:
-            _LOGGER.warning(f"Failed to update away mode: {e}")
-            # Keep last known state
-    
-    async def async_turn_on(self, **kwargs):
-        """Set Away mode (everyone away) - async.
-        
-        v1.9.6: Added optimistic tracking and proper rollback (parity with climate entities).
-        v2.0.1: Added bootstrap reserve check - blocks action when quota critically low.
-        """
-        from .async_api import get_async_client
-        
-        # v2.0.1: Bootstrap Reserve - block action when quota critically low
-        await self._check_bootstrap_reserve()
-        
-        # Store previous state for rollback
-        old_is_on = self._attr_is_on
-        old_presence_locked = self._presence_locked
-        
-        # Optimistic update BEFORE API call
-        self._attr_is_on = True
-        self._presence_locked = True
-        self._optimistic_set_at = time.time()
-        self.async_write_ha_state()
-        
-        client = get_async_client(self.hass)
-        success = await client.set_presence_lock("AWAY")
-        
-        if success:
-            _LOGGER.info("Set Away mode ON")
-            await self._async_trigger_immediate_refresh("away_mode_on")
-        else:
-            _LOGGER.warning("ROLLBACK: Away mode ON failed")
-            self._attr_is_on = old_is_on
-            self._presence_locked = old_presence_locked
-            self._optimistic_set_at = None
-            self.async_write_ha_state()
-    
-    async def async_turn_off(self, **kwargs):
-        """Set Home mode (someone home) - async.
-        
-        v1.9.6: Added optimistic tracking and proper rollback (parity with climate entities).
-        v2.0.1: Added bootstrap reserve check - blocks action when quota critically low.
-        """
-        from .async_api import get_async_client
-        
-        # v2.0.1: Bootstrap Reserve - block action when quota critically low
-        await self._check_bootstrap_reserve()
-        
-        # Store previous state for rollback
-        old_is_on = self._attr_is_on
-        old_presence_locked = self._presence_locked
-        
-        # Optimistic update BEFORE API call
-        self._attr_is_on = False
-        self._presence_locked = True
-        self._optimistic_set_at = time.time()
-        self.async_write_ha_state()
-        
-        client = get_async_client(self.hass)
-        success = await client.set_presence_lock("HOME")
-        
-        if success:
-            _LOGGER.info("Set Away mode OFF (Home)")
-            await self._async_trigger_immediate_refresh("away_mode_off")
-        else:
-            _LOGGER.warning("ROLLBACK: Away mode OFF failed")
-            self._attr_is_on = old_is_on
-            self._presence_locked = old_presence_locked
-            self._optimistic_set_at = None
-            self.async_write_ha_state()
-    
-    async def _async_trigger_immediate_refresh(self, reason: str):
-        """Trigger immediate refresh after state change.
-        
-        v2.0.1: DRY refactor - delegates to shared async_trigger_immediate_refresh().
-        """
-        from . import async_trigger_immediate_refresh
-        await async_trigger_immediate_refresh(self.hass, self.entity_id, reason)
-    
-    async def _check_bootstrap_reserve(self) -> None:
-        """Check if bootstrap reserve is depleted and block action if so.
-        
-        v2.0.1: Bootstrap Reserve - ensures 3 API calls are ALWAYS reserved
-        for auto-recovery after API reset.
-        
-        v2.0.1: DRY refactor - delegates to shared async_check_bootstrap_reserve_or_raise().
-        
-        Raises:
-            HomeAssistantError: If bootstrap reserve is depleted
-        """
-        from . import async_check_bootstrap_reserve_or_raise
-        await async_check_bootstrap_reserve_or_raise(self.hass, "Away Mode")
+# v2.0.2: TadoAwayModeSwitch class REMOVED
+# Replaced by TadoPresenceModeSelect in select.py
+# Breaking change: switch.tado_ce_away_mode → select.tado_ce_presence_mode
 
 
 class TadoEarlyStartSwitch(SwitchEntity):

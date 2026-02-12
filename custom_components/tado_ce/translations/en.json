@@ -1,5 +1,15 @@
 {
   "entity": {
+    "select": {
+      "presence_mode": {
+        "name": "Presence Mode",
+        "state": {
+          "Auto": "Auto (Geofencing)",
+          "Home": "Home",
+          "Away": "Away"
+        }
+      }
+    },
     "sensor": {
       "mold_risk": {
         "state": {

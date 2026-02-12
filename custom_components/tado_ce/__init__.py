@@ -26,15 +26,16 @@ from .async_api import get_async_client
 _LOGGER = logging.getLogger(__name__)
 
 # Platform.BUTTON was added in Home Assistant 2021.12
+# Platform.SELECT was added in Home Assistant 2021.7
 # For backward compatibility, check if it exists
 try:
-    BASE_PLATFORMS = [Platform.SENSOR, Platform.CLIMATE, Platform.BINARY_SENSOR, Platform.WATER_HEATER, Platform.DEVICE_TRACKER, Platform.SWITCH, Platform.BUTTON]
+    BASE_PLATFORMS = [Platform.SENSOR, Platform.CLIMATE, Platform.BINARY_SENSOR, Platform.WATER_HEATER, Platform.DEVICE_TRACKER, Platform.SWITCH, Platform.BUTTON, Platform.SELECT]
     CALENDAR_PLATFORM = Platform.CALENDAR
 except AttributeError:
-    # Older Home Assistant version without Platform.BUTTON
+    # Older Home Assistant version without Platform.BUTTON or Platform.SELECT
     BASE_PLATFORMS = [Platform.SENSOR, Platform.CLIMATE, Platform.BINARY_SENSOR, Platform.WATER_HEATER, Platform.DEVICE_TRACKER, Platform.SWITCH]
     CALENDAR_PLATFORM = None
-    _LOGGER.debug("Platform.BUTTON not available - button entities will not be loaded")
+    _LOGGER.debug("Platform.BUTTON/SELECT not available - some entities will not be loaded")
 
 # v1.6.0: Removed SCRIPT_PATH - no longer using subprocess for sync
 # Legacy tado_api.py is deprecated but kept for reference
@@ -473,7 +474,8 @@ async def async_trigger_immediate_refresh(
     entity_id: str, 
     reason: str,
     force: bool = False,
-    skip_debounce: bool = False
+    skip_debounce: bool = False,
+    include_home_state: bool = False
 ) -> None:
     """Trigger immediate refresh after state change.
     
@@ -481,17 +483,20 @@ async def async_trigger_immediate_refresh(
     Consolidates duplicate _async_trigger_immediate_refresh() methods across climate,
     water_heater, switch, and button entities.
     
+    v2.0.2: Added include_home_state parameter for presence mode changes.
+    
     Args:
         hass: Home Assistant instance
         entity_id: Entity ID that triggered the refresh
         reason: Reason for the refresh (for logging)
         force: If True, force refresh even if recently refreshed (for buttons)
         skip_debounce: If True, skip debounce delay (for buttons)
+        include_home_state: If True, also fetch home state (for presence mode changes)
     """
     try:
         from .immediate_refresh_handler import get_handler
         handler = get_handler(hass)
-        await handler.trigger_refresh(entity_id, reason, force=force, skip_debounce=skip_debounce)
+        await handler.trigger_refresh(entity_id, reason, force=force, skip_debounce=skip_debounce, include_home_state=include_home_state)
     except Exception as e:
         _LOGGER.warning(f"Failed to trigger immediate refresh: {e}")
 
