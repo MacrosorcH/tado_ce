@@ -369,3 +369,81 @@ def get_zone_schedule(zone_id: str) -> Optional[dict]:
     if schedules:
         return schedules.get(zone_id)
     return None
+
+
+# ============================================================
+# v2.0.2: Overlay Mode Storage (Issue #101 - @leoogermenia)
+# ============================================================
+
+OVERLAY_MODE_FILE = "overlay_mode.json"
+
+
+def load_overlay_mode() -> str:
+    """Load overlay mode from storage.
+    
+    v2.0.2: Issue #101 - Configurable overlay mode.
+    
+    IMPORTANT: This is a SYNC function. Callers in async context
+    MUST use `await hass.async_add_executor_job(load_overlay_mode)`.
+    Lesson from v2.0.0: Blocking I/O in async context causes warnings.
+    
+    Returns:
+        "TADO_MODE", "NEXT_TIME_BLOCK", or "MANUAL"
+        Defaults to "TADO_MODE" if file doesn't exist.
+    """
+    file_path = DATA_DIR / OVERLAY_MODE_FILE
+    
+    if not file_path.exists():
+        return "TADO_MODE"
+    
+    try:
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+            mode = data.get("overlay_mode", "TADO_MODE")
+            # Validate mode
+            if mode not in ("TADO_MODE", "NEXT_TIME_BLOCK", "MANUAL"):
+                _LOGGER.warning(f"Invalid overlay mode '{mode}', defaulting to TADO_MODE")
+                return "TADO_MODE"
+            return mode
+    except json.JSONDecodeError as e:
+        _LOGGER.warning(f"Invalid JSON in {OVERLAY_MODE_FILE}: {e}")
+        return "TADO_MODE"
+    except Exception as e:
+        _LOGGER.warning(f"Failed to load overlay mode: {e}")
+        return "TADO_MODE"
+
+
+def save_overlay_mode(mode: str) -> bool:
+    """Save overlay mode to storage.
+    
+    v2.0.2: Issue #101 - Configurable overlay mode.
+    
+    IMPORTANT: This is a SYNC function. Callers in async context
+    MUST use `await hass.async_add_executor_job(save_overlay_mode, mode)`.
+    Lesson from v2.0.0: Blocking I/O in async context causes warnings.
+    
+    Args:
+        mode: "TADO_MODE", "NEXT_TIME_BLOCK", or "MANUAL"
+        
+    Returns:
+        True if saved successfully, False otherwise.
+    """
+    # Validate mode
+    if mode not in ("TADO_MODE", "NEXT_TIME_BLOCK", "MANUAL"):
+        _LOGGER.error(f"Invalid overlay mode: {mode}")
+        return False
+    
+    file_path = DATA_DIR / OVERLAY_MODE_FILE
+    
+    try:
+        # Ensure directory exists
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(file_path, 'w') as f:
+            json.dump({"overlay_mode": mode}, f)
+        
+        _LOGGER.debug(f"Saved overlay mode: {mode}")
+        return True
+    except Exception as e:
+        _LOGGER.error(f"Failed to save overlay mode: {e}")
+        return False

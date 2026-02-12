@@ -341,6 +341,35 @@ Global sensors for the Tado CE Hub device.
     option: "away"
 ```
 
+## Overlay Mode (v2.0.2)
+
+| Entity | Type | Description | API Calls |
+|--------|------|-------------|-----------|
+| `select.tado_ce_overlay_mode` | Select | Controls how long manual temperature changes last | 0 |
+
+### Overlay Mode Options
+
+| Option | Description |
+|--------|-------------|
+| `Tado Mode` | Follows per-device "Manual Control" settings in Tado app (default) |
+| `Next Time Block` | Override lasts until next scheduled change |
+| `Manual` | Infinite override until you manually change back |
+
+### How It Works
+
+When you change temperature via Home Assistant (climate.set_temperature), the overlay mode determines how long that change lasts:
+
+- **Tado Mode**: Respects the "Manual Control" setting you configured for each device in the Tado app
+- **Next Time Block**: Override ends when the next schedule block starts
+- **Manual**: Override stays until you manually switch back to Auto mode
+
+### Configuring in Tado App
+
+If using "Tado Mode", configure per-device behavior in the Tado app:
+1. Open Tado app → Settings → Rooms & Devices
+2. Select a device
+3. Manual Control → Choose "Until next automatic change", "Until you cancel", or "For a set time"
+
 ## Per Zone - Climate
 
 **Device Organization (v1.2.0):** Each zone has its own device. Zone entities are assigned to their zone device.

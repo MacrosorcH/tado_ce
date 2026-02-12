@@ -526,6 +526,24 @@ def get_optimistic_window(hass: HomeAssistant) -> float:
     return 17.0  # Default: 15s debounce + 2s buffer
 
 
+def get_overlay_termination(hass: HomeAssistant) -> dict:
+    """Get the termination dict for overlay API calls.
+    
+    v2.0.2: Issue #101 - Configurable overlay mode (@leoogermenia).
+    
+    Reads from hass.data cache (no file I/O) to avoid blocking.
+    Cache is populated during async_setup_entry.
+    
+    Args:
+        hass: Home Assistant instance
+        
+    Returns:
+        {"type": "TADO_MODE"}, {"type": "NEXT_TIME_BLOCK"}, or {"type": "MANUAL"}
+    """
+    mode = hass.data.get(DOMAIN, {}).get('overlay_mode', 'TADO_MODE')
+    return {"type": mode}
+
+
 async def async_dismiss_api_limit_notification(hass: HomeAssistant) -> None:
     """Dismiss the API limit notification when quota is restored.
     
@@ -1522,6 +1540,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             old_cancel()
     
     hass.data[DOMAIN]['config_manager'] = config_manager
+    
+    # v2.0.2: Load overlay mode into cache (Issue #101 - @leoogermenia)
+    # Lesson from v2.0.0: Use async_add_executor_job for file I/O
+    from .data_loader import load_overlay_mode
+    overlay_mode = await hass.async_add_executor_job(load_overlay_mode)
+    hass.data[DOMAIN]['overlay_mode'] = overlay_mode
+    _LOGGER.debug(f"Tado CE: Overlay mode loaded: {overlay_mode}")
     
     # v2.0.1: Set Test Mode flag on async client for save_ratelimit() to use
     client = get_async_client(hass)

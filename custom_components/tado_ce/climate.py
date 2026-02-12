@@ -627,9 +627,9 @@ class TadoClimate(ClimateEntity):
             "power": "ON",
             "temperature": {"celsius": temperature}
         }
-        # v2.0.2: Use TADO_MODE to respect per-device "Manual Control" settings in Tado app
-        # Issue #101 (@leoogermenia)
-        termination = {"type": "TADO_MODE"}
+        # v2.0.2: Use configurable overlay mode (Issue #101 - @leoogermenia)
+        from . import get_overlay_termination
+        termination = get_overlay_termination(self.hass)
         
         api_success = False
         try:
@@ -678,8 +678,9 @@ class TadoClimate(ClimateEntity):
                 "power": "ON",
                 "temperature": {"celsius": temp}
             }
-            # v2.0.2: Use TADO_MODE to respect per-device settings (Issue #101)
-            termination = {"type": "TADO_MODE"}
+            # v2.0.2: Use configurable overlay mode (Issue #101 - @leoogermenia)
+            from . import get_overlay_termination
+            termination = get_overlay_termination(self.hass)
             
             # Optimistic update BEFORE API call
             old_mode = self._attr_hvac_mode
@@ -718,8 +719,9 @@ class TadoClimate(ClimateEntity):
                 "type": "HEATING",
                 "power": "OFF"
             }
-            # v2.0.2: Use TADO_MODE to respect per-device settings (Issue #101)
-            termination = {"type": "TADO_MODE"}
+            # v2.0.2: Use configurable overlay mode (Issue #101 - @leoogermenia)
+            from . import get_overlay_termination
+            termination = get_overlay_termination(self.hass)
             
             # Optimistic update BEFORE API call
             old_mode = self._attr_hvac_mode
@@ -1435,8 +1437,9 @@ class TadoACClimate(ClimateEntity):
                 "type": "AIR_CONDITIONING",
                 "power": "OFF"
             }
-            # v2.0.2: Use TADO_MODE to respect per-device settings (Issue #101)
-            termination = {"type": "TADO_MODE"}
+            # v2.0.2: Use configurable overlay mode (Issue #101 - @leoogermenia)
+            from . import get_overlay_termination
+            termination = get_overlay_termination(self.hass)
             
             # v1.9.2: Await API call with timeout (fixes #44)
             api_success = False
@@ -1755,12 +1758,13 @@ class TadoACClimate(ClimateEntity):
                 setting["horizontalSwing"] = "OFF"
         
         # Termination
-        # v2.0.2: Use TADO_MODE by default to respect per-device settings (Issue #101)
+        # v2.0.2: Use configurable overlay mode (Issue #101 - @leoogermenia)
         # Timer-based calls still use TIMER termination
         if duration_minutes:
             termination = {"type": "TIMER", "durationInSeconds": duration_minutes * 60}
         else:
-            termination = {"type": "TADO_MODE"}
+            from . import get_overlay_termination
+            termination = get_overlay_termination(self.hass)
         
         _LOGGER.debug(f"AC overlay payload: setting={setting}, termination={termination}")
         

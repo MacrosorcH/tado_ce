@@ -4,6 +4,26 @@
 
 ---
 
+## v2.0.2 (2026-02-12) - Presence Mode Select & Configurable Overlay Mode
+
+### Feature Requests & Contributors
+
+**[@wyx087](https://github.com/wyx087)** - [Discussion #102](https://github.com/hiall-fyi/tado_ce/discussions/102)
+- Requested ability to resume geofencing from Home Assistant
+- Proposed 3-option select entity (Auto/Home/Away) to replace binary switch
+
+**[@leoogermenia](https://github.com/leoogermenia)** - [Issue #101](https://github.com/hiall-fyi/tado_ce/issues/101)
+- Requested configurable overlay mode for manual temperature changes
+- Detailed use case: evening temperature override being reset by schedule
+- Proposed 3 overlay modes: Tado Mode, Next Time Block, Manual
+
+### What Was Added
+
+- ✅ **Discussion #102**: Presence Mode Select - `select.tado_ce_presence_mode` with Auto/Home/Away options
+- ✅ **Issue #101**: Configurable Overlay Mode - `select.tado_ce_overlay_mode` with 3 options
+
+---
+
 ## v2.0.1 (2026-02-12) - Mold Risk Percentage Sensor, Hot Water Fix & Bootstrap Reserve
 
 ### Bug Reports & Issue Reporters

@@ -8,6 +8,14 @@
           "Home": "Home",
           "Away": "Away"
         }
+      },
+      "overlay_mode": {
+        "name": "Overlay Mode",
+        "state": {
+          "Tado Mode": "Tado Mode",
+          "Next Time Block": "Next Time Block",
+          "Manual": "Manual"
+        }
       }
     },
     "sensor": {

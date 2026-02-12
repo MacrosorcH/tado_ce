@@ -40,6 +40,21 @@
           "presence_locked": { "name": "Presence locked" },
           "api_calls_per_change": { "name": "API calls per change" }
         }
+      },
+      "overlay_mode": {
+        "name": "Overlay Mode",
+        "state": {
+          "tado_mode": "Tado Mode",
+          "next_time_block": "Next Time Block",
+          "manual": "Manual"
+        },
+        "state_attributes": {
+          "description": { "name": "Description" },
+          "tado_mode_info": { "name": "Tado Mode info" },
+          "next_time_block_info": { "name": "Next Time Block info" },
+          "manual_info": { "name": "Manual info" },
+          "api_calls_per_change": { "name": "API calls per change" }
+        }
       }
     }
   },

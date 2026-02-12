@@ -26,6 +26,10 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     # Add Presence Mode select (global, 1 API call per change)
     entities.append(TadoPresenceModeSelect())
     
+    # v2.0.2: Add Overlay Mode select (Issue #101 - @leoogermenia)
+    # 0 API calls - purely local setting
+    entities.append(TadoOverlayModeSelect())
+    
     if entities:
         async_add_entities(entities, True)
         _LOGGER.info(f"Tado CE select entities loaded: {len(entities)}")
@@ -47,13 +51,15 @@ class TadoPresenceModeSelect(SelectEntity):
     
     _attr_options = ["Auto", "Home", "Away"]
     _attr_translation_key = "presence_mode"
-    _attr_has_entity_name = True
     
     def __init__(self):
         self._attr_unique_id = "tado_ce_presence_mode"
+        self._attr_name = "Presence Mode"
         self._attr_current_option = "Auto"
         self._attr_available = True
         self._attr_device_info = get_hub_device_info()
+        # v2.0.2: Force entity_id for consistent naming (lesson learned)
+        self.entity_id = "select.tado_ce_presence_mode"
         
         # State tracking
         self._presence = "HOME"
@@ -243,3 +249,93 @@ class TadoPresenceModeSelect(SelectEntity):
         """
         from . import async_check_bootstrap_reserve_or_raise
         await async_check_bootstrap_reserve_or_raise(self.hass, "Presence Mode")
+
+
+# ============================================================
+# v2.0.2: Overlay Mode Select (Issue #101 - @leoogermenia)
+# ============================================================
+
+class TadoOverlayModeSelect(SelectEntity):
+    """Tado CE Overlay Mode Select Entity.
+    
+    Allows control of overlay termination type for manual temperature changes.
+    Issue #101 (@leoogermenia) - Configurable overlay mode.
+    
+    Options:
+    - Tado Mode: Follows per-device "Manual Control" settings in Tado app
+    - Next Time Block: Override lasts until next scheduled change
+    - Manual: Infinite override until user manually changes
+    
+    Uses 0 API calls - purely local setting stored in .storage/tado_ce/.
+    
+    v2.0.2: Lesson from v2.0.0 - uses hass.data cache to avoid blocking I/O
+    in update(), and async_add_executor_job for file saves.
+    """
+    
+    _attr_options = ["Tado Mode", "Next Time Block", "Manual"]
+    _attr_translation_key = "overlay_mode"
+    
+    # Mapping from display option to API termination type
+    OPTION_TO_API = {
+        "Tado Mode": "TADO_MODE",
+        "Next Time Block": "NEXT_TIME_BLOCK",
+        "Manual": "MANUAL",
+    }
+    
+    API_TO_OPTION = {v: k for k, v in OPTION_TO_API.items()}
+    
+    def __init__(self):
+        self._attr_unique_id = "tado_ce_overlay_mode"
+        self._attr_name = "Overlay Mode"
+        self._attr_current_option = "Tado Mode"  # Default
+        self._attr_available = True
+        self._attr_device_info = get_hub_device_info()
+        self._attr_icon = "mdi:timer-cog-outline"
+        # v2.0.2: Force entity_id for consistent naming (lesson learned)
+        self.entity_id = "select.tado_ce_overlay_mode"
+    
+    @property
+    def extra_state_attributes(self):
+        return {
+            "description": "Controls how long manual temperature changes last",
+            "tado_mode_info": "Follows per-device settings in Tado app",
+            "next_time_block_info": "Until next scheduled change",
+            "manual_info": "Until you manually change back",
+            "api_calls_per_change": 0,
+        }
+    
+    def update(self):
+        """Load overlay mode from hass.data cache.
+        
+        v2.0.2: Lesson from v2.0.0 - Never do sync file I/O in update().
+        Reads from hass.data cache which is populated during async_setup_entry.
+        """
+        try:
+            overlay_mode = self.hass.data.get(DOMAIN, {}).get('overlay_mode', 'TADO_MODE')
+            self._attr_current_option = self.API_TO_OPTION.get(overlay_mode, "Tado Mode")
+        except Exception as e:
+            _LOGGER.warning(f"Failed to get overlay mode from cache: {e}")
+            # Keep current option
+    
+    async def async_select_option(self, option: str) -> None:
+        """Select overlay mode (local only, no API call).
+        
+        v2.0.2: Lesson from v2.0.0 - Uses async_add_executor_job for file I/O.
+        """
+        from .data_loader import save_overlay_mode
+        
+        # Update state immediately
+        self._attr_current_option = option
+        self.async_write_ha_state()
+        
+        # Save to storage (non-blocking)
+        api_mode = self.OPTION_TO_API.get(option, "TADO_MODE")
+        success = await self.hass.async_add_executor_job(save_overlay_mode, api_mode)
+        
+        if success:
+            # Update hass.data cache
+            if DOMAIN in self.hass.data:
+                self.hass.data[DOMAIN]['overlay_mode'] = api_mode
+            _LOGGER.info(f"Overlay mode set to {option} ({api_mode})")
+        else:
+            _LOGGER.error(f"Failed to save overlay mode: {option}")
