@@ -6,76 +6,6 @@ For completed features, see [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
-## v2.0.0 - Adaptive Polling, Thermal Analytics, Enhanced Mold Risk, Adaptive Preheat & API Monitoring
-
-Major release with adaptive polling, thermal analytics, enhanced mold risk, adaptive preheat, and API monitoring.
-
-### ✅ All Completed
-
-**Adaptive Smart Polling** ([#89](https://github.com/hiall-fyi/tado_ce/issues/89)):
-- [x] Real-time adaptive intervals - Calculate polling based on remaining quota and time
-- [x] Universal quota support - Works for any tier (100, 5000, 20000)
-- [x] Self-healing behavior - Automatically adapts to manual calls and HA restarts
-- [x] Transparent logging - Full visibility into interval calculations
-- [x] Quota Reserve Protection - Pauses polling when quota critically low
-
-**Enhanced Mold Risk Assessment** ([#90](https://github.com/hiall-fyi/tado_ce/issues/90)):
-- [x] U-value estimation - Calculate window surface temperature from outdoor temp and window type
-- [x] 2-tier fallback strategy - Automatic fallback: U-value estimation → room temperature
-- [x] Configurable window types - Single/double/triple pane with standard U-values
-- [x] ASHRAE 160 compliance - Surface temperature-based mold risk assessment
-
-**Thermal Analytics** ([#78](https://github.com/hiall-fyi/tado_ce/issues/78)):
-- [x] Two-Phase Heating Model - Separate boost and maintenance phases
-- [x] Heating Cycle Tracking - Track heating cycles with start/end times
-- [x] Smart Comfort Analytics - Comfort score, thermal stability, efficiency metrics
-- [x] Second-Order Analysis - Heating acceleration and approach factor for improved preheat estimation
-- [x] Heating Acceleration Sensor - Shows how quickly heating rate increases (°C/h²)
-- [x] Approach Factor Sensor - Shows deceleration near setpoint (%)
-- [x] Preheat Binary Sensor - `binary_sensor.{zone}_preheat_now` turns ON when it's time to start heating ([Discussion #72](https://github.com/hiall-fyi/tado_ce/discussions/72) - @thefern69)
-- [x] UFH Slow Response Mode - Configurable buffer time for underfloor heating thermal lag ([Discussion #72](https://github.com/hiall-fyi/tado_ce/discussions/72) - @thefern69)
-- [x] Adaptive Preheat - Auto-trigger heating when preheat_now turns ON, uses NEXT_TIME_BLOCK termination ([Discussion #72](https://github.com/hiall-fyi/tado_ce/discussions/72) - @thefern69)
-
-**API Monitoring** ([#65](https://github.com/hiall-fyi/tado_ce/issues/65), [Discussion #86](https://github.com/hiall-fyi/tado_ce/discussions/86)):
-- [x] Next Sync Sensor - Shows next API sync time with countdown
-- [x] Polling Interval Sensor - Shows current polling interval with source
-- [x] Call History Sensor - API call history with statistics
-- [x] API Call Breakdown Sensor - Breakdown by endpoint type
-- [x] Granular API Call Options - Enable/disable optional call types in Options
-
-**Multi-Home Infrastructure** (foundation for future multi-home support):
-- [x] Per-home data file naming - `get_data_file(base_name, home_id)` in const.py
-- [x] Data loader home_id support - `set_current_home_id()` / `get_current_home_id()`
-- [x] Hub device identifier with home_id - `tado_ce_hub_{home_id}` format
-
-**Setup & Polish:**
-- [x] Auto-assign Areas - Match zone names to HA areas using fuzzy matching ([#14](https://github.com/hiall-fyi/tado_ce/issues/14))
-- [x] Setup wizard improvements - Streamlined flow with better error messages
-- [x] Cleanup deprecated files - Removed tado_api.py, error_handler.py, orphan data files
-
----
-
-## v2.0.1 - Mold Risk Percentage Sensor, Hot Water Fix, Bootstrap Reserve & Test Mode Enhancement
-
-**Mold Risk Enhancements** ([#90](https://github.com/hiall-fyi/tado_ce/issues/90)):
-- [x] **Mold Risk Percentage Sensor** - `sensor.{zone}_mold_risk_percentage` exposes surface RH as dedicated sensor for history/graphs
-
-**Bug Fixes** ([#98](https://github.com/hiall-fyi/tado_ce/issues/98)):
-- [x] **Hot Water 3-Layer Defense** - Full parity with climate entities for optimistic updates
-
-**Quota Reserve Improvements** ([#99](https://github.com/hiall-fyi/tado_ce/issues/99) - @ChrisMarriott38):
-- [x] **Bootstrap Reserve** - Hard limit of 3 calls that are NEVER used (even for manual actions), reserved for auto-recovery after API reset
-- [x] **Persistent Notification** - Show HA notification when API limit exceeded, explaining to use Tado app for emergency changes
-
-**Test Mode Enhancement** ([#97](https://github.com/hiall-fyi/tado_ce/issues/97), [#98](https://github.com/hiall-fyi/tado_ce/issues/98), [#99](https://github.com/hiall-fyi/tado_ce/issues/99)):
-- [x] **Full 100-Call Simulation** - Test Mode now fully simulates a 100-call API tier for end-to-end testing of quota protection features
-- [x] **Single Source of Truth** - All simulated values stored in `ratelimit.json`, read by all components without recalculation
-- [x] **Simulated Quota Tracking** - Each API call increments simulated `used` counter (capped at 100)
-- [x] **Reset Detection** - Detects real API reset and resets simulated counter to 0
-- [x] **test_mode Attribute** - All API sensors now show `test_mode: true/false` attribute for visibility
-
----
-
 ## v2.0.2 - Presence Mode Select Entity & Overlay Mode Fix
 
 ### ✅ All Completed
@@ -91,9 +21,6 @@ Major release with adaptive polling, thermal analytics, enhanced mold risk, adap
 - [x] **Respect Tado App Settings** - Overlay behavior now follows per-device "Manual Control" setting in Tado app
 - [x] **Zero Config** - No new settings needed, users configure overlay mode in Tado app as intended
 - [x] **Both Heating & AC** - Applied to `TadoClimate` and `TadoACClimate` classes
-- [x] **Breaking Change** - Users relying on infinite `MANUAL` override should update Tado app settings
-- [ ] **Both Heating & AC** - Apply to `TadoClimate` and `TadoACClimate` classes
-- [ ] **Breaking Change** - Users relying on infinite `MANUAL` override should update Tado app settings
 
 ---
 
@@ -110,7 +37,7 @@ Features under consideration - need more community feedback or technical researc
 - **Note**: This is a significant UI/UX change that would benefit many features. Consider implementing as a unified "Zone Settings" page in Options flow.
 
 **Mold Risk Enhancements** ([#90](https://github.com/hiall-fyi/tado_ce/issues/90)):
-- ~~Per-Zone Window Type~~ - Moved to "Per-Zone Configuration" above
+- **Global Surface Temp Offset** - Optional offset for users with laser thermometer measurements
 
 **API Management:**
 - **Call Priority System** - Configurable weighting for different call types (e.g., zoneStates every 10 min, weather every 30 min). Requires significant coordinator architecture changes. Low priority - current adaptive polling handles most use cases.
@@ -124,6 +51,11 @@ Features under consideration - need more community feedback or technical researc
 - **Test Mode Toggle** - Move `test_mode_enabled` from Config Options to Hub Controls for easier debugging
 - **Benefit**: Allows automation control (e.g., "disable quota reserve when API remaining > 50") and faster toggling without entering Config Options
 - **Note**: Waiting for community feedback on use cases before implementation
+
+**Open Window Detection** ([#106](https://github.com/hiall-fyi/tado_ce/issues/106)):
+- **Per-Zone Temperature Sensor Override** - Allow selecting any HA temperature sensor (HomeKit, Zigbee, etc.) per zone for faster updates
+- **Rapid Temp Drop Detection** - Custom open window detection with configurable threshold (e.g., >2°C drop in 15 min)
+- **Note**: Requires testing HomeKit sensor behavior (update frequency, reliability) before implementation
 
 **Other:**
 - Apply for HACS default repository inclusion

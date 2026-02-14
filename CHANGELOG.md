@@ -2,7 +2,7 @@
 
 All notable changes to Tado CE will be documented in this file.
 
-## [2.0.2] - 2026-02-12
+## [2.0.2] - 2026-02-14
 
 **Presence Mode Select & Configurable Overlay Mode**
 
@@ -29,6 +29,11 @@ All notable changes to Tado CE will be documented in this file.
   - **Note**: Default changed from infinite override to Tado Mode
 
 ### Bug Fixes
+
+- **Fixed custom polling interval below 5 minutes not working** ([#107](https://github.com/hiall-fyi/tado_ce/issues/107) - @jakeycrx)
+  - Custom intervals now support 1-1440 minutes (previously 1-4 min was ignored)
+  - Adaptive polling default remains 5 minutes (sensible default for most users)
+  - High-quota users can explicitly set 1-4 minute intervals via custom settings
 
 - **Fixed polling stuck at 120 min in Uniform Mode** ([#99](https://github.com/hiall-fyi/tado_ce/issues/99) - @ChrisMarriott38)
   - When Day Start Hour = Night Start Hour (Uniform Mode), adaptive polling incorrectly calculated `hours_until_night = 0`, causing 120 min fallback

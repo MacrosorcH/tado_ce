@@ -4,7 +4,7 @@
 
 ---
 
-## v2.0.2 (2026-02-12) - Presence Mode Select & Configurable Overlay Mode
+## v2.0.2 (2026-02-14) - Presence Mode Select & Configurable Overlay Mode
 
 ### Feature Requests & Contributors
 
@@ -17,10 +17,17 @@
 - Detailed use case: evening temperature override being reset by schedule
 - Proposed 3 overlay modes: Tado Mode, Next Time Block, Manual
 
+### Bug Reports & Issue Reporters
+
+**[@jakeycrx](https://github.com/jakeycrx)** - [Issue #107](https://github.com/hiall-fyi/tado_ce/issues/107)
+- Reported custom polling interval below 5 minutes not working
+- Screenshots showing 1-minute setting but 5-minute actual polling
+
 ### What Was Added
 
 - ✅ **Discussion #102**: Presence Mode Select - `select.tado_ce_presence_mode` with Auto/Home/Away options
 - ✅ **Issue #101**: Configurable Overlay Mode - `select.tado_ce_overlay_mode` with 3 options
+- ✅ **Issue #107**: Allow 1-minute polling for high-quota users (changed MIN_POLLING_INTERVAL from 5 to 1)
 
 ---
 

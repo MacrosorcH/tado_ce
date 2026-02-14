@@ -303,19 +303,19 @@ Smart Polling includes multiple strategies to optimize API usage:
 **Goal:** Maximum update frequency with automatic quota protection.
 
 **Setup:**
-1. Leave Custom Day/Night Intervals empty
+1. Set Custom Day Interval to 1 minute (for fastest updates)
 2. Enable all optional sensors
-3. Let adaptive polling manage intervals
+3. Adaptive polling will protect if quota runs low
 
 **Result:**
-- Polls every 5 minutes (minimum interval)
-- ~576 calls/day with all features
-- Automatically slows down if quota drops
+- Polls every 1 minute when custom interval set (v2.0.2+)
+- ~1440+ calls/day with all features at 1-minute polling
+- Automatically slows down if quota drops critically low
 
 **Benefits:**
-- Near real-time updates
-- Never runs out of quota
-- No manual interval configuration needed
+- Near real-time updates for high-quota users
+- Never runs out of quota (adaptive override protection)
+- Explicit opt-in for aggressive polling
 
 ---
 
@@ -1147,7 +1147,7 @@ Interval = (Time Until Reset / Remaining Calls) / Safety Buffer
 
 Where:
   Safety Buffer = 0.90 (keep 10% reserve)
-  Min Interval = 5 minutes
+  Adaptive Floor = 5 minutes (default minimum)
   Max Interval = 120 minutes
 ```
 
@@ -1157,17 +1157,19 @@ Where:
 
 | Mode | Description | When to Use |
 |------|-------------|-------------|
-| Adaptive (Recommended) | Auto-adjusts based on quota | Default - works for all quota tiers |
-| Custom Interval | Fixed interval (e.g., 10 min) | Override when you want consistent polling |
+| Adaptive (Recommended) | Auto-adjusts based on quota, minimum 5 min | Default - works for all quota tiers |
+| Custom Interval | Fixed interval (1-1440 min) | Override when you want specific polling |
 
 **Set Custom Interval:**
 1. Go to Settings → Devices & Services → Tado CE
 2. Click "Configure"
-3. Enable "Custom Polling Interval"
-4. Set interval (5-120 minutes)
-5. Restart Home Assistant
+3. Set Custom Day/Night Interval (1-1440 minutes)
+4. Restart Home Assistant
 
-**Note:** Adaptive polling can override custom interval if quota is low.
+**Note:** 
+- Without custom interval: Adaptive polling uses 5-minute minimum (sensible default)
+- With custom interval: You can set as low as 1 minute for high-quota users (v2.0.2+)
+- Adaptive polling can still override custom interval if quota is critically low
 
 ### Usage Scenarios
 

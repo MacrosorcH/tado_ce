@@ -221,7 +221,10 @@ SMART_COMFORT_PRESETS = {
 }
 
 # v1.11.0: Adaptive Smart Polling Constants
-MIN_POLLING_INTERVAL = 5        # minutes (prevent excessive polling for high quotas)
+# v2.0.2: MIN_POLLING_INTERVAL is for adaptive calculation floor (sensible default)
+# Custom intervals can go as low as 1 minute when user explicitly sets them
+MIN_POLLING_INTERVAL = 5        # minutes (adaptive floor - prevents excessive polling by default)
+MIN_CUSTOM_INTERVAL = 1         # minutes (custom interval floor - allows 1-min for high-quota users)
 MAX_POLLING_INTERVAL = 120      # minutes (ensure reasonable updates even with low quota)
 POLLING_SAFETY_BUFFER = 0.90    # Reserve 10% quota for manual calls and unexpected usage
 
