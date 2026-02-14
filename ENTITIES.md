@@ -2,6 +2,27 @@
 
 Complete list of all entities created by Tado CE integration.
 
+## 📋 v2.0.2 Changes
+
+### Presence Mode Select (Breaking Change)
+- **Presence Mode** (`select.tado_ce_presence_mode`): Replaces `switch.tado_ce_away_mode`
+  - Options: `auto` (resume geofencing), `home`, `away`
+  - Migration required for automations using the old switch
+
+### Overlay Mode Select
+- **Overlay Mode** (`select.tado_ce_overlay_mode`): Controls how long manual temperature changes last
+  - Options: `Tado Mode` (default), `Next Time Block`, `Manual`
+
+---
+
+## 📋 v2.0.1 Changes
+
+### Mold Risk Percentage Sensor
+- **Mold Risk Percentage** (`sensor.{zone}_mold_risk_percentage`): Surface relative humidity as percentage (0-100%) for historical tracking and graphing
+  - **Attributes**: `room_temperature`, `effective_temperature`, `humidity`, `dew_point`, `temperature_source`, `zone_type`
+
+---
+
 ## 📋 v2.0.0 Changes
 
 ### Thermal Analytics (TRV Zones Only)
