@@ -570,7 +570,9 @@ For each mobile device with geo tracking enabled:
 
 | Entity | Type | Description |
 |--------|------|-------------|
-| `device_tracker.tado_ce_{device}` | Device Tracker | Presence (home/not_home) |
+| `device_tracker.tado_ce_{device_name}` | Device Tracker | Presence (home/not_home) |
+
+**Note:** Entity ID is generated from device name (e.g., `device_tracker.tado_ce_joe_s_iphone`).
 
 ## AC Zones (v1.5.0 Enhanced)
 
@@ -699,6 +701,7 @@ Toggle weather sensors on/off in integration options:
 - `sensor.tado_ce_api_usage`
 - `sensor.tado_ce_api_reset`
 - `select.tado_ce_presence_mode` (v2.0.2, replaces `switch.tado_ce_away_mode`)
+- `select.tado_ce_overlay_mode` (v2.0.2)
 - `sensor.tado_ce_outside_temperature` (if enabled)
 
 **Note:** Entity IDs are preserved during upgrade - automations continue to work.
