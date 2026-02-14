@@ -6,35 +6,22 @@ For completed features, see [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
-## v2.0.2 - Presence Mode Select Entity & Overlay Mode Fix
-
-### ✅ All Completed
-
-**Presence Mode Enhancement** ([Discussion #102](https://github.com/hiall-fyi/tado_ce/discussions/102) - @wyx087):
-- [x] **Presence Mode Select** - Replace `switch.tado_ce_away_mode` with `select.tado_ce_presence_mode`
-- [x] **3 Options** - `auto` (resume geofencing), `home` (manual), `away` (manual)
-- [x] **DELETE API** - Add `delete_presence_lock()` to resume geofencing (Auto mode)
-- [x] **Breaking Change** - Existing automations using `switch.tado_ce_away_mode` will need updating
-
-**Overlay Mode Fix** ([#101](https://github.com/hiall-fyi/tado_ce/issues/101) - @leoogermenia):
-- [x] **Change Default to TADO_MODE** - Remove hardcoded `MANUAL` termination, use `TADO_MODE` instead
-- [x] **Respect Tado App Settings** - Overlay behavior now follows per-device "Manual Control" setting in Tado app
-- [x] **Zero Config** - No new settings needed, users configure overlay mode in Tado app as intended
-- [x] **Both Heating & AC** - Applied to `TadoClimate` and `TadoACClimate` classes
-
----
-
 ## Future Consideration
 
 Features under consideration - need more community feedback or technical research.
 
 **Per-Zone Configuration** (Foundation for multiple features):
 - **Per-Zone Settings UI** - Allow different settings per zone instead of global-only
+- **Zone Device Controls** - Move per-zone settings from Options UI to zone device entities (e.g., `number.living_room_window_u_value`, `switch.living_room_thermal_analytics`)
+  - More intuitive - settings live with the device they affect
+  - Automatable - can adjust settings via HA automations
+  - Consistent with Hub Controls pattern (Presence Mode, Overlay Mode)
+  - Storage: `.storage/tado_ce/zone_config.json` or HA entity registry
 - **Overlay Mode** - Different overlay modes per zone (e.g., bedroom uses NEXT_TIME_BLOCK, living room uses MANUAL)
 - **Mold Risk Window Type** - Different window types per zone for homes with mixed windows ([#90](https://github.com/hiall-fyi/tado_ce/issues/90))
 - **UFH Buffer** - Different buffer times per zone based on floor type
 - **API Call Priority** - Per-zone polling frequency (e.g., main zones more frequent)
-- **Note**: This is a significant UI/UX change that would benefit many features. Consider implementing as a unified "Zone Settings" page in Options flow.
+- **Note**: This is a significant UI/UX change that would benefit many features. Feasibility study needed for Zone Device Controls approach.
 
 **Mold Risk Enhancements** ([#90](https://github.com/hiall-fyi/tado_ce/issues/90)):
 - **Global Surface Temp Offset** - Optional offset for users with laser thermometer measurements
