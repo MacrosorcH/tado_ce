@@ -19,7 +19,7 @@ Completed:
   - `switch.{zone}_adaptive_preheat`
   - `select.{zone}_smart_comfort_mode`
   - `select.{zone}_window_type`
-  - `select.{zone}_overlay_mode` (Tado Mode/Timer/Manual)
+  - `select.{zone}_overlay_mode` (Tado Mode/Next Time Block/Timer/Manual)
   - `select.{zone}_overlay_timer_duration`
   - `number.{zone}_min_temp` / `number.{zone}_max_temp`
   - `number.{zone}_temp_offset`
