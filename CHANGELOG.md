@@ -11,6 +11,12 @@ All notable changes to Tado CE will be documented in this file.
 - **Per-Zone Timer Duration** - Set custom timer duration per zone (1-1440 minutes)
 
 ### Bug Fixes
+- **Fixed Preheat Time sensors showing `unknown` after HA restart**
+  - `TadoPreheatTimeSensor` depends on both `_zone_data` (historical analysis) and `_zone_states` (current/target temps)
+  - `_zone_states` was only populated when `on_zone_update()` was called, but sensors weren't notified
+  - Added `async_set_updated_data()` call to notify sensors when zone state is cached
+  - Updated `available` property to check both `_zone_data` and `_zone_states` exist
+
 - **Fixed NEXT_TIME_BLOCK API error** - Tado API only accepts `MANUAL`, `TADO_MODE`, `TIMER` as termination types
   - `adaptive_preheat.py` was sending `NEXT_TIME_BLOCK` directly to API
   - `get_overlay_termination()` was returning `NEXT_TIME_BLOCK` without mapping

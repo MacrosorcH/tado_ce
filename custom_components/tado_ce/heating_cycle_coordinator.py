@@ -123,6 +123,9 @@ class HeatingCycleCoordinator(DataUpdateCoordinator):
             "timestamp": timestamp,
         }
         
+        # Notify sensors of state change (so they can update native_value)
+        self.async_set_updated_data(self._zone_data)
+        
         async with self._lock:
             detector = self._get_or_create_detector(zone_id)
             

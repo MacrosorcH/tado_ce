@@ -3664,7 +3664,13 @@ class TadoPreheatTimeSensor(CoordinatorEntity, SensorEntity):
     def available(self) -> bool:
         """Return if sensor is available."""
         zone_data = self.coordinator.get_zone_data(self._zone_id)
-        return zone_data is not None and zone_data.get("heating_rate") is not None
+        zone_state = self.coordinator.get_zone_state(self._zone_id)
+        # Need both: analysis data (heating_rate) AND current zone state (temps)
+        return (
+            zone_data is not None 
+            and zone_data.get("heating_rate") is not None
+            and zone_state is not None
+        )
     
     @property
     def extra_state_attributes(self):
