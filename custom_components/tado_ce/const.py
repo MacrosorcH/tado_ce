@@ -258,6 +258,15 @@ UFH_BUFFER_MINUTES_MAX = 60     # Max 60 minutes additional buffer
 
 
 # =============================================================================
+# Per-Zone Thermal Analytics (v2.1.0)
+# =============================================================================
+
+# Config key for zones with Thermal Analytics enabled
+# Empty list = all zones with heatingPower (default)
+# Non-empty list = only specified zone IDs
+CONF_THERMAL_ANALYTICS_ZONES = "thermal_analytics_zones"
+
+# =============================================================================
 # Per-Zone Configuration Constants (v2.1.0)
 # =============================================================================
 

@@ -27,6 +27,7 @@ from .const import (
     DOMAIN, CLIENT_ID, DATA_DIR, CONFIG_FILE,
     API_ENDPOINT_ME, AUTH_ENDPOINT_DEVICE, AUTH_ENDPOINT_TOKEN
 )
+from .data_loader import load_zones_info_file, load_zones_file
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -411,14 +412,30 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
         """Manage the options with user mental model sections."""
         errors = {}
         
+        # v2.1.0: Load zones with heatingPower for thermal_analytics_zones multi-select
+        zones_with_heating_power = []
+        zones_info = await self.hass.async_add_executor_job(load_zones_info_file)
+        zones_data = await self.hass.async_add_executor_job(load_zones_file)
+        
+        if zones_data and zones_info:
+            zone_states = zones_data.get('zoneStates') or {}
+            zone_names_map = {str(z.get('id')): z.get('name', f"Zone {z.get('id')}") for z in zones_info}
+            
+            for zone_id, zone_data in zone_states.items():
+                activity_data = zone_data.get('activityDataPoints') or {}
+                if activity_data.get('heatingPower') is not None:
+                    zone_name = zone_names_map.get(zone_id, f"Zone {zone_id}")
+                    zones_with_heating_power.append({"value": zone_id, "label": zone_name})
+        
         if user_input is not None:
             processed_input = {}
             
             # Flatten tado_ce_exclusive section
             if 'tado_ce_exclusive' in user_input:
                 section = user_input['tado_ce_exclusive']
-                for key in ['smart_comfort_enabled', 'thermal_analytics_enabled', 'adaptive_preheat_enabled',
-                           'schedule_calendar_enabled', 'zone_configuration_enabled', 'test_mode_enabled']:
+                for key in ['smart_comfort_enabled', 'thermal_analytics_enabled', 'thermal_analytics_zones',
+                           'adaptive_preheat_enabled', 'schedule_calendar_enabled', 'zone_configuration_enabled', 
+                           'test_mode_enabled']:
                     if key in section:
                         processed_input[key] = section[key]
             
@@ -503,6 +520,15 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
         custom_day_interval = options.get('custom_day_interval')
         custom_night_interval = options.get('custom_night_interval')
 
+        # v2.1.0: Get current thermal_analytics_zones, default to all zones with heatingPower
+        current_thermal_zones = options.get('thermal_analytics_zones', [])
+        if not current_thermal_zones and zones_with_heating_power:
+            # Default: all zones enabled
+            current_thermal_zones = [z["value"] for z in zones_with_heating_power]
+        
+        # Build thermal_analytics_zones selector (empty list if no zones available)
+        thermal_zones_options = zones_with_heating_power if zones_with_heating_power else []
+
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
@@ -511,6 +537,14 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                     vol.Schema({
                         vol.Optional('smart_comfort_enabled', default=options.get('smart_comfort_enabled', False)): BooleanSelector(),
                         vol.Optional('thermal_analytics_enabled', default=options.get('thermal_analytics_enabled', False)): BooleanSelector(),
+                        # v2.1.0: Per-zone Thermal Analytics control
+                        vol.Optional('thermal_analytics_zones', default=current_thermal_zones): SelectSelector(
+                            SelectSelectorConfig(
+                                options=thermal_zones_options,
+                                multiple=True,
+                                mode=SelectSelectorMode.DROPDOWN
+                            )
+                        ),
                         vol.Optional('adaptive_preheat_enabled', default=options.get('adaptive_preheat_enabled', False)): BooleanSelector(),
                         vol.Optional('schedule_calendar_enabled', default=options.get('schedule_calendar_enabled', False)): BooleanSelector(),
                         vol.Optional('zone_configuration_enabled', default=options.get('zone_configuration_enabled', False)): BooleanSelector(),

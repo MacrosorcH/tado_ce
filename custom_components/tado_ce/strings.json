@@ -133,6 +133,7 @@
             "data": {
               "smart_comfort_enabled": "Smart Comfort Analytics",
               "thermal_analytics_enabled": "Thermal Analytics",
+              "thermal_analytics_zones": "Thermal Analytics Zones",
               "adaptive_preheat_enabled": "Adaptive Preheat",
               "schedule_calendar_enabled": "Schedule Calendar",
               "zone_configuration_enabled": "Zone Configuration",
@@ -141,6 +142,7 @@
             "data_description": {
               "smart_comfort_enabled": "Preheat advisor, mold risk, comfort level sensors",
               "thermal_analytics_enabled": "Thermal inertia, heating rate, efficiency sensors",
+              "thermal_analytics_zones": "Select zones for thermal analytics (deselect passive heating zones)",
               "adaptive_preheat_enabled": "Auto-start heating at recommended preheat time (requires Smart Comfort)",
               "schedule_calendar_enabled": "Display heating schedules as calendar entities (read-only)",
               "zone_configuration_enabled": "Per-zone settings: heat emitter type, overlay mode, temp limits",

@@ -680,6 +680,21 @@ class ConfigurationManager:
         """
         return self._get_option('thermal_analytics_enabled', True)
     
+    def get_thermal_analytics_zones(self) -> list[str]:
+        """Get list of zone IDs enabled for Thermal Analytics.
+        
+        v2.1.0: Per-zone control for Thermal Analytics sensors.
+        Zones that never call for heat (passive heating) will always show
+        'unavailable' - users can disable these to keep UI clean.
+        
+        Returns:
+            List of zone ID strings. Empty list = all zones with heatingPower.
+        """
+        zones = self._get_option('thermal_analytics_zones', [])
+        if isinstance(zones, list):
+            return [str(z) for z in zones]
+        return []
+    
     def get_zone_configuration_enabled(self) -> bool:
         """Check if Zone Configuration entities are enabled.
         

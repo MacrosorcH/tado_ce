@@ -445,7 +445,11 @@ Thermal Analytics automatically measures how your rooms respond to heating by an
 
 ### Configuration
 
-**No configuration needed** - Thermal Analytics is automatically enabled for all HEATING zones that report heatingPower data.
+**Global Toggle:** Enable/disable Thermal Analytics in Options → Tado CE Exclusive → Thermal Analytics.
+
+**Per-Zone Control (v2.1.0+):** Select which zones have Thermal Analytics sensors in Options → Tado CE Exclusive → Thermal Analytics Zones.
+- Default: All zones with heatingPower data are enabled
+- Use case: Zones that never call for heat (passive heating from other rooms) will always show `unavailable` - deselect these to keep your UI clean
 
 **Supported Devices (v2.0.1+):**
 - TRV devices (VA01, VA02, RU01, RU02)

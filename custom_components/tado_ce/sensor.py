@@ -160,8 +160,13 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                         ])
                     # v2.1.0: Thermal Analytics (opt-in via feature toggle)
                     # v2.0.1 FIX: For ALL zones with heatingPower (#91)
+                    # v2.1.0: Per-zone control - check thermal_analytics_zones list
                     heating_cycle_coordinator = hass.data.get(DOMAIN, {}).get('heating_cycle_coordinator')
-                    if config_manager.get_thermal_analytics_enabled() and zone_id in zones_with_heating_power:
+                    thermal_analytics_zones = config_manager.get_thermal_analytics_zones()
+                    # If thermal_analytics_zones is empty, all zones with heatingPower are enabled (default)
+                    # If non-empty, only specified zones are enabled
+                    zone_thermal_enabled = (not thermal_analytics_zones) or (zone_id in thermal_analytics_zones)
+                    if config_manager.get_thermal_analytics_enabled() and zone_id in zones_with_heating_power and zone_thermal_enabled:
                         if heating_cycle_coordinator:
                             sensors.extend([
                                 TadoThermalInertiaSensor(heating_cycle_coordinator, zone_id, zone_name, zone_type),
