@@ -6,27 +6,6 @@ For completed features, see [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
-## v2.1.0 (In Development)
-
-**Per-Zone Configuration**
-
-Completed:
-- ✅ 4 sections Options Flow (Tado CE Exclusive, Tado Data, Settings, Polling & API)
-- ✅ Per-Zone Thermal Analytics - multi-select in Options to exclude passive zones
-- ✅ Per-Zone Configuration Entities (requires "Zone Configuration" enabled):
-  - `select.{zone}_heating_type` (Radiator/UFH)
-  - `number.{zone}_ufh_buffer` (UFH buffer minutes)
-  - `switch.{zone}_adaptive_preheat`
-  - `select.{zone}_smart_comfort_mode`
-  - `select.{zone}_window_type`
-  - `select.{zone}_overlay_mode` (Tado Mode/Next Time Block/Timer/Manual)
-  - `select.{zone}_overlay_timer_duration`
-  - `number.{zone}_min_temp` / `number.{zone}_max_temp`
-  - `number.{zone}_temp_offset`
-  - `number.{zone}_surface_temp_offset` (mold risk calibration)
-
----
-
 ## v2.2.0 (Planned)
 
 **Mold Risk Enhancements** ([#109](https://github.com/hiall-fyi/tado_ce/issues/109)):

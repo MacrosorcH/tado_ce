@@ -2,7 +2,7 @@
 
 All notable changes to Tado CE will be documented in this file.
 
-## [2.1.0] - 2026-02-15
+## [2.1.0] - 2026-02-18
 
 **Per-Zone Configuration**
 
