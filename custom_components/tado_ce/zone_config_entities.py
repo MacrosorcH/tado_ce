@@ -625,6 +625,10 @@ async def async_setup_zone_config_select(
         zone_name = zone.get("name", f"Zone {zone_id}")
         zone_type = zone.get("type")
         
+        # v2.1.1: Skip Hot Water zones - they don't need per-zone config (#115)
+        if zone_type == "HOT_WATER":
+            continue
+        
         # Heating-only entities
         if zone_type == "HEATING":
             entities.append(TadoHeatingTypeSelect(zone_id, zone_name, zone_config_manager))
@@ -675,6 +679,10 @@ async def async_setup_zone_config_number(
         zone_name = zone.get("name", f"Zone {zone_id}")
         zone_type = zone.get("type")
         
+        # v2.1.1: Skip Hot Water zones - they don't need per-zone config (#115)
+        if zone_type == "HOT_WATER":
+            continue
+        
         # Heating-only entities
         if zone_type == "HEATING":
             entities.append(TadoUFHBufferNumber(zone_id, zone_name, zone_config_manager))
@@ -724,6 +732,10 @@ async def async_setup_zone_config_switch(
         zone_id = str(zone.get("id"))
         zone_name = zone.get("name", f"Zone {zone_id}")
         zone_type = zone.get("type")
+        
+        # v2.1.1: Skip Hot Water zones - they don't need per-zone config (#115)
+        if zone_type == "HOT_WATER":
+            continue
         
         # Heating + AC entities
         entities.append(

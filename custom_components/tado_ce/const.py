@@ -325,7 +325,7 @@ DEFAULT_ZONE_CONFIG = {
 # Surface temperature offset limits (for mold risk calibration)
 SURFACE_TEMP_OFFSET_MIN = -5.0
 SURFACE_TEMP_OFFSET_MAX = 5.0
-SURFACE_TEMP_OFFSET_STEP = 0.5
+SURFACE_TEMP_OFFSET_STEP = 0.1
 
 # Window type to U-value mapping (for migration from v2.0.x)
 WINDOW_TYPE_U_VALUES = {

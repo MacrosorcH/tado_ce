@@ -111,8 +111,11 @@ def _calculate_adaptive_interval(ratelimit_data: dict, config_manager: Configura
     reset_seconds = ratelimit_data.get("reset_seconds", 86400)
     last_reset_utc = ratelimit_data.get("last_reset_utc")
     
-    # Dynamically calculate reset_seconds from last_reset_utc for accuracy
-    if last_reset_utc:
+    # v2.1.1 FIX: Only recalculate reset_seconds from last_reset_utc in LIVE mode
+    # In Test Mode, reset_seconds is already correctly calculated from test_mode_start_time
+    # Recalculating from last_reset_utc (which is Live mode's reset) causes wrong intervals
+    # Issue #120: Test Mode polling stuck because of this mismatch
+    if not test_mode and last_reset_utc:
         try:
             last_reset = datetime.fromisoformat(last_reset_utc.replace('Z', '+00:00'))
             if last_reset.tzinfo is None:

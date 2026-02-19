@@ -33,6 +33,14 @@ For completed features, see [CHANGELOG.md](CHANGELOG.md).
 - **Rapid Temp Drop Detection** - Custom open window detection with configurable threshold (e.g., >2°C drop in 15 min)
 - **Note**: Requires testing HomeKit sensor behavior (update frequency, reliability) before implementation
 
+**UI/UX Improvements** ([#116](https://github.com/hiall-fyi/tado_ce/issues/116)):
+- **Entity Descriptions in UI** - Investigating if HA supports showing entity descriptions/help text in the UI. Current finding: HA doesn't have native support for this. Workaround: [FEATURES_GUIDE.md](FEATURES_GUIDE.md) provides detailed documentation.
+- **Attribute Visibility** - HA 2024.x hides certain attributes by default. Investigating naming conventions that affect visibility.
+
+**Calibration Sensors** ([#118](https://github.com/hiall-fyi/tado_ce/issues/118)):
+- **Surface Temperature Sensor** - Expose `surface_temperature` attribute as opt-in standalone sensor for mold risk calibration workflows
+- **Note**: HA 2024.x hides attributes in a separate panel, making calibration tedious (change offset → check dev tools → repeat). Standalone sensor would allow real-time feedback during calibration.
+
 **Other:**
 - Apply for HACS default repository inclusion
 - Max Flow Temperature control (requires OpenTherm, [#15](https://github.com/hiall-fyi/tado_ce/issues/15))
@@ -48,4 +56,4 @@ For completed features, see [CHANGELOG.md](CHANGELOG.md).
 - **Thread-safe home_id handling** - Replace global `_current_home_id` with per-entry context (current architecture uses global state that would conflict with multiple homes)
 - **Per-home async_api client** - Change from singleton to per-entry client instances
 - **Multi-home setup guide** - Documentation for users with multiple properties
-- **Note**: Multi-home infrastructure (per-home data files, device identifiers) is already in place. Remaining work is primarily refactoring global state to per-entry context. Estimated 12-17 hours of work.
+- **Note**: Multi-home infrastructure (per-home data files, device identifiers) is already in place. Remaining work is primarily refactoring global state to per-entry context.

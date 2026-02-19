@@ -2,6 +2,20 @@
 
 All notable changes to Tado CE will be documented in this file.
 
+## [2.1.1] - 2026-02-19
+
+**Bug Fixes**
+
+### Bug Fixes
+- **Fixed Test Mode Adaptive Polling using wrong reset time** ([#120](https://github.com/hiall-fyi/tado_ce/issues/120), [#119](https://github.com/hiall-fyi/tado_ce/issues/119) - @ChrisMarriott38)
+  - `_calculate_adaptive_interval()` was recalculating reset time from `last_reset_utc` (Live mode's reset)
+  - In Test Mode, this caused polling to get stuck at 120min or use incorrect intervals
+  - Now respects Test Mode's already-calculated `reset_seconds` from `test_mode_start_time`
+
+- **Fixed Hot Water zones showing heating-only entities** ([#115](https://github.com/hiall-fyi/tado_ce/issues/115) - @ChrisMarriott38)
+  - Per-Zone Configuration entities (Surface Temp Offset, Min/Max Temp, etc.) were incorrectly created for Hot Water zones
+  - Hot Water zones now correctly skip these heating/AC-only entities
+
 ## [2.1.0] - 2026-02-18
 
 **Per-Zone Configuration**

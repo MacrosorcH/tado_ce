@@ -4,6 +4,23 @@
 
 ---
 
+## v2.1.1 (2026-02-19) - Test Mode & Hot Water Hotfix
+
+### Bug Reports & Issue Reporters
+
+**[@ChrisMarriott38](https://github.com/ChrisMarriott38)** - [Issue #115](https://github.com/hiall-fyi/tado_ce/issues/115), [Issue #119](https://github.com/hiall-fyi/tado_ce/issues/119), [Issue #120](https://github.com/hiall-fyi/tado_ce/issues/120)
+- Reported Test Mode adaptive polling not respecting configured interval
+- Identified that Test Mode was recalculating reset time from Live mode's `last_reset_utc`
+- Reported Hot Water zone incorrectly getting heating-only entities (Overlay Mode, Timer Duration, Thermal Analytics)
+- Thorough testing across multiple configurations
+
+### What Was Fixed
+
+- ✅ **Issue #119, #120**: Test Mode adaptive polling now correctly uses configured interval without recalculation
+- ✅ **Issue #115**: Hot Water zones no longer get per-zone config entities (Overlay Mode, Timer Duration, Thermal Analytics)
+
+---
+
 ## v2.1.0 (2026-02-18) - Per-Zone Configuration
 
 ### Feature Requests & Contributors
