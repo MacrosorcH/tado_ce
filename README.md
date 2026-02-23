@@ -6,7 +6,7 @@
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.2.3-blue?style=for-the-badge&logo=home-assistant) ![Tado](https://img.shields.io/badge/Tado-V2%2FV3%2FV3%2B-orange?style=for-the-badge) ![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)
 
 <!-- Status Badges -->
-![Version](https://img.shields.io/badge/Version-2.2.0-purple?style=for-the-badge) ![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=for-the-badge) ![Maintained](https://img.shields.io/badge/Maintained-Yes-green.svg?style=for-the-badge) ![Unit Tests](https://img.shields.io/badge/Unit-835-blue?style=for-the-badge) ![Property Tests](https://img.shields.io/badge/Property-323-purple?style=for-the-badge) ![E2E Tests](https://img.shields.io/badge/E2E-190-green?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.2.1-purple?style=for-the-badge) ![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=for-the-badge) ![Maintained](https://img.shields.io/badge/Maintained-Yes-green.svg?style=for-the-badge) ![Unit Tests](https://img.shields.io/badge/Unit-835-blue?style=for-the-badge) ![Property Tests](https://img.shields.io/badge/Property-323-purple?style=for-the-badge) ![E2E Tests](https://img.shields.io/badge/E2E-190-green?style=for-the-badge)
 
 <!-- Community Badges -->
 ![GitHub stars](https://img.shields.io/github/stars/hiall-fyi/tado_ce?style=for-the-badge&logo=github) ![GitHub forks](https://img.shields.io/github/forks/hiall-fyi/tado_ce?style=for-the-badge&logo=github) ![GitHub issues](https://img.shields.io/github/issues/hiall-fyi/tado_ce?style=for-the-badge&logo=github) ![GitHub last commit](https://img.shields.io/github/last-commit/hiall-fyi/tado_ce?style=for-the-badge&logo=github)
@@ -160,7 +160,7 @@ All services available in **Developer Tools > Services** with full parameter doc
 ### The Design Philosophy
 
 - **Real-time Adaptive**: Calculates interval before each sync based on remaining quota, distributes remaining calls over remaining time, self-healing for any usage pattern
-- **Universal**: Works for ANY quota tier (100, 5000, 20000) - no hardcoded tiers or special cases
+- **Universal**: Works for ANY quota tier (100, 1000, 20000) - no hardcoded tiers or special cases
 - **Simple & Predictable**: Easy to understand, transparent through debug logging
 
 ### What This Means For You
@@ -168,7 +168,7 @@ All services available in **Developer Tools > Services** with full parameter doc
 | Quota | Typical Interval | Daily Utilization |
 |-------|------------------|-------------------|
 | 100 | ~16 min | ~90 calls (90%) |
-| 5000 | ~5 min | ~576 calls |
+| 1000 | ~8 min | ~180 calls |
 | 20000 | 5 min (minimum) | Prevents excessive polling |
 
 **Self-healing**: If you make manual API calls, it automatically slows down. End of day uses remaining quota efficiently.
@@ -344,7 +344,7 @@ Contributions welcome!
 
 ---
 
-**Version**: 2.2.0 | **Last Updated**: 2026-02-23 | **Tested On**: Home Assistant 2026.2.3
+**Version**: 2.2.1 | **Last Updated**: 2026-02-23 | **Tested On**: Home Assistant 2026.2.3
 
 ---
 

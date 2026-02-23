@@ -630,14 +630,17 @@ async def async_setup_zone_config_select(
         zone_type = zone.get("type")
         
         # v2.2.0: Hot Water zones - only create Overlay Mode + Timer Duration for tank-based systems (#115)
-        # Tank-based hot water has overlayType or temperature setting; combi boilers don't
+        # v2.2.1: Fixed detection - use nextScheduleChange instead of overlayType/temperature
+        # Tank-based hot water has schedules; combi boilers (on-demand) don't have schedules
         if zone_type == "HOT_WATER":
             zone_state = zone_states.get(zone_id, {})
             
+            # Check for schedule (tank-based) or overlay/temp (fallback)
+            has_schedule = zone_state.get('nextScheduleChange') is not None
             has_overlay = zone_state.get('overlayType') is not None
             has_temp = (zone_state.get('setting') or {}).get('temperature') is not None
             
-            if has_overlay or has_temp:
+            if has_schedule or has_overlay or has_temp:
                 # Tank-based: create Overlay Mode + Timer Duration only
                 entities.extend([
                     TadoZoneOverlayModeSelect(zone_id, zone_name, zone_type, zone_config_manager),

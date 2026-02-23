@@ -2,6 +2,23 @@
 
 All notable changes to Tado CE will be documented in this file.
 
+## [2.2.1] - 2026-02-23
+
+**Hot Water Detection & API Options Fixes**
+
+### Bug Fixes
+- **Fixed Hot Water per-zone config detection for tank-based systems** ([#115](https://github.com/hiall-fyi/tado_ce/issues/115) - @jeverley)
+  - v2.2.0 detection used `overlayType` and `temperature` which are null when hot water is in scheduled mode
+  - Now uses `nextScheduleChange` as primary indicator (tank-based systems have schedules, combi boilers don't)
+  - Tank-based hot water users will now correctly see Overlay Mode + Timer Duration entities
+
+- **Fixed API Options not saving** ([#134](https://github.com/hiall-fyi/tado_ce/issues/134) - @ChrisMarriott38, @Xavinooo)
+  - HA's NumberSelector returns float (e.g., `10.0`) but validation expected int
+  - Custom day/night polling intervals now correctly saved after Options flow changes
+  - Also handles legacy TextSelector string data from older configs
+
+---
+
 ## [2.2.0] - 2026-02-23
 
 **Calibration Sensors & Actionable Insights**

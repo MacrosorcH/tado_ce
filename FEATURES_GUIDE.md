@@ -31,7 +31,7 @@ API Management provides real-time tracking of your Tado API usage, helping you a
 Tado enforces API rate limits (100-20,000 calls/day depending on your plan). The official Home Assistant integration doesn't show actual usage, leaving users unaware until they get blocked. Tado CE solves this by:
 
 - Reading actual rate limit data from Tado API response headers
-- Automatically detecting your daily limit (100/5000/20000)
+- Automatically detecting your daily limit (100/1000/20000)
 - Tracking when your limit resets each day
 - Maintaining a history of all API calls
 - Providing test mode to simulate low quota scenarios
@@ -312,7 +312,7 @@ Smart Polling includes multiple strategies to optimize API usage:
 
 ---
 
-#### Scenario 4: Adaptive Polling for High Quota (5000+ calls/day)
+#### Scenario 4: Adaptive Polling for High Quota (1000+ calls/day)
 
 **Goal:** Maximum update frequency with automatic quota protection.
 
@@ -1191,10 +1191,10 @@ Where:
 
 ### Usage Scenarios
 
-#### Scenario 1: High Quota Tier (5000+ calls/day)
+#### Scenario 1: High Quota Tier (1000+ calls/day)
 
 **Situation:**
-- Quota: 5000 calls/day
+- Quota: 1000 calls/day
 - Remaining: 4500 calls
 - Time until reset: 12 hours
 
@@ -1237,7 +1237,7 @@ Interval = (720 min / 50) / 0.90 = 14.4 / 0.90 = 16 minutes
 #### Scenario 3: Quota Running Low
 
 **Situation:**
-- Quota: 5000 calls/day
+- Quota: 1000 calls/day
 - Remaining: 10 calls (⚠️ low!)
 - Time until reset: 6 hours
 
@@ -1259,7 +1259,7 @@ Interval = (360 min / 10) / 0.90 = 36 / 0.90 = 40 minutes
 
 **Situation:**
 - You want consistent 10-minute polling
-- Quota: 5000 calls/day
+- Quota: 1000 calls/day
 - Remaining: 4000 calls
 
 **Setup:**
@@ -2070,7 +2070,7 @@ Window Type: Double Pane (typical)
 ### Scenario 2: Large House (5+ rooms)
 
 **Profile:**
-- Quota: 5000+ calls/day
+- Quota: 1000+ calls/day
 - Zones: 5-10 heating zones
 - Features needed: Full analytics
 
@@ -2190,10 +2190,10 @@ Outdoor Temperature Entity: (leave empty or use weather integration)
 
 ---
 
-### Scenario 6: High Quota Tier (5000+ calls/day)
+### Scenario 6: High Quota Tier (1000+ calls/day)
 
 **Profile:**
-- Quota: 5000+ calls/day
+- Quota: 1000+ calls/day
 - Zones: Any number
 - Goal: Maximum features and update frequency
 

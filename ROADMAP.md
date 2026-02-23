@@ -15,6 +15,18 @@ For completed features, see [CHANGELOG.md](CHANGELOG.md).
 - **Indoor Air Quality (IAQ)** - Air quality score per zone (requires additional sensors)
 - **Air Comfort** - Similar to Tado app's comfort visualization
 
+**Open Window Detection Enhancements** ([#135](https://github.com/hiall-fyi/tado_ce/issues/135) - @ChrisMarriott38):
+- **Sensitivity Dropdown** - Add `select.{zone}_window_predicted_sensitivity` entity with Low/Medium/High options
+  - Low = fewer false positives, may miss some events
+  - Medium = current behavior (default)
+  - High = more sensitive, may have more false positives
+- **Cross-Zone Heating Detection** - Check if ANY zone is heating before triggering window predicted
+  - Rationale: Shared boiler/heat pump means opening a window affects whole-house efficiency
+  - Challenge 1: Distinguishing "window open" from "zone naturally cooling" when another zone is heating
+  - Challenge 2: Passive/rarely-used zones (e.g., guest rooms) would false-positive when other zones are heating
+  - Status: Needs more real-world data and research; current per-zone approach avoids passive zone false positives
+- **Note**: Current Window Predicted sensor (v2.2.0) uses fixed thresholds. Sensitivity dropdown would map to preset threshold combinations internally.
+
 **Hub Controls Migration:**
 - **Quota Reserve Toggle** - Move `quota_reserve_enabled` from Config Options to Hub Controls for runtime toggle without reload
 - **Test Mode Toggle** - Move `test_mode_enabled` from Config Options to Hub Controls for easier debugging
@@ -28,7 +40,7 @@ For completed features, see [CHANGELOG.md](CHANGELOG.md).
 **Other:**
 - Apply for HACS default repository inclusion
 - Max Flow Temperature control (requires OpenTherm, [#15](https://github.com/hiall-fyi/tado_ce/issues/15))
-- Combi boiler mode - hide timers/schedules for on-demand hot water ([#15](https://github.com/hiall-fyi/tado_ce/issues/15))
+- ~~Combi boiler mode~~ - ✅ Fixed in v2.2.1: Hot water detection now correctly skips overlay/timer entities for combi boilers ([#115](https://github.com/hiall-fyi/tado_ce/issues/115))
 - **Temperature Update Delay Investigation** ([#124](https://github.com/hiall-fyi/tado_ce/issues/124) - @hapklaar) - User reports ~2 hour update intervals and slow climate card updates. Awaiting debug logs.
 
 **Local API (Experimental):**

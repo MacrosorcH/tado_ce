@@ -4,6 +4,31 @@
 
 ---
 
+## v2.2.1 (2026-02-23) - Hot Water Detection & API Options Fixes
+
+### Bug Reports & Issue Reporters
+
+**[@jeverley](https://github.com/jeverley)** - [Issue #115](https://github.com/hiall-fyi/tado_ce/issues/115)
+- Follow-up report on Hot Water per-zone config detection
+- Identified that v2.2.0 detection used overlayType/temperature which are null in scheduled mode
+- Tank-based hot water systems have schedules, combi boilers don't
+
+**[@ChrisMarriott38](https://github.com/ChrisMarriott38)** - [Issue #134](https://github.com/hiall-fyi/tado_ce/issues/134)
+- Reported API Options not saving after changes
+- Identified that NumberSelector returns float but validation expected int
+
+**[@Xavinooo](https://github.com/Xavinooo)** - [Issue #134](https://github.com/hiall-fyi/tado_ce/issues/134)
+- Confirmed API Options saving issue
+- Helped validate the fix
+
+### What Was Fixed
+
+- ✅ **Issue #115**: Hot Water per-zone config detection now uses nextScheduleChange as primary indicator
+- ✅ **Issue #134**: API Options now correctly handles float values from NumberSelector
+- ✅ **Issue #134**: Legacy TextSelector string data from older configs now handled
+
+---
+
 ## v2.2.0 (2026-02-23) - Calibration Sensors & Actionable Insights
 
 ### Feature Requests & Contributors

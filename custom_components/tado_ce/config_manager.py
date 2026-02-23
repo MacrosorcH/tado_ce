@@ -332,6 +332,19 @@ class ConfigurationManager:
         if interval is None:
             return None
         
+        # Convert float to int (HA NumberSelector returns float)
+        if isinstance(interval, float):
+            interval = int(interval)
+        elif isinstance(interval, str):
+            # Handle legacy TextSelector data
+            if not interval.strip():
+                return None
+            try:
+                interval = int(float(interval))
+            except (ValueError, TypeError, OverflowError):
+                _LOGGER.warning(f"Invalid custom_day_interval: {interval}, ignoring")
+                return None
+        
         # Validate range
         if not isinstance(interval, int) or interval < 1 or interval > 1440:
             _LOGGER.warning(f"Invalid custom_day_interval: {interval}, ignoring")
@@ -347,6 +360,19 @@ class ConfigurationManager:
         interval = self._get_option('custom_night_interval', None)
         if interval is None:
             return None
+        
+        # Convert float to int (HA NumberSelector returns float)
+        if isinstance(interval, float):
+            interval = int(interval)
+        elif isinstance(interval, str):
+            # Handle legacy TextSelector data
+            if not interval.strip():
+                return None
+            try:
+                interval = int(float(interval))
+            except (ValueError, TypeError, OverflowError):
+                _LOGGER.warning(f"Invalid custom_night_interval: {interval}, ignoring")
+                return None
         
         # Validate range
         if not isinstance(interval, int) or interval < 1 or interval > 1440:
