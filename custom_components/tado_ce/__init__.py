@@ -197,7 +197,7 @@ def _calculate_adaptive_interval(ratelimit_data: dict, config_manager: Configura
             f"  Effective hours: {effective_hours:.1f}h (until {time_boundary})\n"
             f"  Remaining: {remaining} calls (effective: {effective_remaining:.0f})\n"
             f"  Usable quota: {usable_quota:.0f}\n"
-            f"  Calculated: {effective_minutes / day_quota:.1f} min → Applied: {interval_minutes} min\n"
+            f"  Calculated: {effective_minutes / day_quota:.1f} min → Adaptive: {interval_minutes} min\n"
             f"  Reset in: {reset_hours:.1f}h | Test Mode: {test_mode}"
         )
         
@@ -274,7 +274,7 @@ def _calculate_adaptive_interval(ratelimit_data: dict, config_manager: Configura
         f"  Night reserved: {night_calls_needed:.1f} calls\n"
         f"  Remaining: {remaining} calls (effective: {effective_remaining:.0f})\n"
         f"  Usable quota: {usable_quota:.0f} → Day quota: {day_quota:.0f}\n"
-        f"  Calculated: {effective_minutes / day_quota:.1f} min → Applied: {interval_minutes} min\n"
+        f"  Calculated: {effective_minutes / day_quota:.1f} min → Adaptive: {interval_minutes} min\n"
         f"  Reset in: {reset_hours:.1f}h | Test Mode: {test_mode}"
     )
     

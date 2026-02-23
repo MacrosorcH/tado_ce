@@ -459,10 +459,16 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
             # Flatten polling_api section
             if 'polling_api' in user_input:
                 section = user_input['polling_api']
-                for key in ['day_start_hour', 'night_start_hour', 'custom_day_interval', 'custom_night_interval', 
+                for key in ['day_start_hour', 'night_start_hour', 
                            'refresh_debounce_seconds', 'api_history_retention_days', 'quota_reserve_enabled']:
                     if key in section:
                         processed_input[key] = section[key]
+                
+                # v2.2.2: Fix persistence bug (#134) - explicitly handle custom intervals
+                # When user clears the field, HA doesn't include the key in section
+                # We need to explicitly set None to clear the old value
+                processed_input['custom_day_interval'] = section.get('custom_day_interval')
+                processed_input['custom_night_interval'] = section.get('custom_night_interval')
             
             # Handle custom day interval (NumberSelector returns int or None)
             # v2.2.0: Simplified - NumberSelector handles validation (#126)
@@ -501,6 +507,18 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
         options = self.config_entry.options
         custom_day_interval = options.get('custom_day_interval')
         custom_night_interval = options.get('custom_night_interval')
+        
+        # v2.2.2: Build custom interval schema dynamically (#134)
+        # NumberSelector doesn't accept None as default, so we only set default when value exists
+        if custom_day_interval is not None:
+            custom_day_schema = vol.Optional('custom_day_interval', default=custom_day_interval)
+        else:
+            custom_day_schema = vol.Optional('custom_day_interval')
+        
+        if custom_night_interval is not None:
+            custom_night_schema = vol.Optional('custom_night_interval', default=custom_night_interval)
+        else:
+            custom_night_schema = vol.Optional('custom_night_interval')
 
         # v2.1.0: Get current thermal_analytics_zones, default to all zones with heatingPower
         current_thermal_zones = options.get('thermal_analytics_zones', [])
@@ -599,10 +617,10 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                         vol.Required('night_start_hour', default=options.get('night_start_hour', 23)): NumberSelector(
                             NumberSelectorConfig(min=0, max=23, step=1, mode=NumberSelectorMode.BOX)
                         ),
-                        vol.Optional('custom_day_interval', default=custom_day_interval): NumberSelector(
+                        custom_day_schema: NumberSelector(
                             NumberSelectorConfig(min=1, max=1440, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="min")
                         ),
-                        vol.Optional('custom_night_interval', default=custom_night_interval): NumberSelector(
+                        custom_night_schema: NumberSelector(
                             NumberSelectorConfig(min=1, max=1440, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="min")
                         ),
                         vol.Optional('refresh_debounce_seconds', default=options.get('refresh_debounce_seconds', 15)): NumberSelector(

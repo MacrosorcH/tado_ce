@@ -2,6 +2,20 @@
 
 All notable changes to Tado CE will be documented in this file.
 
+## [2.2.2] - 2026-02-23
+
+**Options Flow Validation & Persistence Fixes**
+
+### Bug Fixes
+- **Fix API Options validation and persistence** ([#134](https://github.com/hiall-fyi/tado_ce/issues/134) - @Xavinooo)
+  - Validation bug: Cannot save if only one of day/night interval is filled (other empty)
+  - Persistence bug: Clearing a custom interval field does not persist (old value remains)
+
+### Improvements
+- **Clarified debug log message** - Changed "Applied:" to "Adaptive:" in polling interval debug logs for clarity
+
+---
+
 ## [2.2.1] - 2026-02-23
 
 **Hot Water Detection & API Options Fixes**
@@ -18,7 +32,6 @@ All notable changes to Tado CE will be documented in this file.
   - Also handles legacy TextSelector string data from older configs
 
 ---
-
 ## [2.2.0] - 2026-02-23
 
 **Calibration Sensors & Actionable Insights**

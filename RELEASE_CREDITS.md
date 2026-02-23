@@ -4,6 +4,23 @@
 
 ---
 
+## v2.2.2 (2026-02-23) - Options Flow Validation & Persistence Fixes
+
+### Bug Reports & Issue Reporters
+
+**[@Xavinooo](https://github.com/Xavinooo)** - [Issue #134](https://github.com/hiall-fyi/tado_ce/issues/134)
+- Confirmed both validation and persistence bugs in API Options
+- Provided detailed reproduction steps: set value to 10, save, clear field, save again
+- Identified that clearing a field does not persist (old value remains)
+
+### What Was Fixed
+
+- ✅ **Issue #134 (Part 2)**: Validation bug - Cannot save if only one of day/night interval is filled
+- ✅ **Issue #134 (Part 2)**: Persistence bug - Clearing a custom interval field now correctly persists as None
+- ✅ Clarified debug log message - "Applied:" changed to "Adaptive:" for polling interval logs
+
+---
+
 ## v2.2.1 (2026-02-23) - Hot Water Detection & API Options Fixes
 
 ### Bug Reports & Issue Reporters
