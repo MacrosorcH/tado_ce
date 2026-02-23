@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 
 from homeassistant.components.sensor import (
@@ -21,9 +21,36 @@ from .device_manager import get_hub_device_info, get_zone_device_info
 from .data_loader import (
     load_zones_file, load_zones_info_file, load_weather_file,
     load_config_file, load_ratelimit_file, load_api_call_history_file,
+    load_outdoor_temp_history, save_outdoor_temp_history,
     get_zone_names as dl_get_zone_names
 )
 from .immediate_refresh_handler import SIGNAL_ZONES_UPDATED
+from .insights_calculator import (
+    calculate_mold_risk_recommendation,
+    calculate_comfort_recommendation,
+    calculate_condensation_recommendation,
+    calculate_historical_deviation_recommendation,
+    calculate_confidence_recommendation,
+    calculate_battery_recommendation,
+    calculate_connection_recommendation,
+    calculate_api_status_recommendation,
+    calculate_preheat_timing_insight,
+    calculate_schedule_deviation_insight,
+    calculate_heating_anomaly_insight,
+    aggregate_cross_zone_mold_risk,
+    aggregate_cross_zone_window_predicted,
+    calculate_api_quota_planning_insight,
+    calculate_weather_impact_insight,
+    aggregate_home_insights,
+    Insight,
+    InsightPriority,
+    get_insight_priority,
+    # v2.2.1: Calculation functions moved from sensor.py (SRP fix)
+    calculate_dew_point as _calculate_dew_point,
+    classify_mold_risk_level,
+    classify_comfort_level,
+    calculate_calls_per_hour,
+)
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
@@ -44,6 +71,41 @@ WEATHER_STATE_MAP = {
     "THUNDERSTORMS": "Thunderstorms",
     "WINDY": "Windy",
 }
+
+# Zone type display mapping (v2.2.0)
+ZONE_TYPE_DISPLAY_MAP = {
+    "HEATING": "Heating",
+    "AIR_CONDITIONING": "Air Conditioning",
+    "HOT_WATER": "Hot Water",
+}
+
+# Window type display mapping (v2.2.0)
+WINDOW_TYPE_DISPLAY_MAP = {
+    "single_pane": "Single Pane",
+    "double_pane": "Double Pane",
+    "triple_pane": "Triple Pane",
+}
+
+# Comfort model display mapping (v2.2.0)
+COMFORT_MODEL_DISPLAY_MAP = {
+    "adaptive": "Adaptive",
+    "seasonal": "Seasonal",
+}
+
+
+def _format_zone_type(zone_type: str) -> str:
+    """Convert internal zone_type to user-friendly display value."""
+    return ZONE_TYPE_DISPLAY_MAP.get(zone_type, zone_type)
+
+
+def _format_window_type(window_type: str) -> str:
+    """Convert internal window_type to user-friendly display value."""
+    return WINDOW_TYPE_DISPLAY_MAP.get(window_type, window_type)
+
+
+def _format_comfort_model(comfort_model: str) -> str:
+    """Convert internal comfort_model to user-friendly display value."""
+    return COMFORT_MODEL_DISPLAY_MAP.get(comfort_model, comfort_model.title() if comfort_model else "Unknown")
 
 # Cached home_id to avoid blocking calls in event loop
 _CACHED_HOME_ID = None
@@ -86,6 +148,8 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     sensors.append(TadoPollingIntervalSensor())
     sensors.append(TadoCallHistorySensor())
     sensors.append(TadoApiCallBreakdownSensor())
+    # v2.2.0: Home Insights aggregation sensor
+    sensors.append(TadoHomeInsightsSensor())
     
     # Boiler Flow Temperature sensor (Hub device - only if data available)
     # This requires OpenTherm connection between Tado and boiler
@@ -148,6 +212,8 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                         TadoTargetTempSensor(zone_id, zone_name, zone_type),
                         TadoOverlaySensor(zone_id, zone_name, zone_type),
                     ])
+                    # v2.2.0: Per-zone insights sensor
+                    sensors.append(TadoZoneInsightsSensor(zone_id, zone_name, zone_type))
                     # v2.1.0: Zone Diagnostics sensors (opt-in via feature toggle)
                     if config_manager.get_zone_diagnostics_enabled():
                         sensors.append(TadoHeatingPowerSensor(zone_id, zone_name, zone_type))
@@ -157,6 +223,9 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                             TadoMoldRiskSensor(zone_id, zone_name, zone_type),
                             TadoMoldRiskPercentageSensor(zone_id, zone_name, zone_type),
                             TadoComfortLevelSensor(zone_id, zone_name, zone_type),
+                            # v2.2.0: Calibration sensors (#118)
+                            TadoSurfaceTemperatureSensor(zone_id, zone_name, zone_type),
+                            TadoDewPointSensor(zone_id, zone_name, zone_type),
                         ])
                     # v2.1.0: Thermal Analytics (opt-in via feature toggle)
                     # v2.0.1 FIX: For ALL zones with heatingPower (#91)
@@ -197,6 +266,8 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                         TadoTargetTempSensor(zone_id, zone_name, zone_type),
                         TadoOverlaySensor(zone_id, zone_name, zone_type),
                     ])
+                    # v2.2.0: Per-zone insights sensor
+                    sensors.append(TadoZoneInsightsSensor(zone_id, zone_name, zone_type))
                     # v2.1.0: Environment sensors (opt-in via feature toggle)
                     if config_manager.get_environment_sensors_enabled():
                         sensors.extend([
@@ -204,6 +275,9 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                             TadoMoldRiskPercentageSensor(zone_id, zone_name, zone_type),
                             TadoComfortLevelSensor(zone_id, zone_name, zone_type),
                             TadoCondensationRiskSensor(zone_id, zone_name, zone_type),
+                            # v2.2.0: Calibration sensors (#118)
+                            TadoSurfaceTemperatureSensor(zone_id, zone_name, zone_type),
+                            TadoDewPointSensor(zone_id, zone_name, zone_type),
                         ])
                     # v1.9.0: Smart Comfort sensors for AC (opt-in)
                     # v1.11.0: Removed TadoThermalRateSensor, TadoTimeToTargetSensor (replaced by heating cycle analysis)
@@ -308,6 +382,7 @@ class TadoHomeIdSensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "Home ID"
+        self.entity_id = "sensor.tado_ce_home_id"
         self._attr_unique_id = "tado_ce_home_id"
         self._attr_icon = "mdi:home"
         self._attr_device_info = get_hub_device_info()
@@ -333,6 +408,7 @@ class TadoApiUsageSensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "API Usage"
+        self.entity_id = "sensor.tado_ce_api_usage"
         self._attr_unique_id = "tado_ce_api_usage"
         self._attr_native_unit_of_measurement = "calls"
         self._attr_state_class = "measurement"
@@ -464,6 +540,7 @@ class TadoApiResetSensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "API Reset"
+        self.entity_id = "sensor.tado_ce_api_reset"
         self._attr_unique_id = "tado_ce_api_reset"
         self._attr_icon = "mdi:timer-refresh"
         self._attr_device_class = "timestamp"
@@ -615,6 +692,7 @@ class TadoApiLimitSensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "API Limit"
+        self.entity_id = "sensor.tado_ce_api_limit"
         self._attr_unique_id = "tado_ce_api_limit"
         self._attr_icon = "mdi:speedometer"
         self._attr_native_unit_of_measurement = "calls"
@@ -709,10 +787,15 @@ class TadoApiStatusSensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "API Status"
+        self.entity_id = "sensor.tado_ce_api_status"
         self._attr_unique_id = "tado_ce_api_status"
         self._attr_device_info = get_hub_device_info()
         self._attr_available = False
         self._attr_native_value = None
+        self._remaining_calls: int | None = None
+        self._total_calls: int | None = None
+        self._reset_time: str | None = None
+        self._recommendation: str = ""  # v2.2.0: Actionable recommendation
     
     @property
     def icon(self):
@@ -722,12 +805,32 @@ class TadoApiStatusSensor(SensorEntity):
             return "mdi:alert-circle"
         return "mdi:help-circle"
     
+    @property
+    def extra_state_attributes(self):
+        return {
+            "remaining_calls": self._remaining_calls,
+            "total_calls": self._total_calls,
+            "reset_time": self._reset_time,
+            "recommendation": self._recommendation,  # v2.2.0: Actionable recommendation
+        }
+    
     def update(self):
         try:
             # Use data_loader for per-home file support
             data = load_ratelimit_file()
             if data:
                 self._attr_native_value = data.get("status", "unknown")
+                self._remaining_calls = data.get("remaining")
+                self._total_calls = data.get("limit")
+                self._reset_time = data.get("reset_human")
+                
+                # v2.2.0: Calculate SMART actionable recommendation
+                self._recommendation = calculate_api_status_recommendation(
+                    remaining_calls=self._remaining_calls,
+                    total_calls=self._total_calls,
+                    reset_time_human=self._reset_time,
+                    current_interval_minutes=None  # Could get from config_manager if needed
+                )               
                 self._attr_available = True
             else:
                 self._attr_native_value = "unknown"
@@ -741,6 +844,7 @@ class TadoTokenStatusSensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "Token Status"
+        self.entity_id = "sensor.tado_ce_token_status"
         self._attr_unique_id = "tado_ce_token_status"
         self._attr_device_info = get_hub_device_info()
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -775,6 +879,7 @@ class TadoZoneCountSensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "Zone Count"
+        self.entity_id = "sensor.tado_ce_zone_count"
         self._attr_unique_id = "tado_ce_zone_count"
         self._attr_icon = "mdi:home-thermometer"
         self._attr_native_unit_of_measurement = "zones"
@@ -814,6 +919,7 @@ class TadoLastSyncSensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "Last Sync"
+        self.entity_id = "sensor.tado_ce_last_sync"
         self._attr_unique_id = "tado_ce_last_sync"
         self._attr_icon = "mdi:sync"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
@@ -853,6 +959,7 @@ class TadoNextSyncSensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "Next Sync"
+        self.entity_id = "sensor.tado_ce_next_sync"
         self._attr_unique_id = "tado_ce_next_sync"
         self._attr_icon = "mdi:clock-outline"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
@@ -930,6 +1037,7 @@ class TadoPollingIntervalSensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "Polling Interval"
+        self.entity_id = "sensor.tado_ce_polling_interval"
         self._attr_unique_id = "tado_ce_polling_interval"
         self._attr_icon = "mdi:timer-outline"
         self._attr_native_unit_of_measurement = "min"
@@ -1041,6 +1149,7 @@ class TadoCallHistorySensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "Call History"
+        self.entity_id = "sensor.tado_ce_call_history"
         self._attr_unique_id = "tado_ce_call_history"
         self._attr_icon = "mdi:history"
         self._attr_native_unit_of_measurement = "calls"
@@ -1190,6 +1299,7 @@ class TadoApiCallBreakdownSensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "API Call Breakdown"
+        self.entity_id = "sensor.tado_ce_api_call_breakdown"
         self._attr_unique_id = "tado_ce_api_call_breakdown"
         self._attr_icon = "mdi:chart-bar"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -1315,6 +1425,7 @@ class TadoOutsideTemperatureSensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "Outside Temperature"
+        self.entity_id = "sensor.tado_ce_outside_temperature"
         self._attr_unique_id = "tado_ce_outside_temperature"
         self._attr_device_class = SensorDeviceClass.TEMPERATURE
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -1347,6 +1458,7 @@ class TadoSolarIntensitySensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "Solar Intensity"
+        self.entity_id = "sensor.tado_ce_solar_intensity"
         self._attr_unique_id = "tado_ce_solar_intensity"
         self._attr_icon = "mdi:white-balance-sunny"
         self._attr_native_unit_of_measurement = PERCENTAGE
@@ -1379,6 +1491,7 @@ class TadoWeatherStateSensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "Weather"
+        self.entity_id = "sensor.tado_ce_weather_state"
         self._attr_unique_id = "tado_ce_weather_state"
         self._attr_icon = "mdi:weather-partly-cloudy"
         self._attr_available = False
@@ -1602,6 +1715,7 @@ class TadoBoilerFlowTemperatureSensor(SensorEntity):
     
     def __init__(self):
         self._attr_name = "Boiler Flow Temperature"
+        self.entity_id = "sensor.tado_ce_boiler_flow_temperature"
         self._attr_unique_id = "tado_ce_boiler_flow_temperature"
         self._attr_device_class = SensorDeviceClass.TEMPERATURE
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -1758,6 +1872,7 @@ class TadoBatterySensor(SensorEntity):
         self._firmware = device.get('currentFwVersion')
         self._connection_state = (device.get('connectionState') or {}).get('value')
         self._connection_timestamp = (device.get('connectionState') or {}).get('timestamp')
+        self._recommendation: str = ""  # v2.2.0: Actionable recommendation
     
     @property
     def icon(self):
@@ -1773,6 +1888,7 @@ class TadoBatterySensor(SensorEntity):
             "firmware_version": self._firmware,
             "connection_state": "online" if self._connection_state else "offline",
             "connection_timestamp": self._connection_timestamp,
+            "recommendation": self._recommendation,  # v2.2.0: Actionable recommendation
         }
     
     def update(self):
@@ -1789,6 +1905,14 @@ class TadoBatterySensor(SensorEntity):
                             conn = device.get('connectionState') or {}
                             self._connection_state = conn.get('value')
                             self._connection_timestamp = conn.get('timestamp')
+                            
+                            # v2.2.0: Calculate SMART actionable recommendation
+                            self._recommendation = calculate_battery_recommendation(
+                                battery_state=self._attr_native_value,
+                                zone_name=self._zone_name,
+                                device_type=self._device_type
+                            )
+                            
                             self._attr_available = True
                             return
             self._attr_available = False
@@ -1821,6 +1945,7 @@ class TadoDeviceConnectionSensor(SensorEntity):
         self._attr_native_value = "Online" if conn.get('value') else "Offline"
         self._connection_timestamp = conn.get('timestamp')
         self._firmware = device.get('currentFwVersion')
+        self._recommendation: str = ""  # v2.2.0: Actionable recommendation
     
     @property
     def icon(self):
@@ -1835,6 +1960,7 @@ class TadoDeviceConnectionSensor(SensorEntity):
             "device_type": self._device_type,
             "firmware_version": self._firmware,
             "last_seen": self._connection_timestamp,
+            "recommendation": self._recommendation,  # v2.2.0: Actionable recommendation
         }
     
     def update(self):
@@ -1850,6 +1976,28 @@ class TadoDeviceConnectionSensor(SensorEntity):
                             self._attr_native_value = "Online" if conn.get('value') else "Offline"
                             self._connection_timestamp = conn.get('timestamp')
                             self._firmware = device.get('currentFwVersion')
+                            
+                            # v2.2.0: Calculate SMART actionable recommendation
+                            # Calculate offline duration
+                            offline_minutes = None
+                            if self._connection_timestamp and self._attr_native_value == "Offline":
+                                try:
+                                    from datetime import datetime, timezone
+                                    last_seen_dt = datetime.fromisoformat(
+                                        self._connection_timestamp.replace('Z', '+00:00')
+                                    )
+                                    now_utc = datetime.now(timezone.utc)
+                                    offline_minutes = int((now_utc - last_seen_dt).total_seconds() / 60)
+                                except Exception:
+                                    pass
+
+                            self._recommendation = calculate_connection_recommendation(
+                                connection_state=self._attr_native_value,
+                                zone_name=self._zone_name,
+                                last_seen=self._connection_timestamp,
+                                offline_minutes=offline_minutes
+                            )
+                            
                             self._attr_available = True
                             return
             self._attr_available = False
@@ -1888,6 +2036,7 @@ class TadoHistoricalDeviationSensor(TadoBaseSensor):
         self._historical_avg: float | None = None
         self._sample_count: int = 0
         self._summary: str = ""
+        self._recommendation: str = ""  # v2.2.0: Actionable recommendation
     
     @property
     def extra_state_attributes(self):
@@ -1896,7 +2045,8 @@ class TadoHistoricalDeviationSensor(TadoBaseSensor):
             "historical_average": self._historical_avg,
             "sample_count": self._sample_count,
             "summary": self._summary,
-            "zone_type": self._zone_type,
+            "zone_type": _format_zone_type(self._zone_type),
+            "recommendation": self._recommendation,  # v2.2.0: Actionable recommendation
         }
     
     @property
@@ -1950,6 +2100,16 @@ class TadoHistoricalDeviationSensor(TadoBaseSensor):
             self._historical_avg = comparison.historical_avg
             self._sample_count = comparison.sample_count
             self._summary = comparison.to_summary()
+            
+            # v2.2.0: Calculate SMART actionable recommendation
+            self._recommendation = calculate_historical_deviation_recommendation(
+                deviation=comparison.difference,
+                zone_name=self._zone_name,
+                current_temp=self._current_temp,
+                historical_avg=comparison.historical_avg,
+                sample_count=comparison.sample_count
+            )
+            
             self._attr_available = True
             
         except Exception as e:
@@ -1984,7 +2144,7 @@ class TadoNextScheduleTimeSensor(TadoBaseSensor):
             "is_heating_on": self._is_heating_on,
             "is_tomorrow": self._is_tomorrow,
             "minutes_until": self._minutes_until,
-            "zone_type": self._zone_type,
+            "zone_type": _format_zone_type(self._zone_type),
         }
     
     def update(self):
@@ -2055,7 +2215,7 @@ class TadoNextScheduleTempSensor(TadoBaseSensor):
             "is_heating_on": self._is_heating_on,
             "current_temperature": self._current_temp,
             "temperature_difference": self._temp_diff,
-            "zone_type": self._zone_type,
+            "zone_type": _format_zone_type(self._zone_type),
         }
         # Add unit only when showing temperature
         if self._is_heating_on and isinstance(self._attr_native_value, (int, float)):
@@ -2156,7 +2316,7 @@ class TadoPreheatAdvisorSensor(TadoBaseSensor):
             "heating_rate": self._heating_rate,
             "confidence": self._confidence,
             "summary": self._summary,
-            "zone_type": self._zone_type,
+            "zone_type": _format_zone_type(self._zone_type),
         }
     
     @property
@@ -2380,9 +2540,9 @@ class TadoSmartComfortTargetSensor(TadoBaseSensor):
             "current_temperature": self._current_temp,
             "outdoor_temperature": self._outdoor_temp,
             "humidity": self._humidity,
-            "comfort_model": self._comfort_model,
+            "comfort_model": _format_comfort_model(self._comfort_model),
             "deviation_from_comfort": self._deviation,
-            "zone_type": self._zone_type,
+            "zone_type": _format_zone_type(self._zone_type),
         }
     
     @property
@@ -2546,35 +2706,8 @@ class TadoSmartComfortTargetSensor(TadoBaseSensor):
 
 
 # ============ Environment Sensors (v1.9.0) ============
-
-def _calculate_dew_point(temperature: float, humidity: float) -> float:
-    """Calculate dew point using Magnus-Tetens formula (more accurate).
-    
-    Formula: Td = (b × α) / (a - α)
-    where α = (a × T) / (b + T) + ln(RH/100)
-    
-    Constants (for -40°C to 50°C range):
-    a = 17.27
-    b = 237.7°C
-    
-    Args:
-        temperature: Indoor temperature in °C
-        humidity: Relative humidity in %
-        
-    Returns:
-        Dew point temperature in °C
-    """
-    import math
-    a = 17.27
-    b = 237.7
-    
-    # Clamp humidity to valid range (avoid log(0))
-    humidity = max(1, min(100, humidity))
-    
-    alpha = (a * temperature) / (b + temperature) + math.log(humidity / 100)
-    dew_point = (b * alpha) / (a - alpha)
-    
-    return round(dew_point, 1)
+# v2.2.1: _calculate_dew_point moved to insights_calculator.py (SRP fix)
+# Import alias at top of file: calculate_dew_point as _calculate_dew_point
 
 
 def _calculate_surface_temperature(indoor_temp: float, outdoor_temp: float, u_value: float) -> float:
@@ -2651,6 +2784,7 @@ class TadoMoldRiskSensor(TadoBaseSensor):
         self._outdoor_temp: float | None = None  # v1.11.0: For surface temp calculation
         self._surface_temp: float | None = None  # v1.11.0: Calculated surface temp
         self._surface_temp_offset: float = 0.0  # v2.1.0: Calibration offset
+        self._recommendation: str = ""  # v2.2.0: Actionable recommendation
     
     @property
     def extra_state_attributes(self):
@@ -2665,7 +2799,8 @@ class TadoMoldRiskSensor(TadoBaseSensor):
             "outdoor_temperature": self._outdoor_temp,  # v1.11.0
             "surface_temperature": self._surface_temp,  # v1.11.0
             "surface_temp_offset": self._surface_temp_offset,  # v2.1.0: Calibration offset
-            "zone_type": self._zone_type,
+            "zone_type": _format_zone_type(self._zone_type),
+            "recommendation": self._recommendation,  # v2.2.0: Actionable recommendation
         }
     
     @property
@@ -2726,6 +2861,23 @@ class TadoMoldRiskSensor(TadoBaseSensor):
             else:
                 self._attr_native_value = "Low"
             
+            # v2.2.0: Calculate SMART actionable recommendation
+            # Get target temperature from zone data for specific recommendations
+            target_temp = None
+            if zone_data:
+                setting = zone_data.get('setting') or {}
+                target_temp = (setting.get('temperature') or {}).get('celsius')
+
+            self._recommendation = calculate_mold_risk_recommendation(
+                risk_level=self._attr_native_value,
+                zone_name=self._zone_name,
+                humidity=self._humidity,
+                surface_temp=self._effective_temp,
+                dew_point=self._dew_point,
+                current_temp=self._room_temp,
+                target_temp=target_temp
+            )
+            
             self._attr_available = True
             
         except Exception as e:
@@ -2755,7 +2907,7 @@ class TadoMoldRiskSensor(TadoBaseSensor):
             zone_config_manager = self.hass.data.get(DOMAIN, {}).get('zone_config_manager')
             
             if not config_manager:
-                self._temperature_source = "room_average"
+                self._temperature_source = "Room Average"
                 self._surface_temp_offset = 0.0
                 return room_temp
             
@@ -2785,9 +2937,9 @@ class TadoMoldRiskSensor(TadoBaseSensor):
                     # v2.1.0: Apply surface temperature offset (for calibration)
                     if surface_offset != 0.0:
                         self._surface_temp = round(self._surface_temp + surface_offset, 1)
-                        self._temperature_source = "surface_estimation_calibrated"
+                        self._temperature_source = "Calibrated"
                     else:
-                        self._temperature_source = "surface_estimation"
+                        self._temperature_source = "Estimated"
                     
                     _LOGGER.debug(
                         f"Mold Risk (Zone {self._zone_id}): Using surface estimation - "
@@ -2798,7 +2950,7 @@ class TadoMoldRiskSensor(TadoBaseSensor):
                     return self._surface_temp
             
             # Tier 2: Fallback to room temperature
-            self._temperature_source = "room_average"
+            self._temperature_source = "Room Average"
             self._outdoor_temp = None
             self._surface_temp = None
             self._surface_temp_offset = 0.0
@@ -2812,7 +2964,7 @@ class TadoMoldRiskSensor(TadoBaseSensor):
             
         except Exception as e:
             _LOGGER.debug(f"Error determining temperature source for zone {self._zone_id}: {e}")
-            self._temperature_source = "room_average"
+            self._temperature_source = "Room Average"
             self._outdoor_temp = None
             self._surface_temp = None
             self._surface_temp_offset = 0.0
@@ -2943,7 +3095,7 @@ class TadoMoldRiskPercentageSensor(TadoBaseSensor):
             "humidity": self._humidity,
             "dew_point": self._dew_point,
             "temperature_source": self._temperature_source,
-            "zone_type": self._zone_type,
+            "zone_type": _format_zone_type(self._zone_type),
         }
     
     def update(self):
@@ -3009,7 +3161,7 @@ class TadoMoldRiskPercentageSensor(TadoBaseSensor):
             zone_config_manager = self.hass.data.get(DOMAIN, {}).get('zone_config_manager')
             
             if not config_manager:
-                self._temperature_source = "room_average"
+                self._temperature_source = "Room Average"
                 return room_temp
             
             outdoor_entity = config_manager.get_outdoor_temp_entity()
@@ -3032,20 +3184,20 @@ class TadoMoldRiskPercentageSensor(TadoBaseSensor):
                     # v2.1.0: Apply surface temperature offset (for calibration)
                     if surface_offset != 0.0:
                         self._surface_temp = round(self._surface_temp + surface_offset, 1)
-                        self._temperature_source = "surface_estimation_calibrated"
+                        self._temperature_source = "Calibrated"
                     else:
-                        self._temperature_source = "surface_estimation"
+                        self._temperature_source = "Estimated"
                     
                     return self._surface_temp
             
-            self._temperature_source = "room_average"
+            self._temperature_source = "Room Average"
             self._outdoor_temp = None
             self._surface_temp = None
             return room_temp
             
         except Exception as e:
             _LOGGER.debug(f"Error determining temperature source for zone {self._zone_id}: {e}")
-            self._temperature_source = "room_average"
+            self._temperature_source = "Room Average"
             self._outdoor_temp = None
             self._surface_temp = None
             return room_temp
@@ -3137,6 +3289,7 @@ class TadoCondensationRiskSensor(TadoBaseSensor):
         self._margin: float | None = None
         self._window_type: str = "double_pane"
         self._u_value: float | None = None
+        self._recommendation: str = ""  # v2.2.0: Actionable recommendation
     
     @property
     def extra_state_attributes(self):
@@ -3147,9 +3300,10 @@ class TadoCondensationRiskSensor(TadoBaseSensor):
             "outdoor_dew_point": self._outdoor_dew_point,
             "window_outer_surface_temp": self._window_outer_surface_temp,
             "margin": self._margin,
-            "window_type": self._window_type,
+            "window_type": _format_window_type(self._window_type),
             "u_value": self._u_value,
-            "zone_type": self._zone_type,
+            "zone_type": _format_zone_type(self._zone_type),
+            "recommendation": self._recommendation,  # v2.2.0: Actionable recommendation
         }
     
     @property
@@ -3243,6 +3397,21 @@ class TadoCondensationRiskSensor(TadoBaseSensor):
             else:
                 self._attr_native_value = "Low"
             
+            # v2.2.0: Calculate SMART actionable recommendation
+            # Get AC setpoint from zone data
+            ac_setpoint = None
+            if zone_data:
+                setting = zone_data.get('setting') or {}
+                ac_setpoint = (setting.get('temperature') or {}).get('celsius')
+
+            self._recommendation = calculate_condensation_recommendation(
+                risk_level=self._attr_native_value,
+                zone_name=self._zone_name,
+                margin=self._margin,
+                ac_setpoint=ac_setpoint,
+                current_temp=self._room_temp
+            )
+
             self._attr_available = True
             
         except Exception as e:
@@ -3313,6 +3482,236 @@ class TadoCondensationRiskSensor(TadoBaseSensor):
         return None
 
 
+class TadoSurfaceTemperatureSensor(TadoBaseSensor):
+    """Surface temperature sensor for calibration workflows.
+    
+    v2.2.0: Exposes calculated cold spot temperature as standalone sensor.
+    
+    Uses the same 2-tier temperature source strategy as TadoMoldRiskSensor:
+    - Tier 1: U-value surface temperature estimation (if outdoor temp available)
+    - Tier 2: Room average temperature (fallback)
+    
+    Primary use case: Calibrating mold risk calculation with laser thermometer.
+    HA 2024.x hides attributes in a separate panel, making calibration tedious.
+    This standalone sensor allows real-time feedback during calibration.
+    
+    State: Calculated surface temperature in °C
+    """
+    
+    def __init__(self, zone_id: str, zone_name: str, zone_type: str = "HEATING"):
+        super().__init__(zone_id, zone_name, zone_type)
+        self._attr_name = f"{zone_name} Surface Temperature"
+        self._attr_unique_id = f"tado_ce_zone_{zone_id}_surface_temperature"
+        self._attr_icon = "mdi:thermometer-lines"
+        self._attr_device_class = SensorDeviceClass.TEMPERATURE
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        
+        # Attributes
+        self._room_temp: float | None = None
+        self._outdoor_temp: float | None = None
+        self._window_type: str = "double_pane"
+        self._u_value: float | None = None
+        self._offset_applied: float = 0.0
+        self._calculation_method: str = "unknown"
+    
+    @property
+    def extra_state_attributes(self):
+        return {
+            "room_temperature": self._room_temp,
+            "outdoor_temperature": self._outdoor_temp,
+            "window_type": _format_window_type(self._window_type),
+            "u_value": self._u_value,
+            "offset_applied": self._offset_applied,
+            "calculation_method": self._calculation_method,
+            "zone_type": _format_zone_type(self._zone_type),
+        }
+    
+    def update(self):
+        """Update surface temperature using 2-tier calculation strategy."""
+        try:
+            zone_data = self._get_zone_data()
+            if not zone_data:
+                self._attr_available = False
+                return
+            
+            # Get room temperature
+            sensor_data = zone_data.get('sensorDataPoints') or {}
+            room_temp = (sensor_data.get('insideTemperature') or {}).get('celsius')
+            if room_temp is None:
+                self._attr_available = False
+                return
+            
+            self._room_temp = room_temp
+            
+            # Get config_manager and zone_config_manager
+            config_manager = self.hass.data.get(DOMAIN, {}).get('config_manager')
+            zone_config_manager = self.hass.data.get(DOMAIN, {}).get('zone_config_manager')
+            
+            if not config_manager:
+                # Fallback to room temperature
+                self._attr_native_value = room_temp
+                self._calculation_method = "Room Average"
+                self._outdoor_temp = None
+                self._window_type = "unknown"
+                self._u_value = None
+                self._offset_applied = 0.0
+                self._attr_available = True
+                return
+            
+            # Try Tier 1: Surface temperature estimation
+            outdoor_entity = config_manager.get_outdoor_temp_entity()
+            
+            if outdoor_entity:
+                self._outdoor_temp = self._get_outdoor_temperature(
+                    outdoor_entity, config_manager.get_use_feels_like()
+                )
+                
+                if self._outdoor_temp is not None:
+                    # Get window type and U-value from per-zone config or global config
+                    from .const import WINDOW_U_VALUES, DEFAULT_WINDOW_TYPE
+                    
+                    if zone_config_manager:
+                        self._window_type = zone_config_manager.get_zone_value(
+                            self._zone_id, "window_type", "double_pane"
+                        )
+                        self._u_value = zone_config_manager.get_window_u_value(self._zone_id)
+                        self._offset_applied = zone_config_manager.get_surface_temp_offset(self._zone_id)
+                    else:
+                        self._window_type = config_manager.get_mold_risk_window_type()
+                        self._u_value = WINDOW_U_VALUES.get(
+                            self._window_type, WINDOW_U_VALUES[DEFAULT_WINDOW_TYPE]
+                        )
+                        self._offset_applied = 0.0
+                    
+                    # Calculate surface temperature
+                    surface_temp = _calculate_surface_temperature(
+                        room_temp, self._outdoor_temp, self._u_value
+                    )
+                    
+                    # Apply offset (for calibration)
+                    if self._offset_applied != 0.0:
+                        surface_temp = round(surface_temp + self._offset_applied, 1)
+                        self._calculation_method = "Calibrated"
+                    else:
+                        self._calculation_method = "Estimated"
+                    
+                    self._attr_native_value = surface_temp
+                    self._attr_available = True
+                    return
+            
+            # Tier 2: Fallback to room temperature
+            self._attr_native_value = room_temp
+            self._calculation_method = "Room Average"
+            self._outdoor_temp = None
+            self._window_type = "unknown"
+            self._u_value = None
+            self._offset_applied = 0.0
+            self._attr_available = True
+            
+        except Exception as e:
+            _LOGGER.debug(f"Failed to update surface temperature for zone {self._zone_id}: {e}")
+            self._attr_available = False
+    
+    def _get_outdoor_temperature(self, entity_id: str, use_feels_like: bool = False) -> float | None:
+        """Get outdoor temperature from configured entity."""
+        if not self.hass or not entity_id:
+            return None
+        
+        try:
+            state = self.hass.states.get(entity_id)
+            if state is None or state.state in ('unknown', 'unavailable'):
+                return None
+            
+            if entity_id.startswith('weather.'):
+                if use_feels_like:
+                    temp = state.attributes.get('apparent_temperature')
+                    if temp is None:
+                        temp = state.attributes.get('feels_like')
+                    if temp is None:
+                        temp = state.attributes.get('temperature')
+                else:
+                    temp = state.attributes.get('temperature')
+                
+                if temp is not None:
+                    return float(temp)
+            else:
+                try:
+                    return float(state.state)
+                except (ValueError, TypeError):
+                    return None
+                    
+        except Exception as e:
+            _LOGGER.debug(f"Error getting outdoor temperature from {entity_id}: {e}")
+            return None
+        
+        return None
+
+
+class TadoDewPointSensor(TadoBaseSensor):
+    """Dew point temperature sensor for automation workflows.
+    
+    v2.2.0: Exposes calculated dew point as standalone sensor.
+    
+    Uses Magnus-Tetens formula to calculate dew point from room temperature
+    and humidity. Same calculation as used in mold risk sensor.
+    
+    Primary use cases:
+    - Dehumidifier control automation
+    - Condensation prevention alerts
+    - HVAC optimization
+    
+    State: Calculated dew point temperature in °C
+    """
+    
+    def __init__(self, zone_id: str, zone_name: str, zone_type: str = "HEATING"):
+        super().__init__(zone_id, zone_name, zone_type)
+        self._attr_name = f"{zone_name} Dew Point"
+        self._attr_unique_id = f"tado_ce_zone_{zone_id}_dew_point"
+        self._attr_icon = "mdi:water-thermometer"
+        self._attr_device_class = SensorDeviceClass.TEMPERATURE
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        
+        # Attributes
+        self._room_temp: float | None = None
+        self._humidity: float | None = None
+    
+    @property
+    def extra_state_attributes(self):
+        return {
+            "room_temperature": self._room_temp,
+            "humidity": self._humidity,
+            "calculation_method": "Magnus-Tetens",
+            "zone_type": _format_zone_type(self._zone_type),
+        }
+    
+    def update(self):
+        """Update dew point based on room temperature and humidity."""
+        try:
+            zone_data = self._get_zone_data()
+            if not zone_data:
+                self._attr_available = False
+                return
+            
+            # Get temperature and humidity from zone data
+            sensor_data = zone_data.get('sensorDataPoints') or {}
+            self._room_temp = (sensor_data.get('insideTemperature') or {}).get('celsius')
+            self._humidity = (sensor_data.get('humidity') or {}).get('percentage')
+            
+            if self._room_temp is None or self._humidity is None:
+                self._attr_available = False
+                return
+            
+            # Calculate dew point using Magnus-Tetens formula
+            self._attr_native_value = _calculate_dew_point(self._room_temp, self._humidity)
+            self._attr_available = True
+            
+        except Exception as e:
+            _LOGGER.debug(f"Failed to update dew point for zone {self._zone_id}: {e}")
+            self._attr_available = False
+
+
 class TadoComfortLevelSensor(TadoBaseSensor):
     """Comfort level sensor using Adaptive Comfort model.
     
@@ -3345,6 +3744,7 @@ class TadoComfortLevelSensor(TadoBaseSensor):
         self._comfort_temp: float | None = None
         self._comfort_model: str = "unknown"
         self._dew_point: float | None = None
+        self._recommendation: str = ""  # v2.2.0: Actionable recommendation
     
     @property
     def extra_state_attributes(self):
@@ -3353,9 +3753,10 @@ class TadoComfortLevelSensor(TadoBaseSensor):
             "humidity": self._humidity,
             "outdoor_temperature": self._outdoor_temp,
             "comfort_target": self._comfort_temp,
-            "comfort_model": self._comfort_model,
+            "comfort_model": _format_comfort_model(self._comfort_model),
             "dew_point": self._dew_point,
-            "zone_type": self._zone_type,
+            "zone_type": _format_zone_type(self._zone_type),
+            "recommendation": self._recommendation,  # v2.2.0: Actionable recommendation
         }
     
     @property
@@ -3412,6 +3813,26 @@ class TadoComfortLevelSensor(TadoBaseSensor):
             humidity_suffix = self._get_humidity_suffix()
             
             self._attr_native_value = comfort_level + humidity_suffix
+            
+            # v2.2.0: Calculate SMART actionable recommendation
+            # Get HVAC mode from climate entity if available
+            hvac_mode = None
+            if self.hass:
+                # Try to find climate entity for this zone
+                climate_entity_id = f"climate.{self._zone_name.lower().replace(' ', '_')}"
+                climate_state = self.hass.states.get(climate_entity_id)
+                if climate_state:
+                    hvac_mode = climate_state.state
+
+            self._recommendation = calculate_comfort_recommendation(
+                comfort_state=comfort_level,
+                zone_name=self._zone_name,
+                current_temp=self._temperature,
+                target_temp=self._comfort_temp,
+                humidity=self._humidity,
+                hvac_mode=hvac_mode
+            )
+
             self._attr_available = True
             
         except Exception as e:
@@ -3773,9 +4194,21 @@ class TadoAnalysisConfidenceSensor(CoordinatorEntity, SensorEntity):
         zone_data = self.coordinator.get_zone_data(self._zone_id)
         if not zone_data:
             return {}
+        cycle_count = zone_data.get("cycle_count", 0)
+        completed_count = zone_data.get("completed_count", 0)
+        # v2.2.0: Calculate SMART actionable recommendation
+        confidence = zone_data.get("confidence_score")
+        confidence_pct = round(confidence * 100, 1) if confidence is not None else None
+        recommendation = calculate_confidence_recommendation(
+            confidence_percent=confidence_pct,
+            zone_name=self._zone_name,
+            cycle_count=cycle_count,
+            completed_count=completed_count
+        )
         return {
-            "cycle_count": zone_data.get("cycle_count", 0),
-            "completed_count": zone_data.get("completed_count", 0),
+            "cycle_count": cycle_count,
+            "completed_count": completed_count,
+            "recommendation": recommendation,  # v2.2.0: Actionable recommendation
         }
 
 
@@ -3876,3 +4309,665 @@ class TadoApproachFactorSensor(CoordinatorEntity, SensorEntity):
             "overshoot_estimate": zone_data.get("overshoot_estimate"),
         }
 
+
+class TadoHomeInsightsSensor(SensorEntity):
+    """Hub-level sensor aggregating actionable insights from all zones.
+
+    v2.2.0: Collects insights from zone sensors (mold risk, comfort,
+    battery, connection, window predicted, preheat timing, schedule
+    deviation, heating anomaly) and aggregates them into a single
+    home-level summary with priority-based recommendations.
+
+    Also includes cross-zone aggregation (mold risk, window predicted),
+    hub-level insights (API quota planning, weather impact).
+
+    State: Total number of active insights (integer)
+    """
+
+    def __init__(self):
+        self._attr_name = "Home Insights"
+        self.entity_id = "sensor.tado_ce_home_insights"
+        self._attr_unique_id = "tado_ce_home_insights"
+        self._attr_device_info = get_hub_device_info()
+        self._attr_available = False
+        self._attr_native_value = 0
+        self._aggregated: dict = {}
+        # v2.2.0: Track per-zone heating anomaly start times for real duration measurement
+        self._anomaly_start_times: dict[str, datetime] = {}
+        # v2.2.0: Rolling outdoor temp history for weather impact insight (7-day avg)
+        # Persisted to outdoor_temp_history.json - survives HA restarts
+        self._outdoor_temp_history: list = []
+        self._outdoor_temp_loaded: bool = False  # Lazy-load on first update
+
+    @property
+    def icon(self):
+        """Dynamic icon based on top priority."""
+        top = self._aggregated.get("top_priority", "none")
+        if top == "critical":
+            return "mdi:alert-octagon"
+        if top == "high":
+            return "mdi:alert-circle"
+        if top == "medium":
+            return "mdi:alert"
+        if top == "low":
+            return "mdi:information"
+        return "mdi:home-analytics"
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "critical_count": self._aggregated.get("critical_count", 0),
+            "high_count": self._aggregated.get("high_count", 0),
+            "medium_count": self._aggregated.get("medium_count", 0),
+            "low_count": self._aggregated.get("low_count", 0),
+            "top_priority": self._aggregated.get("top_priority", "none"),
+            "top_recommendation": self._aggregated.get("top_recommendation", ""),
+            "zones_with_issues": self._aggregated.get("zones_with_issues", []),
+            "cross_zone_insights": self._aggregated.get("cross_zone_insights", []),
+        }
+
+    def _collect_zone_insights(self) -> dict[str, list]:
+        """Collect insights from all zones by reading zone data files.
+
+        Checks mold risk, comfort level, battery, connection status,
+        window predicted, preheat timing, schedule deviation, and
+        heating anomaly for each zone.
+
+        Returns:
+            Dict mapping zone names to lists of Insight objects.
+        """
+        zone_insights: dict[str, list] = {}
+
+        try:
+            zones_data = load_zones_file()
+            zones_info = load_zones_info_file()
+            if not zones_data:
+                return zone_insights
+
+            zone_states = zones_data.get("zoneStates") or {}
+
+            # Build zone name map from zones_info
+            zone_name_map: dict[str, str] = {}
+            if zones_info:
+                for z in zones_info:
+                    zone_name_map[str(z.get("id"))] = z.get("name", f"Zone {z.get('id')}")
+
+            for zone_id, zone_data in zone_states.items():
+                zone_name = zone_name_map.get(zone_id, f"Zone {zone_id}")
+                insights: list = []
+
+                sensor_data = zone_data.get("sensorDataPoints") or {}
+                humidity = (sensor_data.get("humidity") or {}).get("percentage")
+                inside_temp = (sensor_data.get("insideTemperature") or {}).get("celsius")
+
+                # --- Mold risk insight ---
+                if humidity is not None and inside_temp is not None:
+                    risk = classify_mold_risk_level(inside_temp, humidity)
+
+                    if risk in ("Critical", "High", "Medium"):
+                        rec = calculate_mold_risk_recommendation(
+                            risk_level=risk,
+                            zone_name=zone_name,
+                            humidity=humidity,
+                            current_temp=inside_temp,
+                        )
+                        severity = risk.lower()
+                        insights.append(Insight(
+                            priority=get_insight_priority("mold_risk", severity),
+                            recommendation=rec,
+                            insight_type="mold_risk",
+                            zone_name=zone_name,
+                        ))
+
+                # --- Comfort insight ---
+                # v2.2.0: Skip comfort insights when heating is OFF
+                # User intentionally turned off heating, cold room is expected
+                setting = zone_data.get("setting") or {}
+                power = setting.get("power", "OFF")
+                
+                if inside_temp is not None and power == "ON":
+                    comfort_state = classify_comfort_level(inside_temp)
+
+                    if comfort_state in ("Cold", "Cool", "Freezing"):
+                        rec = calculate_comfort_recommendation(
+                            comfort_state=comfort_state,
+                            zone_name=zone_name,
+                            current_temp=inside_temp,
+                        )
+                        insights.append(Insight(
+                            priority=get_insight_priority("comfort", "too_cold"),
+                            recommendation=rec,
+                            insight_type="comfort",
+                            zone_name=zone_name,
+                        ))
+                    elif comfort_state in ("Hot", "Sweltering"):
+                        rec = calculate_comfort_recommendation(
+                            comfort_state=comfort_state,
+                            zone_name=zone_name,
+                            current_temp=inside_temp,
+                        )
+                        insights.append(Insight(
+                            priority=get_insight_priority("comfort", "too_hot"),
+                            recommendation=rec,
+                            insight_type="comfort",
+                            zone_name=zone_name,
+                        ))
+
+                # --- Window predicted insight (from binary sensor state) ---
+                if self.hass:
+                    slug = zone_name.lower().replace(" ", "_")
+                    wp_entity = f"binary_sensor.{slug}_window_predicted"
+                    wp_state = self.hass.states.get(wp_entity)
+                    if wp_state and wp_state.state == "on":
+                        wp_rec = (wp_state.attributes or {}).get("recommendation", "")
+                        if not wp_rec:
+                            wp_rec = f"{zone_name}: Possible open window detected"
+                        insights.append(Insight(
+                            priority=get_insight_priority("window_predicted", "high"),
+                            recommendation=wp_rec,
+                            insight_type="window_predicted",
+                            zone_name=zone_name,
+                        ))
+
+                # --- Preheat timing insight (from HA entity states) ---
+                if self.hass:
+                    slug = zone_name.lower().replace(" ", "_")
+                    preheat_entity = f"sensor.{slug}_preheat_time"
+                    schedule_entity = f"sensor.{slug}_next_schedule_time"
+                    preheat_state = self.hass.states.get(preheat_entity)
+                    schedule_state = self.hass.states.get(schedule_entity)
+
+                    preheat_min = None
+                    next_sched = None
+                    if preheat_state and preheat_state.state not in ("unavailable", "unknown"):
+                        try:
+                            preheat_min = float(preheat_state.state)
+                        except (ValueError, TypeError):
+                            pass
+                    if schedule_state and schedule_state.state not in ("unavailable", "unknown"):
+                        next_sched = schedule_state.state
+
+                    insight = calculate_preheat_timing_insight(
+                        preheat_time_minutes=preheat_min,
+                        next_schedule_time=next_sched,
+                        zone_name=zone_name,
+                    )
+                    if insight:
+                        insights.append(insight)
+
+                # --- Heating anomaly insight (from HA entity states) ---
+                if self.hass:
+                    slug = zone_name.lower().replace(" ", "_")
+                    power_entity = f"sensor.{slug}_heating_power"
+                    power_state = self.hass.states.get(power_entity)
+
+                    if power_state and power_state.state not in ("unavailable", "unknown"):
+                        try:
+                            power_pct = float(power_state.state)
+                            setting = zone_data.get("setting") or {}
+                            target = (setting.get("temperature") or {}).get("celsius")
+                            if inside_temp is not None and target is not None:
+                                temp_delta = abs(inside_temp - target)
+                                if power_pct >= 80 and temp_delta < 0.5:
+                                    # v2.2.0: Track real anomaly duration per zone
+                                    if zone_name not in self._anomaly_start_times:
+                                        self._anomaly_start_times[zone_name] = datetime.now()
+                                    elapsed = (datetime.now() - self._anomaly_start_times[zone_name]).total_seconds() / 60
+                                    insight = calculate_heating_anomaly_insight(
+                                        heating_power_pct=power_pct,
+                                        temp_delta=temp_delta,
+                                        duration_minutes=int(elapsed),
+                                        zone_name=zone_name,
+                                    )
+                                    if insight:
+                                        insights.append(insight)
+                                else:
+                                    # Condition cleared — reset timer for this zone
+                                    self._anomaly_start_times.pop(zone_name, None)
+                        except (ValueError, TypeError):
+                            pass
+
+                if insights:
+                    zone_insights[zone_name] = insights
+
+            # --- Battery and connection insights from zones_info ---
+            if zones_info:
+                for zone in zones_info:
+                    z_name = zone.get("name", f"Zone {zone.get('id')}")
+                    device_insights: list = []
+                    for device in zone.get("devices", []):
+                        battery = device.get("batteryState")
+                        if battery and battery.upper() in ("LOW", "CRITICAL"):
+                            device_type = device.get("deviceType", "unknown")
+                            rec = calculate_battery_recommendation(
+                                battery_state=battery,
+                                zone_name=z_name,
+                                device_type=device_type,
+                            )
+                            severity = "critical" if battery.upper() == "CRITICAL" else "low"
+                            device_insights.append(Insight(
+                                priority=get_insight_priority("battery", severity),
+                                recommendation=rec,
+                                insight_type="battery",
+                                zone_name=z_name,
+                            ))
+
+                        conn = device.get("connectionState") or {}
+                        conn_value = conn.get("value")
+                        if conn_value is not None and not conn_value:
+                            rec = calculate_connection_recommendation(
+                                connection_state="Offline",
+                                zone_name=z_name,
+                            )
+                            device_insights.append(Insight(
+                                priority=get_insight_priority("connection", "offline"),
+                                recommendation=rec,
+                                insight_type="connection",
+                                zone_name=z_name,
+                            ))
+
+                    if device_insights:
+                        existing = zone_insights.get(z_name, [])
+                        existing.extend(device_insights)
+                        zone_insights[z_name] = existing
+
+        except Exception as e:
+            _LOGGER.debug(f"Failed to collect zone insights: {e}")
+
+        return zone_insights
+
+    def _get_cross_zone_insights(self, zone_insights: dict[str, list]) -> list:
+        """Get cross-zone aggregation insights.
+
+        Checks for whole-house mold risk and multiple open windows.
+
+        Args:
+            zone_insights: Already collected per-zone insights.
+
+        Returns:
+            List of cross-zone Insight objects.
+        """
+        cross_insights: list = []
+
+        try:
+            # --- Cross-zone mold risk ---
+            zones_data = load_zones_file()
+            zones_info = load_zones_info_file()
+            if zones_data:
+                zone_states = zones_data.get("zoneStates") or {}
+                zone_name_map: dict[str, str] = {}
+                if zones_info:
+                    for z in zones_info:
+                        zone_name_map[str(z.get("id"))] = z.get("name", f"Zone {z.get('id')}")
+
+                zone_mold_risks: dict[str, str] = {}
+                for zone_id, zone_data in zone_states.items():
+                    zone_name = zone_name_map.get(zone_id, f"Zone {zone_id}")
+                    sensor_data = zone_data.get("sensorDataPoints") or {}
+                    humidity = (sensor_data.get("humidity") or {}).get("percentage")
+                    inside_temp = (sensor_data.get("insideTemperature") or {}).get("celsius")
+
+                    if humidity is not None and inside_temp is not None:
+                        zone_mold_risks[zone_name] = classify_mold_risk_level(inside_temp, humidity)
+
+                mold_insight = aggregate_cross_zone_mold_risk(zone_mold_risks)
+                if mold_insight:
+                    cross_insights.append(mold_insight)
+
+            # --- Cross-zone window predicted ---
+            if self.hass:
+                zone_window_states: dict[str, bool] = {}
+                for zone_name in zone_insights:
+                    slug = zone_name.lower().replace(" ", "_")
+                    wp_entity = f"binary_sensor.{slug}_window_predicted"
+                    wp_state = self.hass.states.get(wp_entity)
+                    if wp_state:
+                        zone_window_states[zone_name] = wp_state.state == "on"
+
+                window_insight = aggregate_cross_zone_window_predicted(zone_window_states)
+                if window_insight:
+                    cross_insights.append(window_insight)
+
+        except Exception as e:
+            _LOGGER.debug(f"Failed to collect cross-zone insights: {e}")
+
+        return cross_insights
+
+    def _get_hub_insights(self) -> list:
+        """Get hub-level insights (API quota, weather).
+
+        Returns:
+            List of hub-level Insight objects.
+        """
+        hub_insights: list = []
+
+        try:
+            # --- API quota planning ---
+            ratelimit = load_ratelimit_file()
+            if ratelimit:
+                remaining = ratelimit.get("remaining")
+                total = ratelimit.get("limit")
+                reset_seconds = ratelimit.get("reset_seconds")
+
+                calls_per_hour = None
+                hours_until_reset = None
+
+                if reset_seconds is not None and reset_seconds > 0:
+                    hours_until_reset = reset_seconds / 3600
+
+                # Estimate calls per hour from history
+                # load_api_call_history_file() returns dict {date: [call_dicts]}, flatten to list
+                history_raw = load_api_call_history_file()
+                if history_raw and isinstance(history_raw, dict):
+                    history = [call for calls in history_raw.values() for call in calls]
+                else:
+                    history = history_raw or []
+                calls_per_hour = calculate_calls_per_hour(history) if history else None
+
+                if remaining is not None and calls_per_hour is not None:
+                    insight = calculate_api_quota_planning_insight(
+                        remaining_calls=remaining,
+                        total_calls=total,
+                        calls_per_hour=calls_per_hour,
+                        hours_until_reset=hours_until_reset,
+                    )
+                    if insight:
+                        hub_insights.append(insight)
+
+            # --- Weather impact ---
+            weather = load_weather_file()
+            if weather:
+                outdoor_temp = (weather.get("outsideTemperature") or {}).get("celsius")
+                if outdoor_temp is not None:
+                    # v2.2.0: Load history from file on first call (lazy-load)
+                    if not self._outdoor_temp_loaded:
+                        self._outdoor_temp_history = load_outdoor_temp_history()
+                        self._outdoor_temp_loaded = True
+                    # Append new reading and trim to max size
+                    self._outdoor_temp_history.append(outdoor_temp)
+                    if len(self._outdoor_temp_history) > 336:
+                        self._outdoor_temp_history = self._outdoor_temp_history[-336:]
+                    # Persist to file (sync, acceptable in update() context)
+                    save_outdoor_temp_history(self._outdoor_temp_history)
+                    # Calculate avg once we have >= 48 readings (~24 min minimum)
+                    avg_7d = None
+                    if len(self._outdoor_temp_history) >= 48:
+                        avg_7d = sum(self._outdoor_temp_history) / len(self._outdoor_temp_history)
+                    insight = calculate_weather_impact_insight(
+                        current_outdoor_temp=outdoor_temp,
+                        avg_outdoor_temp_7d=avg_7d,
+                    )
+                    if insight:
+                        hub_insights.append(insight)
+
+        except Exception as e:
+            _LOGGER.debug(f"Failed to collect hub insights: {e}")
+
+        return hub_insights
+
+    def update(self):
+        """Update home insights by collecting and aggregating zone data."""
+        try:
+            zone_insights = self._collect_zone_insights()
+
+            # Add cross-zone insights
+            cross_zone = self._get_cross_zone_insights(zone_insights)
+
+            # Add hub-level insights
+            hub = self._get_hub_insights()
+
+            # Merge hub insights into zone_insights under "_hub" key
+            if hub:
+                zone_insights["_hub"] = hub
+
+            self._aggregated = aggregate_home_insights(zone_insights)
+
+            # Add cross-zone insights to aggregated data
+            cross_recs = [i.recommendation for i in cross_zone if i.recommendation]
+            self._aggregated["cross_zone_insights"] = cross_recs
+
+            # Include cross-zone in counts
+            for ci in cross_zone:
+                self._aggregated["total_insights"] = self._aggregated.get("total_insights", 0) + 1
+                level = ci.priority.name.lower()
+                count_key = f"{level}_count"
+                self._aggregated[count_key] = self._aggregated.get(count_key, 0) + 1
+                # Update top priority if cross-zone is higher
+                current_top = self._aggregated.get("top_priority", "none")
+                priority_order = {"none": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
+                if priority_order.get(level, 0) > priority_order.get(current_top, 0):
+                    self._aggregated["top_priority"] = level
+                    self._aggregated["top_recommendation"] = ci.recommendation
+
+            self._attr_native_value = self._aggregated.get("total_insights", 0)
+            self._attr_available = True
+        except Exception as e:
+            _LOGGER.debug(f"Failed to update home insights: {e}")
+            self._attr_available = False
+
+
+class TadoZoneInsightsSensor(SensorEntity):
+    """Per-zone sensor showing actionable insights for a single zone.
+
+    v2.2.0: Collects insights specific to this zone (mold risk, comfort,
+    battery, connection, window predicted, preheat timing, heating anomaly)
+    and presents them as a zone-level summary.
+
+    State: Number of active insights for this zone (integer)
+    """
+
+    def __init__(self, zone_id: str, zone_name: str, zone_type: str):
+        self._zone_id = zone_id
+        self._zone_name = zone_name
+        self._zone_type = zone_type
+        self._attr_name = f"{zone_name} Insights"
+        self._attr_unique_id = f"tado_ce_zone_{zone_id}_insights"
+        self._attr_device_info = get_zone_device_info(zone_id, zone_name, zone_type)
+        self._attr_available = False
+        self._attr_native_value = 0
+        self._insights: list = []
+        # v2.2.0: Track heating anomaly start time for real duration measurement
+        self._anomaly_start_time: datetime | None = None
+
+    @property
+    def icon(self):
+        """Dynamic icon based on top priority."""
+        if not self._insights:
+            return "mdi:lightbulb-outline"
+        top = max(self._insights, key=lambda i: i.priority.value)
+        name = top.priority.name.lower()
+        if name == "critical":
+            return "mdi:alert-octagon"
+        if name == "high":
+            return "mdi:alert-circle"
+        if name == "medium":
+            return "mdi:alert"
+        if name == "low":
+            return "mdi:information"
+        return "mdi:lightbulb-outline"
+
+    @property
+    def extra_state_attributes(self):
+        if not self._insights:
+            return {
+                "top_priority": "none",
+                "top_recommendation": "",
+                "insight_types": [],
+                "recommendations": [],
+            }
+        top = max(self._insights, key=lambda i: i.priority.value)
+        return {
+            "top_priority": top.priority.name.lower(),
+            "top_recommendation": top.recommendation,
+            "insight_types": [i.insight_type for i in self._insights],
+            "recommendations": [i.recommendation for i in self._insights],
+        }
+
+    def update(self):
+        """Collect insights for this zone only."""
+        try:
+            insights: list = []
+            zones_data = load_zones_file()
+            if not zones_data:
+                self._attr_available = False
+                return
+
+            zone_states = zones_data.get("zoneStates") or {}
+            zone_data = zone_states.get(self._zone_id)
+            if not zone_data:
+                self._attr_available = False
+                return
+
+            sensor_data = zone_data.get("sensorDataPoints") or {}
+            humidity = (sensor_data.get("humidity") or {}).get("percentage")
+            inside_temp = (sensor_data.get("insideTemperature") or {}).get("celsius")
+
+            # --- Mold risk ---
+            if humidity is not None and inside_temp is not None:
+                _risk_level = classify_mold_risk_level(inside_temp, humidity)
+                risk = _risk_level if _risk_level != "Low" else None
+                if risk:
+                    rec = calculate_mold_risk_recommendation(
+                        risk_level=risk, zone_name=self._zone_name,
+                        humidity=humidity, current_temp=inside_temp,
+                    )
+                    insights.append(Insight(
+                        priority=get_insight_priority("mold_risk", risk.lower()),
+                        recommendation=rec, insight_type="mold_risk",
+                        zone_name=self._zone_name,
+                    ))
+
+            # --- Comfort ---
+            if inside_temp is not None:
+                _cl = classify_comfort_level(inside_temp)
+                cs = _cl if _cl in ("Cold", "Cool", "Hot") else None
+                if cs in ("Cold", "Cool"):
+                    rec = calculate_comfort_recommendation(
+                        comfort_state=cs, zone_name=self._zone_name,
+                        current_temp=inside_temp,
+                    )
+                    insights.append(Insight(
+                        priority=get_insight_priority("comfort", "too_cold"),
+                        recommendation=rec, insight_type="comfort",
+                        zone_name=self._zone_name,
+                    ))
+                elif cs in ("Hot",):
+                    rec = calculate_comfort_recommendation(
+                        comfort_state=cs, zone_name=self._zone_name,
+                        current_temp=inside_temp,
+                    )
+                    insights.append(Insight(
+                        priority=get_insight_priority("comfort", "too_hot"),
+                        recommendation=rec, insight_type="comfort",
+                        zone_name=self._zone_name,
+                    ))
+
+            # --- Window predicted ---
+            if self.hass:
+                slug = self._zone_name.lower().replace(" ", "_")
+                wp_state = self.hass.states.get(f"binary_sensor.{slug}_window_predicted")
+                if wp_state and wp_state.state == "on":
+                    wp_rec = (wp_state.attributes or {}).get("recommendation", "")
+                    if not wp_rec:
+                        wp_rec = f"{self._zone_name}: Possible open window detected"
+                    insights.append(Insight(
+                        priority=get_insight_priority("window_predicted", "high"),
+                        recommendation=wp_rec,
+                        insight_type="window_predicted",
+                        zone_name=self._zone_name,
+                    ))
+
+            # --- Preheat timing ---
+            if self.hass:
+                slug = self._zone_name.lower().replace(" ", "_")
+                ph_state = self.hass.states.get(f"sensor.{slug}_preheat_time")
+                sc_state = self.hass.states.get(f"sensor.{slug}_next_schedule_time")
+                ph_min = None
+                sc_val = None
+                if ph_state and ph_state.state not in ("unavailable", "unknown"):
+                    try:
+                        ph_min = float(ph_state.state)
+                    except (ValueError, TypeError):
+                        pass
+                if sc_state and sc_state.state not in ("unavailable", "unknown"):
+                    sc_val = sc_state.state
+                insight = calculate_preheat_timing_insight(
+                    preheat_time_minutes=ph_min,
+                    next_schedule_time=sc_val,
+                    zone_name=self._zone_name,
+                )
+                if insight:
+                    insights.append(insight)
+
+            # --- Heating anomaly ---
+            if self.hass:
+                slug = self._zone_name.lower().replace(" ", "_")
+                pw_state = self.hass.states.get(f"sensor.{slug}_heating_power")
+                if pw_state and pw_state.state not in ("unavailable", "unknown"):
+                    try:
+                        power_pct = float(pw_state.state)
+                        setting = zone_data.get("setting") or {}
+                        target = (setting.get("temperature") or {}).get("celsius")
+                        if inside_temp is not None and target is not None:
+                            temp_delta = abs(inside_temp - target)
+                            if power_pct >= 80 and temp_delta < 0.5:
+                                # v2.2.0: Track real anomaly duration
+                                if self._anomaly_start_time is None:
+                                    self._anomaly_start_time = datetime.now()
+                                elapsed = (datetime.now() - self._anomaly_start_time).total_seconds() / 60
+                                ha_insight = calculate_heating_anomaly_insight(
+                                    heating_power_pct=power_pct,
+                                    temp_delta=temp_delta,
+                                    duration_minutes=int(elapsed),
+                                    zone_name=self._zone_name,
+                                )
+                                if ha_insight:
+                                    insights.append(ha_insight)
+                            else:
+                                # Condition cleared — reset timer
+                                self._anomaly_start_time = None
+                    except (ValueError, TypeError):
+                        pass
+
+            # --- Battery / connection ---
+            try:
+                zones_info = load_zones_info_file()
+                if zones_info:
+                    zone_info = next((z for z in zones_info if str(z.get("id")) == self._zone_id), None)
+                    if zone_info:
+                        for device in zone_info.get("devices", []):
+                            battery = device.get("batteryState")
+                            if battery and battery.upper() in ("LOW", "CRITICAL"):
+                                device_type = device.get("deviceType", "unknown")
+                                rec = calculate_battery_recommendation(
+                                    battery_state=battery,
+                                    zone_name=self._zone_name,
+                                    device_type=device_type,
+                                )
+                                severity = "critical" if battery.upper() == "CRITICAL" else "low"
+                                insights.append(Insight(
+                                    priority=get_insight_priority("battery", severity),
+                                    recommendation=rec, insight_type="battery",
+                                    zone_name=self._zone_name,
+                                ))
+                            conn = device.get("connectionState") or {}
+                            conn_value = conn.get("value")
+                            if conn_value is not None and not conn_value:
+                                rec = calculate_connection_recommendation(
+                                    connection_state="Offline",
+                                    zone_name=self._zone_name,
+                                )
+                                insights.append(Insight(
+                                    priority=get_insight_priority("connection", "offline"),
+                                    recommendation=rec, insight_type="connection",
+                                    zone_name=self._zone_name,
+                                ))
+            except Exception:
+                pass
+
+            self._insights = insights
+            self._attr_native_value = len(insights)
+            self._attr_available = True
+        except Exception as e:
+            _LOGGER.debug(f"Failed to update zone insights for {self._zone_name}: {e}")
+            self._attr_available = False

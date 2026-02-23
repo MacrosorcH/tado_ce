@@ -2,6 +2,112 @@
 
 Complete list of all entities created by Tado CE integration.
 
+## 📋 v2.2.0 Changes
+
+### Actionable Insights ([Discussion #112](https://github.com/hiall-fyi/tado_ce/discussions/112) - @tigro7)
+
+#### Window Predicted Detection
+New binary sensor for early open window detection:
+
+- **Window Predicted** (`binary_sensor.{zone}_window_predicted`): Detects possible open window from rapid temperature drop
+  - **State**: `on` (window likely open), `off` (normal)
+  - **Attributes**: `confidence` (none/low/medium/high), `temp_drop`, `time_window_minutes`, `recommendation`, `readings_count`, `zone_type`
+  - Uses rolling temperature history to detect rapid drops
+  - CRITICAL: Never triggers when HVAC is actively heating/cooling (prevents false positives)
+  - Created for all HEATING and AIR_CONDITIONING zones
+
+#### Recommendation Attributes
+New `recommendation` attribute added to existing sensors providing actionable guidance:
+
+**Environment Sensors:**
+- `sensor.{zone}_mold_risk` - Recommendations for ventilation, heating, dehumidifier based on risk level
+- `sensor.{zone}_comfort_level` - Suggestions for heating/cooling adjustments based on comfort state
+- `sensor.{zone}_condensation_risk` - Actions to prevent condensation on AC zones
+
+**Device Status Sensors:**
+- `sensor.{zone}_battery` - Battery replacement reminders when low/critical
+- `sensor.{zone}_connection` - Troubleshooting guidance when device offline
+
+**Hub Sensors:**
+- `sensor.tado_ce_api_status` - API quota management suggestions when usage is high
+- `sensor.tado_ce_home_insights` - Aggregated insights from all zones with priority ranking
+
+Recommendation is empty string when no action needed, or contains actionable text when issues detected.
+
+#### Zone Insights Sensor
+Per-zone insights sensor for each HEATING and AIR_CONDITIONING zone:
+
+- **Zone Insights** (`sensor.{zone}_insights`): Per-zone actionable insights summary
+  - **State**: Number of active insights for this zone (integer)
+  - **Attributes**: `top_priority`, `top_recommendation`, `insight_types`, `recommendations`
+  - Insight types: mold risk, comfort, window predicted, battery, connection, preheat timing, heating anomaly
+  - Dynamic icon changes based on highest priority insight
+  - Created for all HEATING and AIR_CONDITIONING zones
+
+### Calibration Sensors ([#118](https://github.com/hiall-fyi/tado_ce/issues/118))
+New standalone sensors for calibration workflows and automation:
+
+- **Surface Temperature** (`sensor.{zone}_surface_temperature`): Calculated cold spot temperature
+  - **State**: Temperature in °C
+  - **Attributes**: `room_temperature`, `outdoor_temperature`, `window_type`, `u_value`, `offset_applied`, `calculation_method`
+  - Uses same 2-tier calculation as Mold Risk sensor (surface estimation or room average fallback)
+  - Primary use case: Real-time feedback when calibrating mold risk with laser thermometer
+
+- **Dew Point** (`sensor.{zone}_dew_point`): Calculated dew point temperature
+  - **State**: Temperature in °C
+  - **Attributes**: `room_temperature`, `humidity`, `calculation_method`
+  - Uses Magnus-Tetens formula (same as Mold Risk sensor)
+  - Primary use cases: Dehumidifier control automation, condensation prevention alerts
+
+Both sensors are controlled by the existing `environment_sensors_enabled` toggle.
+
+### User-Friendly Attribute Values
+Attribute values now display in user-friendly format instead of raw API values:
+- `zone_type`: "Heating" / "Air Conditioning" / "Hot Water" (was HEATING/AIR_CONDITIONING/HOT_WATER)
+- `window_type`: "Single Pane" / "Double Pane" / "Triple Pane" / "Passive House" (was snake_case)
+- `comfort_model`: "Adaptive" / "Seasonal" (was lowercase)
+
+### Advanced Insight Types (US-11 to US-20)
+Enhanced insight capabilities in `sensor.tado_ce_home_insights`:
+
+#### Mold Risk Delta Format (US-11/US-12)
+- Recommendations now include specific humidity/temperature deltas needed to reduce risk
+- Level transition guidance (e.g., "Reduce humidity by 5% to move from High to Medium risk")
+
+#### Comfort Level Time Frame (US-13)
+- Recommendations consider HVAC action context
+- Differentiates "heating in progress" vs "heating not reaching target"
+
+#### Preheat Timing Insight (US-14)
+- Alerts when preheat time exceeds schedule gap
+- Reads from `sensor.{zone}_preheat_time` and `sensor.{zone}_next_schedule_time`
+
+#### Heating Power Anomaly Detection (US-16)
+- Detects when heating power ≥80% but temperature change <0.5°C for 60+ minutes
+- Suggests checking radiator, TRV, or boiler issues
+
+#### Cross-Zone Mold Risk Aggregation (US-17)
+- Triggers when 3+ zones have Medium/High/Critical mold risk
+- Recommends whole-house dehumidifier or ventilation strategy
+
+#### Cross-Zone Window Detection (US-18)
+- Triggers when 2+ zones have `window_predicted=on` simultaneously
+- Shows consolidated zone list in recommendation
+
+#### API Quota Planning Insight (US-19)
+- Calculates projected quota exhaustion time from usage rate
+- Triggers when projected exhaustion <6 hours before reset
+- Suggests polling interval adjustment
+
+#### Weather Impact Insight (US-20)
+- Compares current outdoor temperature vs rolling average (up to 7 days of history)
+- Triggers when >5°C colder than rolling average, estimating increased heating demand
+- Estimates heating impact percentage (~4% per °C delta)
+- Requires ~24 minutes of readings to activate (48 samples at 30s poll interval)
+- History is in-memory only; resets on HA restart (blind period until 48 samples collected)
+
+---
+
 ## 📋 v2.1.0 Changes
 
 ### Per-Zone Configuration Entities
@@ -308,6 +414,7 @@ Global sensors for the Tado CE Hub device.
 | `sensor.tado_ce_polling_interval` | Diagnostic | Current polling interval in minutes (v2.0.0) |
 | `sensor.tado_ce_call_history` | Diagnostic | API call history with statistics (v2.0.0) |
 | `sensor.tado_ce_api_call_breakdown` | Diagnostic | API call breakdown by endpoint type (v2.0.0) |
+| `sensor.tado_ce_home_insights` | Sensor | Aggregated actionable insights from all zones (v2.2.0) |
 
 ### API Reset Sensor Attributes (v1.8.0)
 
@@ -363,6 +470,19 @@ Global sensors for the Tado CE Hub device.
 | `breakdown_total` | `{"zoneStates": 500, "home": 100}` | Total API calls by type (all history) |
 | `top_3_types` | `[{"type": "zoneStates", "count": 50}]` | Top 3 most called endpoint types |
 | `chart_data` | `[{"type": "zoneStates", "count": 50}]` | Formatted data for visualization |
+
+### Home Insights Sensor Attributes (v2.2.0)
+
+| Attribute | Example | Description |
+|-----------|---------|-------------|
+| `critical_count` | `0` | Number of critical priority insights |
+| `high_count` | `1` | Number of high priority insights |
+| `medium_count` | `2` | Number of medium priority insights |
+| `low_count` | `0` | Number of low priority insights |
+| `top_priority` | `high` | Highest priority level across all zones |
+| `top_recommendation` | `Dining: Humidity at 72%...` | Most urgent actionable recommendation |
+| `zones_with_issues` | `["Dining", "Bedroom"]` | List of zones with active insights |
+| `cross_zone_insights` | `["Multiple zones..."]` | Cross-zone aggregation insights (mold risk, window predicted) |
 
 ## Weather Sensors
 
@@ -499,6 +619,13 @@ For each zone, you get these sensors:
 | `sensor.{zone}_mode` | State | Mode (Manual/Schedule/Off) |
 | `sensor.{zone}_battery` | State | Battery status (NORMAL/LOW) |
 | `sensor.{zone}_connection` | State | Connection (Online/Offline) |
+| `sensor.{zone}_mold_risk` | State | Mold risk level (Low/Medium/High/Critical) (v1.9.0) |
+| `sensor.{zone}_mold_risk_percentage` | Percentage | Surface relative humidity % for historical tracking (v2.0.1) |
+| `sensor.{zone}_comfort_level` | State | Comfort level (Freezing/Cold/Cool/Comfortable/Warm/Hot/Sweltering) (v1.9.0) |
+| `sensor.{zone}_condensation_risk` | State | Condensation risk (None/Low/Medium/High/Critical) (v2.1.0, AC zones only) |
+| `sensor.{zone}_surface_temperature` | Temperature | Calculated cold spot surface temperature (v2.2.0) |
+| `sensor.{zone}_dew_point` | Temperature | Calculated dew point temperature (v2.2.0) |
+| `sensor.{zone}_insights` | Integer | Number of active insights for this zone (v2.2.0) |
 
 ### v2.0.0: Thermal Analytics Sensors (HEATING zones only)
 
@@ -533,8 +660,38 @@ Automatically created for all HEATING zones to provide improved preheat timing e
 
 | Entity | Type | Description |
 |--------|------|-------------|
-| `binary_sensor.{zone}_open_window` | Binary Sensor | Open window detected |
+| `binary_sensor.{zone}_open_window` | Binary Sensor | Open window detected (from Tado API) |
+| `binary_sensor.{zone}_window_predicted` | Binary Sensor | Early open window detection (v2.2.0, local analysis) |
 | `binary_sensor.{zone}_preheat_now` | Binary Sensor | Time to start preheating (v2.0.0, requires Smart Comfort) |
+
+### Window Predicted Binary Sensor (v2.2.0)
+
+Detects possible open windows using local temperature analysis, providing early warning before Tado's cloud detection triggers (which typically takes 15-17 minutes).
+
+**Issue Reference:** [Discussion #112](https://github.com/hiall-fyi/tado_ce/discussions/112) - @tigro7
+
+**How it works:**
+1. Monitors rolling temperature history (last 10 minutes)
+2. Detects rapid temperature drops (≥1.5°C within 5 minutes)
+3. Uses humidity spike as secondary indicator
+4. CRITICAL: Does NOT trigger when HVAC is actively heating/cooling (prevents false positives)
+
+**Attributes:**
+| Attribute | Description |
+|-----------|-------------|
+| `confidence` | Detection confidence: `none`, `low`, `medium`, `high` |
+| `temp_drop` | Temperature drop detected (°C) |
+| `time_window_minutes` | Time window for detection (default: 5 min) |
+| `recommendation` | Actionable recommendation when window detected |
+| `zone_type` | Zone type (Heating / Air Conditioning) |
+| `readings_count` | Number of temperature readings in history |
+
+**Confidence Levels:**
+- `high`: ≥2.5°C drop, or ≥2.0°C with humidity spike
+- `medium`: ≥2.0°C drop, or ≥1.5°C with humidity spike
+- `low`: ≥1.5°C drop
+
+**Note:** This is a PREDICTIVE sensor - it does NOT replace Tado's confirmed Window binary sensor (`binary_sensor.{zone}_window`). Use both for comprehensive window detection.
 
 ### Preheat Now Binary Sensor (v2.0.0)
 
@@ -772,17 +929,23 @@ Toggle weather sensors on/off in integration options:
 
 ---
 
-## 📝 Entity Naming Changes (v1.2.0)
+## 📝 Entity Naming Convention
 
 ### Zone Entities (No Prefix)
-- Before: `climate.tado_ce_living_room`
-- After: `climate.living_room`
+- Entity ID: `climate.living_room`, `sensor.dining_temperature`
+- Friendly name: "Living Room", "Dining Temperature"
+- No `tado_ce_` prefix — zone entities belong to their zone device
 
-### Hub Entities (Keep Prefix)
-- `sensor.tado_ce_api_usage`
-- `sensor.tado_ce_api_reset`
-- `select.tado_ce_presence_mode` (v2.0.2, replaces `switch.tado_ce_away_mode`)
-- `select.tado_ce_overlay_mode` (v2.0.2)
+### Hub Entities (`tado_ce_` Prefix)
+All hub-level entities use `tado_ce_` prefix in entity_id for disambiguation:
+- `sensor.tado_ce_api_usage`, `sensor.tado_ce_api_reset`, `sensor.tado_ce_api_status`
+- `sensor.tado_ce_home_insights` (v2.2.0)
+- `sensor.tado_ce_next_sync`, `sensor.tado_ce_polling_interval` (v2.0.0)
+- `select.tado_ce_presence_mode`, `select.tado_ce_overlay_mode` (v2.0.2)
+- `binary_sensor.tado_ce_home`
+- `button.tado_ce_resume_all_schedules`, `button.tado_ce_refresh_ac_capabilities`
 - `sensor.tado_ce_outside_temperature` (if enabled)
 
-**Note:** Entity IDs are preserved during upgrade - automations continue to work.
+Friendly names do NOT include the prefix (e.g., "API Usage", "Home Insights", "Home").
+
+**Note:** Entity IDs are preserved during upgrade — automations continue to work.

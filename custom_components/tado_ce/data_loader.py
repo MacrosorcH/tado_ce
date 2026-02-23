@@ -505,3 +505,69 @@ def load_timer_duration() -> int:
         _LOGGER.debug(f"Failed to load timer duration: {e}")
     
     return 60  # Default
+
+
+# ============================================================
+# v2.2.0: Outdoor Temperature History (Weather Impact Insight)
+# ============================================================
+
+MAX_OUTDOOR_TEMP_READINGS = 336  # 7 days at 30s poll interval (2 readings/min × 60 × 24 × 7)
+
+
+def load_outdoor_temp_history() -> list:
+    """Load outdoor temperature history from storage.
+
+    v2.2.0: Persists rolling outdoor temp readings across HA restarts
+    for weather impact insight (US-20). Survives restarts unlike in-memory deque.
+
+    IMPORTANT: This is a SYNC function. Callers in async context
+    MUST use `await hass.async_add_executor_job(load_outdoor_temp_history)`.
+
+    Returns:
+        List of float temperature readings (most recent last), max 336 entries.
+    """
+    try:
+        file_path = _get_file_path("outdoor_temp_history")
+        with open(file_path) as f:
+            data = json.load(f)
+            readings = data.get("readings", [])
+            # Validate and trim to max size
+            readings = [float(r) for r in readings if isinstance(r, (int, float))]
+            return readings[-MAX_OUTDOOR_TEMP_READINGS:]
+    except FileNotFoundError:
+        _LOGGER.debug("outdoor_temp_history.json not found - starting fresh")
+        return []
+    except json.JSONDecodeError as e:
+        _LOGGER.warning(f"Invalid JSON in outdoor_temp_history.json: {e}")
+        return []
+    except Exception as e:
+        _LOGGER.debug(f"Failed to load outdoor_temp_history.json: {e}")
+        return []
+
+
+def save_outdoor_temp_history(readings: list) -> bool:
+    """Save outdoor temperature history to storage.
+
+    v2.2.0: Persists rolling outdoor temp readings across HA restarts.
+
+    IMPORTANT: This is a SYNC function. Callers in async context
+    MUST use `await hass.async_add_executor_job(save_outdoor_temp_history, readings)`.
+
+    Args:
+        readings: List of float temperature readings (most recent last).
+
+    Returns:
+        True if saved successfully, False otherwise.
+    """
+    try:
+        file_path = _get_file_path("outdoor_temp_history")
+        # Ensure directory exists
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        # Trim to max size before saving
+        trimmed = readings[-MAX_OUTDOOR_TEMP_READINGS:]
+        with open(file_path, 'w') as f:
+            json.dump({"readings": trimmed}, f)
+        return True
+    except Exception as e:
+        _LOGGER.debug(f"Failed to save outdoor_temp_history.json: {e}")
+        return False

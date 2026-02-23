@@ -6,13 +6,6 @@ For completed features, see [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
-## v2.2.0 (Planned)
-
-**Mold Risk Enhancements** ([#109](https://github.com/hiall-fyi/tado_ce/issues/109)):
-- **Actionable Recommendations** - When mold risk is Medium/High, suggest what changes would help (e.g., "Reduce humidity by 10%" or "Increase temperature by 2°C")
-
----
-
 ## Future Consideration
 
 **API Management:**
@@ -28,23 +21,15 @@ For completed features, see [CHANGELOG.md](CHANGELOG.md).
 - **Benefit**: Allows automation control (e.g., "disable quota reserve when API remaining > 50") and faster toggling without entering Config Options
 - **Note**: Waiting for community feedback on use cases before implementation
 
-**Open Window Detection** ([#106](https://github.com/hiall-fyi/tado_ce/issues/106)):
+**Per-Zone External Sensor Override** ([#106](https://github.com/hiall-fyi/tado_ce/issues/106)):
 - **Per-Zone Temperature Sensor Override** - Allow selecting any HA temperature sensor (HomeKit, Zigbee, etc.) per zone for faster updates
-- **Rapid Temp Drop Detection** - Custom open window detection with configurable threshold (e.g., >2°C drop in 15 min)
-- **Note**: Requires testing HomeKit sensor behavior (update frequency, reliability) before implementation
-
-**UI/UX Improvements** ([#116](https://github.com/hiall-fyi/tado_ce/issues/116)):
-- **Entity Descriptions in UI** - Investigating if HA supports showing entity descriptions/help text in the UI. Current finding: HA doesn't have native support for this. Workaround: [FEATURES_GUIDE.md](FEATURES_GUIDE.md) provides detailed documentation.
-- **Attribute Visibility** - HA 2024.x hides certain attributes by default. Investigating naming conventions that affect visibility.
-
-**Calibration Sensors** ([#118](https://github.com/hiall-fyi/tado_ce/issues/118)):
-- **Surface Temperature Sensor** - Expose `surface_temperature` attribute as opt-in standalone sensor for mold risk calibration workflows
-- **Note**: HA 2024.x hides attributes in a separate panel, making calibration tedious (change offset → check dev tools → repeat). Standalone sensor would allow real-time feedback during calibration.
+- **Note**: v2.2.0 added Window Predicted sensor using local Tado temperature analysis; external sensor override for even faster detection still under consideration
 
 **Other:**
 - Apply for HACS default repository inclusion
 - Max Flow Temperature control (requires OpenTherm, [#15](https://github.com/hiall-fyi/tado_ce/issues/15))
 - Combi boiler mode - hide timers/schedules for on-demand hot water ([#15](https://github.com/hiall-fyi/tado_ce/issues/15))
+- **Temperature Update Delay Investigation** ([#124](https://github.com/hiall-fyi/tado_ce/issues/124) - @hapklaar) - User reports ~2 hour update intervals and slow climate card updates. Awaiting debug logs.
 
 **Local API (Experimental):**
 - **Local-first, cloud-fallback** - Use local API when available, fall back to cloud. Requires community help to test across different Tado hardware versions. See [Discussion #29](https://github.com/hiall-fyi/tado_ce/discussions/29).

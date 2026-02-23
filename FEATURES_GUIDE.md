@@ -15,7 +15,8 @@ Complete guide to all Tado CE exclusive features, configurations, and usage scen
 9. [Per-Zone Configuration](#-per-zone-configuration)
 10. [Zone Features Toggles](#-zone-features-toggles)
 11. [Configuration Scenarios](#-configuration-scenarios)
-12. [Troubleshooting](#-troubleshooting)
+12. [Actionable Insights](#-actionable-insights)
+13. [Troubleshooting](#-troubleshooting)
 
 ---
 
@@ -2406,6 +2407,134 @@ automation:
 
 ---
 
+## 💡 Actionable Insights
+
+**Available:** v2.2.0+ | **Requirement:** None | **Always Enabled**
+
+Actionable Insights provides intelligent, context-aware recommendations across all zones, helping you maintain comfort, prevent mold, and optimize energy usage.
+
+### Overview
+
+The Home Insights sensor (`sensor.tado_ce_home_insights`) aggregates insights from all zones into a single hub-level summary with priority-based recommendations. Individual sensors also gain a `recommendation` attribute with actionable guidance.
+
+### Insight Types
+
+| Insight | Priority | Trigger | Source |
+|---------|----------|---------|--------|
+| Mold Risk | Critical/High/Medium | Dew point margin < 7°C | Zone humidity + temperature |
+| Comfort Level | High/Medium | Temperature outside 18-24°C range | Zone temperature |
+| Window Predicted | High | Rapid temperature drop detected | `binary_sensor.{zone}_window_predicted` |
+| Battery Low | Critical/Low | Device battery LOW or CRITICAL | Zone device info |
+| Device Offline | High | Device connection lost | Zone device info |
+| Preheat Timing | Medium | Preheat time exceeds schedule gap | `sensor.{zone}_preheat_time` |
+| Heating Anomaly | High | Power ≥80% but temp change <0.5°C for 60+ min | `sensor.{zone}_heating_power` |
+| Cross-Zone Mold | High | 3+ zones with Medium+ mold risk | All zone mold data |
+| Cross-Zone Windows | High | 2+ zones with window predicted open | All zone window sensors |
+| API Quota Planning | Medium/High | Projected exhaustion <6h before reset | API usage rate + remaining |
+| Weather Impact | Medium | Outdoor temp >5°C below 7-day average | Weather data |
+
+### Recommendation Attributes
+
+The following sensors now include a `recommendation` attribute:
+
+- `sensor.{zone}_mold_risk` - Delta format: specific humidity/temperature changes needed
+- `sensor.{zone}_comfort_level` - Context-aware: considers if HVAC is actively heating
+- `sensor.{zone}_condensation_risk` - AC-specific condensation prevention
+- `sensor.{zone}_battery` - Battery replacement reminders
+- `sensor.{zone}_connection` - Device troubleshooting guidance
+- `sensor.tado_ce_api_status` - API quota management suggestions
+
+Recommendation is empty string when no action needed.
+
+### Home Insights Sensor
+
+`sensor.tado_ce_home_insights` provides a hub-level aggregation:
+
+- **State**: Total number of active insights (integer)
+- **Attributes**:
+  - `critical_count`, `high_count`, `medium_count`, `low_count` - Priority breakdown
+  - `top_priority` - Highest active priority (none/low/medium/high/critical)
+  - `top_recommendation` - Most urgent actionable text
+  - `zones_with_issues` - List of zone names with active insights
+  - `cross_zone_insights` - Cross-zone aggregation recommendations
+
+### Zone Insights Sensor
+
+Each HEATING and AIR_CONDITIONING zone gets its own insights sensor: `sensor.{zone}_insights`
+
+- **State**: Number of active insights for this zone (integer)
+- **Attributes**:
+  - `top_priority` - Highest active priority (none/low/medium/high/critical)
+  - `top_recommendation` - Most urgent actionable text for this zone
+  - `insight_types` - List of active insight type names
+  - `recommendations` - List of all recommendation texts
+- **Dynamic icon**: Changes based on highest priority (alert-octagon for critical, alert-circle for high, alert for medium, information for low)
+- **Insight types**: mold risk, comfort, window predicted, battery, connection, preheat timing, heating anomaly
+
+Unlike the hub-level Home Insights sensor, zone insights focus only on the specific zone and do not include cross-zone or API-level insights.
+
+### Usage Scenarios
+
+#### Scenario 1: Dashboard Overview Card
+
+**Goal:** Show home-wide insight summary on dashboard.
+
+```yaml
+type: entities
+entities:
+  - entity: sensor.tado_ce_home_insights
+    name: "Active Insights"
+  - type: attribute
+    entity: sensor.tado_ce_home_insights
+    attribute: top_priority
+    name: "Top Priority"
+  - type: attribute
+    entity: sensor.tado_ce_home_insights
+    attribute: top_recommendation
+    name: "Top Action"
+```
+
+#### Scenario 2: Alert on Critical Insights
+
+**Goal:** Get notified when critical issues arise.
+
+```yaml
+automation:
+  - alias: "Alert: Critical Home Insight"
+    trigger:
+      - platform: state
+        entity_id: sensor.tado_ce_home_insights
+        attribute: top_priority
+        to: "critical"
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "🚨 Critical Home Issue"
+          message: >
+            {{ state_attr('sensor.tado_ce_home_insights', 'top_recommendation') }}
+```
+
+#### Scenario 3: Monitor Cross-Zone Mold Risk
+
+**Goal:** Detect whole-house humidity problems.
+
+```yaml
+automation:
+  - alias: "Alert: Multiple Zones Mold Risk"
+    trigger:
+      - platform: template
+        value_template: >
+          {{ state_attr('sensor.tado_ce_home_insights', 'cross_zone_insights') | length > 0 }}
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "💧 Whole-House Humidity Alert"
+          message: >
+            {{ state_attr('sensor.tado_ce_home_insights', 'cross_zone_insights') | join('. ') }}
+```
+
+---
+
 ## 🔧 Troubleshooting
 
 ### Issue: Thermal Analytics Shows "Unknown"
@@ -2638,4 +2767,4 @@ automation:
 
 ---
 
-**Last Updated:** v2.0.0 (2026-02-08)
+**Last Updated:** v2.2.0 (2026-02-21)

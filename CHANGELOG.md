@@ -2,6 +2,119 @@
 
 All notable changes to Tado CE will be documented in this file.
 
+## [2.2.0] - 2026-02-23
+
+**Calibration Sensors & Actionable Insights**
+
+### Features
+- **Surface Temperature Sensor** ([#118](https://github.com/hiall-fyi/tado_ce/issues/118))
+  - New standalone sensor exposing calculated cold spot temperature
+  - Real-time feedback for mold risk calibration with laser thermometer
+  - Uses same 2-tier calculation as Mold Risk sensor
+  - Entity: `sensor.{zone}_surface_temperature`
+
+- **Dew Point Sensor** ([#118](https://github.com/hiall-fyi/tado_ce/issues/118))
+  - New standalone sensor exposing calculated dew point temperature
+  - Enables automation for dehumidifier control and condensation prevention
+  - Uses Magnus-Tetens formula (same as Mold Risk sensor)
+  - Entity: `sensor.{zone}_dew_point`
+
+- **Window Predicted Binary Sensor** ([Discussion #112](https://github.com/hiall-fyi/tado_ce/discussions/112) - @tigro7)
+  - Early open window detection using heating/cooling anomaly detection
+  - Provides warning before Tado's cloud detection (which takes 15-17 minutes)
+  - ONLY triggers when HVAC is active but temperature moves wrong direction (heating but dropping, cooling but rising)
+  - Requires 2+ consecutive anomalous readings to trigger (reduces false positives)
+  - Entity: `binary_sensor.{zone}_window_predicted`
+  - Attributes: `confidence`, `temp_drop`, `time_window_minutes`, `recommendation`
+
+Both calibration sensors are controlled by the existing `environment_sensors_enabled` toggle.
+
+- **Actionable Recommendation Attributes** ([Discussion #112](https://github.com/hiall-fyi/tado_ce/discussions/112) - @tigro7)
+  - New `recommendation` attribute on environment, device, and hub sensors
+  - Mold risk: Delta format with specific humidity/temperature targets to reduce risk level
+  - Comfort level: Context-aware recommendations considering HVAC action state
+  - Battery, connection, API status: Actionable troubleshooting guidance
+  - Empty string when no action needed, actionable text when issues detected
+
+- **Home Insights Sensor** ([Discussion #112](https://github.com/hiall-fyi/tado_ce/discussions/112) - @tigro7)
+  - Hub-level aggregation of insights from all zones with priority ranking
+  - Entity: `sensor.tado_ce_home_insights`
+  - State: Total number of active insights
+  - Attributes: `critical_count`, `high_count`, `medium_count`, `low_count`, `top_priority`, `top_recommendation`, `zones_with_issues`, `cross_zone_insights`
+  - Insight types: mold risk, comfort, window predicted, battery, connection, preheat timing, heating anomaly, API quota planning, weather impact
+  - Cross-zone aggregation: whole-house mold risk (3+ zones), multiple open windows (2+ zones)
+
+- **Zone Insights Sensor** ([Discussion #112](https://github.com/hiall-fyi/tado_ce/discussions/112) - @tigro7)
+  - Per-zone insights sensor for each HEATING and AIR_CONDITIONING zone
+  - Entity: `sensor.{zone}_insights`
+  - State: Number of active insights for this zone (integer)
+  - Attributes: `top_priority`, `top_recommendation`, `insight_types`, `recommendations`
+  - Insight types: mold risk, comfort, window predicted, battery, connection, preheat timing, heating anomaly
+  - Dynamic icon changes based on highest priority insight
+
+### Improvements
+- **User-Friendly Attribute Values**
+  - `zone_type`: Now displays `"Heating"`, `"Air Conditioning"`, `"Hot Water"` instead of `"HEATING"`, `"AIR_CONDITIONING"`, `"HOT_WATER"`
+  - `window_type`: Now displays `"Single Pane"`, `"Double Pane"`, `"Triple Pane"` instead of snake_case
+  - `comfort_model`: Now displays `"Adaptive"`, `"Seasonal"` instead of lowercase
+
+### Bug Fixes
+- **Fixed heating cycle never completing after ~50 minutes** ([#125](https://github.com/hiall-fyi/tado_ce/issues/125) - @BruceRobertson)
+  - `on_temperature_update()` stopped appending readings at 100 (memory limit)
+  - `check_cycle_complete()` used `readings[-1].temp` which was frozen after limit
+  - Now updates last reading in-place when limit reached, ensuring cycle completion detection works for long heating cycles
+
+- **Fixed API call history save error on first run** ([#127](https://github.com/hiall-fyi/tado_ce/issues/127) - @slflowfoon, [PR #132](https://github.com/hiall-fyi/tado_ce/pull/132) - @hacker4257)
+  - `_save_history_sync()` failed with `[Errno 2] No such file or directory` when `.storage/tado_ce/` didn't exist
+  - Original fix: Added `self.data_dir.mkdir(parents=True, exist_ok=True)`
+  - Improved fix (PR #132): Changed to `self.history_file.parent.mkdir()` for better future-proofing
+
+- **Fixed Hot Water per-zone config for tank-based systems** ([#115](https://github.com/hiall-fyi/tado_ce/issues/115) - @jeverley)
+  - v2.1.1 blanket-skipped ALL per-zone config entities for Hot Water zones
+  - Tank-based hot water systems DO support overlay mode and schedules
+  - Now detects at runtime: if zone has `overlayType` or temperature setting → create Overlay Mode + Timer Duration entities
+
+- **Fixed polling override issues** ([#126](https://github.com/hiall-fyi/tado_ce/issues/126) - @Xavinooo)
+  - Bug 1: Custom night interval was always overridden by hardcoded 120 min from adaptive polling
+  - Bug 2: `is_daytime()` failed when `night_start < day_start` (e.g., night=1, day=6)
+  - Bug 3: Config persistence issue when clearing custom interval
+  - Improvement: Changed custom interval fields from TextSelector to NumberSelector
+
+- **Fixed heating anomaly insight firing false positives on every poll cycle**
+  - `TadoHomeInsightsSensor` and `TadoZoneInsightsSensor` were passing `duration_minutes=60` hardcoded to `calculate_heating_anomaly_insight()`
+  - Insight fired immediately on first poll even if condition just started
+  - Now tracks real elapsed time per zone using `_anomaly_start_times` dict; resets timer when condition clears
+
+- **Fixed environment sensor cleanup missing v2.2.0 entities on reload**
+  - `async_reload_entry` cleanup block only removed `_mold_risk`, `_comfort_level`, `_condensation_risk`
+  - Missing: `_surface_temperature`, `_dew_point`, `_insights` (sensors), `_window_predicted` (binary sensor)
+  - All v2.2.0 environment entities now correctly removed when feature is toggled off
+
+- **Fixed `NameError: datetime` in Home Insights heating anomaly tracking**
+  - `_collect_zone_insights()` used `datetime.now()` but `datetime` class was not imported at module level
+  - Only `timedelta` was imported; `datetime` was inline-imported in other methods
+  - Fixed by adding `datetime` to top-level `from datetime import datetime, timedelta`
+
+- **Implemented weather impact insight rolling history**
+  - Weather impact insight (US-20) was always passing `avg_outdoor_temp_7d=None`, making it dead code
+  - Now persists rolling outdoor temperature history to `outdoor_temp_history_{home_id}.json` (survives HA restarts)
+  - Insight activates after ~24 minutes of readings (48 samples at 30s poll interval)
+  - Triggers when current outdoor temp is >5°C below rolling average, estimating increased heating demand
+
+- **Fixed KeyError in hub insights calculation**
+  - `load_api_call_history_file()` returns dict `{date: [call_dicts]}` but `calculate_calls_per_hour()` expects flat list
+  - Caused `KeyError: 0` when accessing `history[0]` on dict, logged as `"Failed to collect hub insights: 0"`
+  - Added flattening logic to convert dict to flat list before passing to `calculate_calls_per_hour()`
+  - API quota planning insight now calculates correctly
+
+- **Fixed AC swing mode validation for Mitsubishi units** ([#128](https://github.com/hiall-fyi/tado_ce/issues/128) - @BirbByte)
+  - Some AC units (e.g., Mitsubishi MSZ-AP series) don't support "OFF" as a swing value
+  - API rejected overlay with error: `"vertical swing not in supported vertical swings [MID_UP, AUTO, UP, MID, DOWN, ON, MID_DOWN]"`
+  - Now validates swing values against capabilities before sending to API
+  - If "OFF" not supported, omits swing field entirely (lets AC use its default)
+
+---
+
 ## [2.1.1] - 2026-02-19
 
 **Bug Fixes**

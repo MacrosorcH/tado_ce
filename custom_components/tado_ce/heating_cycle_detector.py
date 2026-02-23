@@ -135,12 +135,12 @@ class HeatingCycleDetector:
                 TemperatureReading(time=timestamp, temp=temp)
             )
         else:
-            # Already at limit, log once (debug level - this is expected behavior for long cycles)
-            if len(self._active_cycle.temperature_readings) == 100:
-                _LOGGER.debug(
-                    "Zone %s: Reached 100 temperature readings limit for cycle",
-                    self._zone_id
-                )
+            # v2.2.0 fix (#125): Update last reading in-place when at limit.
+            # Previously dropped new readings, causing check_cycle_complete()
+            # to use a frozen temperature — cycle never completed after ~50 min.
+            self._active_cycle.temperature_readings[-1] = TemperatureReading(
+                time=timestamp, temp=temp
+            )
         
         # Detect first rise (inertia detection)
         if self._active_cycle.first_rise_time is None and self._active_cycle.start_temp is not None:

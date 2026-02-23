@@ -21,7 +21,7 @@ LEGACY_DATA_DIR = Path(_BASE_CONFIG_DIR) / "custom_components" / "tado_ce" / "da
 PER_HOME_FILES = [
     "config", "zones", "zones_info", "ratelimit", "weather",
     "mobile_devices", "home_state", "api_call_history", "offsets",
-    "ac_capabilities", "schedules"
+    "ac_capabilities", "schedules", "outdoor_temp_history"
 ]
 
 

@@ -1,6 +1,7 @@
 """Tado CE Binary Sensors."""
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
+from collections import deque
 
 from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
@@ -10,6 +11,7 @@ from homeassistant.core import HomeAssistant
 
 from .device_manager import get_hub_device_info, get_zone_device_info
 from .data_loader import load_zones_file, load_zones_info_file, load_home_state_file, get_zone_names
+from .insights_calculator import detect_window_predicted, TemperatureReading
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
@@ -50,6 +52,11 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                 if smart_comfort_enabled:
                     sensors.append(TadoPreheatNowSensor(zone_id, zone_name, zone_type))
             
+            # Window Predicted sensor for all climate zones (HEATING and AIR_CONDITIONING)
+            # v2.2.0: Early open window detection using local temperature analysis
+            if zone_type in ('HEATING', 'AIR_CONDITIONING'):
+                sensors.append(TadoWindowPredictedSensor(zone_id, zone_name, zone_type))
+            
 
     
     async_add_entities(sensors, False)  # Don't update before add - self.hass not set yet
@@ -69,6 +76,7 @@ class TadoHomeSensor(BinarySensorEntity):
     
     def __init__(self):
         self._attr_name = "Home"
+        self.entity_id = "binary_sensor.tado_ce_home"
         self._attr_unique_id = "tado_ce_home"
         self._attr_device_class = BinarySensorDeviceClass.PRESENCE
         self._attr_available = False
@@ -326,3 +334,147 @@ class TadoPreheatNowSensor(BinarySensorEntity):
 
 
 
+
+
+class TadoWindowPredictedSensor(BinarySensorEntity):
+    """Binary sensor for early open window detection.
+    
+    v2.2.0: Detects possible open windows using local temperature analysis,
+    providing early warning before Tado's cloud detection triggers.
+    
+    This is a PREDICTIVE sensor - it does NOT replace Tado's confirmed
+    Window binary sensor (binary_sensor.{zone}_window).
+    
+    Issue Reference: Discussion #112 - @tigro7
+    """
+    
+    _attr_device_class = BinarySensorDeviceClass.WINDOW
+    
+    def __init__(self, zone_id: str, zone_name: str, zone_type: str = "HEATING"):
+        self._zone_id = zone_id
+        self._zone_name = zone_name
+        self._zone_type = zone_type
+        self._attr_name = f"{zone_name} Window Predicted"
+        self._attr_unique_id = f"tado_ce_zone_{zone_id}_window_predicted"
+        self._attr_available = False
+        self._attr_is_on = None
+        self._attr_device_info = get_zone_device_info(zone_id, zone_name, zone_type)
+        
+        # Detection state
+        self._confidence: str = "none"
+        self._temp_drop: float = 0.0
+        self._time_window: int = 5
+        self._recommendation: str = ""
+        self._anomaly_readings: int = 0
+        
+        # Rolling temperature history for consecutive-reading comparison
+        self._temp_history: deque = deque(maxlen=10)
+        self._last_reading_time: datetime = None
+    
+    @property
+    def extra_state_attributes(self):
+        return {
+            "confidence": self._confidence,
+            "temp_drop": self._temp_drop,
+            "time_window_minutes": self._time_window,
+            "recommendation": self._recommendation,
+            "zone_type": self._format_zone_type(),
+            "readings_count": len(self._temp_history),
+            "anomaly_readings": self._anomaly_readings,
+        }
+    
+    def _format_zone_type(self) -> str:
+        """Format zone type for display."""
+        zone_type_map = {
+            "HEATING": "Heating",
+            "AIR_CONDITIONING": "Air Conditioning",
+            "HOT_WATER": "Hot Water",
+        }
+        return zone_type_map.get(self._zone_type, self._zone_type)
+    
+    @property
+    def icon(self):
+        """Dynamic icon based on state."""
+        if self._attr_is_on:
+            return "mdi:window-open-variant"
+        return "mdi:window-closed-variant"
+    
+    def update(self):
+        """Update window predicted detection via heating anomaly algorithm.
+        
+        Logic:
+        1. Get current temperature and humidity from zone data
+        2. Add to rolling history
+        3. Determine HVAC state and mode (heating vs cooling)
+        4. Run anomaly detection — heating active but temp dropping = open window
+        """
+        try:
+            data = load_zones_file()
+            if not data:
+                self._attr_available = False
+                return
+            
+            zone_states = data.get('zoneStates') or {}
+            zone_data = zone_states.get(self._zone_id)
+            
+            if not zone_data:
+                self._attr_available = False
+                return
+            
+            # Get current temperature and humidity
+            sensor_data = zone_data.get('sensorDataPoints') or {}
+            temp_data = sensor_data.get('insideTemperature') or {}
+            humidity_data = sensor_data.get('humidity') or {}
+            
+            current_temp = temp_data.get('celsius')
+            current_humidity = humidity_data.get('percentage')
+            
+            if current_temp is None:
+                self._attr_available = False
+                return
+            
+            # Add reading to history (throttle to avoid duplicates)
+            now = datetime.now()
+            if self._last_reading_time is None or (now - self._last_reading_time).total_seconds() >= 25:
+                reading = TemperatureReading(
+                    temperature=current_temp,
+                    humidity=current_humidity,
+                    timestamp=now
+                )
+                self._temp_history.append(reading)
+                self._last_reading_time = now
+            
+            # Determine HVAC state and mode
+            activity_data = zone_data.get('activityDataPoints') or {}
+            heating_power = activity_data.get('heatingPower') or {}
+            ac_power = activity_data.get('acPower')
+            
+            heating_percentage = heating_power.get('percentage', 0)
+            ac_on = ac_power is not None and ac_power.get('value') == 'ON'
+            hvac_active = heating_percentage > 0 or ac_on
+            
+            # Determine hvac_mode for anomaly direction
+            if ac_on:
+                hvac_mode = "cooling"
+            else:
+                hvac_mode = "heating"
+            
+            # Run heating/cooling anomaly detection
+            result = detect_window_predicted(
+                readings=list(self._temp_history),
+                hvac_active=hvac_active,
+                zone_name=self._zone_name,
+                time_window_minutes=self._time_window,
+                hvac_mode=hvac_mode,
+            )
+            
+            self._attr_is_on = result.detected
+            self._confidence = result.confidence
+            self._temp_drop = result.temp_drop
+            self._recommendation = result.recommendation
+            self._anomaly_readings = result.anomaly_readings
+            self._attr_available = True
+            
+        except Exception as e:
+            _LOGGER.debug(f"Failed to update window predicted for zone {self._zone_id}: {e}")
+            self._attr_available = False

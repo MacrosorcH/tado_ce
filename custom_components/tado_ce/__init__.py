@@ -224,17 +224,18 @@ def _calculate_adaptive_interval(ratelimit_data: dict, config_manager: Configura
     # v2.0.1: Key insight - if Reset Time is before Night Start, we don't need to reserve Night quota!
     # Because quota will reset and we'll have fresh quota for Night.
     
-    # v2.0.1: Night period uses fixed MAX_INTERVAL
+    # v2.2.0 FIX: Night period returns None to signal "use default/custom night interval" (#126)
+    # Previously returned MAX_POLLING_INTERVAL which incorrectly overrode user's custom night interval
     if not is_day:
         _LOGGER.debug(
             f"Tado CE Adaptive Polling (Night):\n"
             f"  Period: Night (until {day_start:02d}:00)\n"
             f"  Reset in: {reset_hours:.1f}h\n"
             f"  Remaining: {remaining} calls\n"
-            f"  Using fixed interval: {MAX_POLLING_INTERVAL} min\n"
+            f"  Returning None (use default/custom night interval)\n"
             f"  Test Mode: {test_mode}"
         )
-        return MAX_POLLING_INTERVAL
+        return None  # Signal to use default/custom night interval
     
     # Day period: calculate adaptive interval
     # Determine effective time window (until Reset or Night Start, whichever is sooner)
@@ -827,6 +828,7 @@ def is_daytime(config_manager: ConfigurationManager) -> bool:
         If day_start == night_start, returns True (uniform mode - always day polling)
         
     v1.6.1: Uses Home Assistant's timezone instead of system timezone
+    v2.2.0: Fixed wrap-around case when night_start < day_start (#126)
     """
     from homeassistant.util import dt as dt_util
     
@@ -841,7 +843,14 @@ def is_daytime(config_manager: ConfigurationManager) -> bool:
     if day_start == night_start:
         return True
     
-    return day_start <= hour < night_start
+    # v2.2.0 FIX: Handle wrap-around case (#126)
+    # Normal case: day_start < night_start (e.g., day=6, night=22)
+    if day_start < night_start:
+        return day_start <= hour < night_start
+    
+    # Wrap-around case: night_start < day_start (e.g., night=1, day=6)
+    # Day is from day_start to 24 OR from 0 to night_start
+    return hour >= day_start or hour < night_start
 
 
 def get_polling_interval(config_manager: ConfigurationManager, cached_ratelimit: dict | None = None) -> int:
@@ -2467,8 +2476,13 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         # Environment Sensors cleanup (mold risk, comfort level, condensation)
         if domain_data.pop("_cleanup_environment_sensors", False):
             _LOGGER.info("Tado CE: Environment Sensors disabled - removing environment sensor entities")
-            env_suffixes = ["_mold_risk", "_comfort_level", "_condensation_risk"]
+            env_suffixes = [
+                "_mold_risk", "_comfort_level", "_condensation_risk",
+                "_surface_temperature", "_dew_point", "_insights",  # v2.2.0
+            ]
             removed = _cleanup_entities_by_suffix(entity_registry, DOMAIN, "tado_ce_zone_", env_suffixes)
+            # v2.2.0: Also cleanup window_predicted binary sensors (different platform)
+            removed += _cleanup_entities_by_suffix(entity_registry, DOMAIN, "tado_ce_zone_", ["_window_predicted"])
             total_removed += removed
             _LOGGER.info(f"  Removed {removed} environment sensor entities")
         

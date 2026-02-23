@@ -4,6 +4,65 @@
 
 ---
 
+## v2.2.0 (2026-02-23) - Calibration Sensors & Actionable Insights
+
+### Feature Requests & Contributors
+
+**[@tigro7](https://github.com/tigro7)** - [Discussion #112](https://github.com/hiall-fyi/tado_ce/discussions/112)
+- Proposed actionable recommendation attributes on environment sensors
+- Requested early open window detection (Window Predicted sensor)
+- Inspired the Home Insights and Zone Insights aggregation sensors
+- Detailed use cases for mold risk calibration with laser thermometer
+
+### Bug Reports & Issue Reporters
+
+**[@BruceRobertson](https://github.com/BruceRobertson)** - [Issue #125](https://github.com/hiall-fyi/tado_ce/issues/125)
+- Reported heating cycle never completing after ~50 minutes
+- Identified that on_temperature_update() stopped appending readings at 100 (memory limit)
+
+**[@slflowfoon](https://github.com/slflowfoon)** - [Issue #127](https://github.com/hiall-fyi/tado_ce/issues/127)
+- Reported API call history save error on first run (directory not found)
+- Identified missing mkdir() call in _save_history_sync()
+
+**[@hacker4257](https://github.com/hacker4257)** - [PR #132](https://github.com/hiall-fyi/tado_ce/pull/132)
+- Submitted improved fix for API call history save error (#127)
+- Proposed using `history_file.parent` instead of `data_dir` for better future-proofing
+
+**[@BirbByte](https://github.com/BirbByte)** - [Issue #128](https://github.com/hiall-fyi/tado_ce/issues/128)
+- Reported AC swing mode validation issue causing immediate turn-off
+- Identified that Mitsubishi MSZ-AP units don't support "OFF" as swing value
+- Provided detailed debug logs and AC capabilities comparison
+
+**[@jeverley](https://github.com/jeverley)** - [Issue #115](https://github.com/hiall-fyi/tado_ce/issues/115)
+- Reported Hot Water per-zone config missing for tank-based systems
+- Identified that v2.1.1 blanket-skipped ALL per-zone config for Hot Water zones
+- Tank-based systems DO support overlay mode and schedules
+
+**[@Xavinooo](https://github.com/Xavinooo)** - [Issue #126](https://github.com/hiall-fyi/tado_ce/issues/126)
+- Reported polling override issues (custom night interval being overridden)
+- Identified is_daytime() failure when night_start < day_start
+- Reported config persistence issue when clearing custom interval
+
+### What Was Added/Fixed
+
+- ✅ **Discussion #112**: Surface Temperature Sensor - standalone cold spot sensor for mold risk calibration
+- ✅ **Discussion #112**: Dew Point Sensor - standalone dew point for dehumidifier automations
+- ✅ **Discussion #112**: Window Predicted Binary Sensor - early open window detection (before Tado cloud)
+- ✅ **Discussion #112**: Actionable Recommendation Attributes - delta-format guidance on all environment sensors
+- ✅ **Discussion #112**: Home Insights Sensor - hub-level aggregation with priority ranking
+- ✅ **Discussion #112**: Zone Insights Sensor - per-zone insights with dynamic icon
+- ✅ **Issue #125**: Fixed heating cycle never completing after ~50 minutes
+- ✅ **Issue #127**: Fixed API call history save error on first run
+- ✅ **Issue #115**: Fixed Hot Water per-zone config for tank-based systems
+- ✅ **Issue #126**: Fixed polling override issues (3 bugs + NumberSelector improvement)
+- ✅ Fixed heating anomaly insight firing false positives on every poll cycle
+- ✅ Fixed environment sensor cleanup missing v2.2.0 entities on reload
+- ✅ Fixed NameError: datetime in Home Insights heating anomaly tracking
+- ✅ Implemented weather impact insight with file-backed rolling history (outdoor_temp_history_{home_id}.json)
+
+---
+
+
 ## v2.1.1 (2026-02-19) - Test Mode & Hot Water Hotfix
 
 ### Bug Reports & Issue Reporters

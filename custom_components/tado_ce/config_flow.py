@@ -464,36 +464,18 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                     if key in section:
                         processed_input[key] = section[key]
             
-            # Handle custom day interval
-            day_interval_str = processed_input.get('custom_day_interval', '')
-            if isinstance(day_interval_str, str):
-                day_interval_str = day_interval_str.strip()
-            if day_interval_str:
-                try:
-                    day_interval = int(day_interval_str)
-                    if day_interval < 1 or day_interval > 1440:
-                        errors['custom_day_interval'] = 'interval_out_of_range'
-                    else:
-                        processed_input['custom_day_interval'] = day_interval
-                except ValueError:
-                    errors['custom_day_interval'] = 'invalid_number'
-            else:
+            # Handle custom day interval (NumberSelector returns int or None)
+            # v2.2.0: Simplified - NumberSelector handles validation (#126)
+            day_interval = processed_input.get('custom_day_interval')
+            if day_interval is not None and (day_interval < 1 or day_interval > 1440):
+                errors['custom_day_interval'] = 'interval_out_of_range'
                 processed_input['custom_day_interval'] = None
             
-            # Handle custom night interval
-            night_interval_str = processed_input.get('custom_night_interval', '')
-            if isinstance(night_interval_str, str):
-                night_interval_str = night_interval_str.strip()
-            if night_interval_str:
-                try:
-                    night_interval = int(night_interval_str)
-                    if night_interval < 1 or night_interval > 1440:
-                        errors['custom_night_interval'] = 'interval_out_of_range'
-                    else:
-                        processed_input['custom_night_interval'] = night_interval
-                except ValueError:
-                    errors['custom_night_interval'] = 'invalid_number'
-            else:
+            # Handle custom night interval (NumberSelector returns int or None)
+            # v2.2.0: Simplified - NumberSelector handles validation (#126)
+            night_interval = processed_input.get('custom_night_interval')
+            if night_interval is not None and (night_interval < 1 or night_interval > 1440):
+                errors['custom_night_interval'] = 'interval_out_of_range'
                 processed_input['custom_night_interval'] = None
             
             if not errors:
@@ -617,11 +599,11 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                         vol.Required('night_start_hour', default=options.get('night_start_hour', 23)): NumberSelector(
                             NumberSelectorConfig(min=0, max=23, step=1, mode=NumberSelectorMode.BOX)
                         ),
-                        vol.Optional('custom_day_interval', default=str(custom_day_interval) if custom_day_interval else ""): TextSelector(
-                            TextSelectorConfig(type=TextSelectorType.TEXT)
+                        vol.Optional('custom_day_interval', default=custom_day_interval): NumberSelector(
+                            NumberSelectorConfig(min=1, max=1440, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="min")
                         ),
-                        vol.Optional('custom_night_interval', default=str(custom_night_interval) if custom_night_interval else ""): TextSelector(
-                            TextSelectorConfig(type=TextSelectorType.TEXT)
+                        vol.Optional('custom_night_interval', default=custom_night_interval): NumberSelector(
+                            NumberSelectorConfig(min=1, max=1440, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="min")
                         ),
                         vol.Optional('refresh_debounce_seconds', default=options.get('refresh_debounce_seconds', 15)): NumberSelector(
                             NumberSelectorConfig(min=1, max=60, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="s")

@@ -611,12 +611,16 @@ async def async_setup_zone_config_select(
         return
     
     # Load zones info
-    from .data_loader import load_zones_info_file
+    from .data_loader import load_zones_info_file, load_zones_file
     zones_info = await hass.async_add_executor_job(load_zones_info_file)
     
     if not zones_info:
         _LOGGER.warning("No zones info available, skipping zone config entities")
         return
+    
+    # v2.2.0: Load zones data once for hot water detection (#115)
+    zones_data = await hass.async_add_executor_job(load_zones_file)
+    zone_states = (zones_data or {}).get('zoneStates', {})
     
     entities = []
     
@@ -625,9 +629,21 @@ async def async_setup_zone_config_select(
         zone_name = zone.get("name", f"Zone {zone_id}")
         zone_type = zone.get("type")
         
-        # v2.1.1: Skip Hot Water zones - they don't need per-zone config (#115)
+        # v2.2.0: Hot Water zones - only create Overlay Mode + Timer Duration for tank-based systems (#115)
+        # Tank-based hot water has overlayType or temperature setting; combi boilers don't
         if zone_type == "HOT_WATER":
-            continue
+            zone_state = zone_states.get(zone_id, {})
+            
+            has_overlay = zone_state.get('overlayType') is not None
+            has_temp = (zone_state.get('setting') or {}).get('temperature') is not None
+            
+            if has_overlay or has_temp:
+                # Tank-based: create Overlay Mode + Timer Duration only
+                entities.extend([
+                    TadoZoneOverlayModeSelect(zone_id, zone_name, zone_type, zone_config_manager),
+                    TadoTimerDurationSelect(zone_id, zone_name, zone_type, zone_config_manager),
+                ])
+            continue  # Skip other entities (Smart Comfort, Window Type, etc.) for hot water
         
         # Heating-only entities
         if zone_type == "HEATING":
@@ -644,7 +660,6 @@ async def async_setup_zone_config_select(
     if entities:
         async_add_entities(entities)
         _LOGGER.info(f"Added {len(entities)} zone config select entities")
-
 
 async def async_setup_zone_config_number(
     hass: HomeAssistant,
@@ -679,7 +694,7 @@ async def async_setup_zone_config_number(
         zone_name = zone.get("name", f"Zone {zone_id}")
         zone_type = zone.get("type")
         
-        # v2.1.1: Skip Hot Water zones - they don't need per-zone config (#115)
+        # v2.2.0: Skip Hot Water zones - number entities are heating/AC only (#115)
         if zone_type == "HOT_WATER":
             continue
         
@@ -733,7 +748,7 @@ async def async_setup_zone_config_switch(
         zone_name = zone.get("name", f"Zone {zone_id}")
         zone_type = zone.get("type")
         
-        # v2.1.1: Skip Hot Water zones - they don't need per-zone config (#115)
+        # v2.2.0: Skip Hot Water zones - Adaptive Preheat is heating/AC only (#115)
         if zone_type == "HOT_WATER":
             continue
         

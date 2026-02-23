@@ -1015,10 +1015,45 @@ class TadoACClimate(ClimateEntity):
         else:
             self._attr_fan_modes = [FAN_AUTO, FAN_LOW, FAN_MEDIUM, FAN_HIGH]
         
-        # Swing modes - unified dropdown like official Tado integration
-        # Options: off, vertical, horizontal, both
+        # Swing modes - dynamically built from capabilities
+        # v2.2.0: Don't hardcode swing options - different AC units have different supported values
+        # Some units (e.g., Mitsubishi) don't support "OFF" as a swing value (#128)
         if has_swing:
-            self._attr_swing_modes = ["off", "vertical", "horizontal", "both"]
+            # Collect all supported swing values across all modes
+            all_v_swings = set()
+            all_h_swings = set()
+            for mode in ['COOL', 'HEAT', 'DRY', 'FAN', 'AUTO']:
+                mode_caps = ac_caps.get(mode) or {}
+                if 'verticalSwing' in mode_caps:
+                    all_v_swings.update(mode_caps['verticalSwing'])
+                if 'horizontalSwing' in mode_caps:
+                    all_h_swings.update(mode_caps['horizontalSwing'])
+            
+            # Build swing_modes based on actual capabilities
+            swing_modes = []
+            has_v_off = "OFF" in all_v_swings
+            has_h_off = "OFF" in all_h_swings
+            has_v_on = any(v != "OFF" for v in all_v_swings)
+            has_h_on = any(h != "OFF" for h in all_h_swings)
+            
+            # "off" option - only if at least one swing type supports OFF
+            if has_v_off or has_h_off or (not all_v_swings and not all_h_swings):
+                swing_modes.append("off")
+            
+            # "vertical" option - only if vertical swing has non-OFF values
+            if has_v_on:
+                swing_modes.append("vertical")
+            
+            # "horizontal" option - only if horizontal swing has non-OFF values
+            if has_h_on:
+                swing_modes.append("horizontal")
+            
+            # "both" option - only if both have non-OFF values
+            if has_v_on and has_h_on:
+                swing_modes.append("both")
+            
+            self._attr_swing_modes = swing_modes if swing_modes else ["off"]
+            _LOGGER.debug(f"AC zone {zone_id} swing modes: {self._attr_swing_modes} (v_swings={all_v_swings}, h_swings={all_h_swings})")
         else:
             self._attr_swing_modes = None
         
@@ -1351,11 +1386,15 @@ class TadoACClimate(ClimateEntity):
                 self._attr_fan_mode = TADO_TO_HA_FAN.get(fan_level, FAN_AUTO)
                 
                 # Swing - API returns verticalSwing/horizontalSwing (not swing)
+                # v2.2.0: Don't assume "OFF" is valid - check capabilities (#128)
                 # Map to unified swing mode: off/vertical/horizontal/both
-                vertical_swing = setting.get('verticalSwing', 'OFF')
-                horizontal_swing = setting.get('horizontalSwing', 'OFF')
-                v_on = vertical_swing != 'OFF'
-                h_on = horizontal_swing != 'OFF'
+                vertical_swing = setting.get('verticalSwing')  # None if not present
+                horizontal_swing = setting.get('horizontalSwing')  # None if not present
+                
+                # Determine if swing is "on" - any value that's not OFF or None
+                v_on = vertical_swing is not None and vertical_swing != 'OFF'
+                h_on = horizontal_swing is not None and horizontal_swing != 'OFF'
+                
                 if v_on and h_on:
                     self._attr_swing_mode = "both"
                 elif v_on:
@@ -1363,7 +1402,8 @@ class TadoACClimate(ClimateEntity):
                 elif h_on:
                     self._attr_swing_mode = "horizontal"
                 else:
-                    self._attr_swing_mode = "off"
+                    # Default to first available swing mode (may not be "off" for some units)
+                    self._attr_swing_mode = self._attr_swing_modes[0] if self._attr_swing_modes else "off"
                 
                 # HVAC action - based on acPower.value ('ON'/'OFF')
                 # v1.10.0: Use helper method for hvac_action calculation
@@ -1841,23 +1881,46 @@ class TadoACClimate(ClimateEntity):
             else:
                 setting["fanLevel"] = "AUTO"
         
-        # Swing - only send if mode supports it
-        # Use unified swing mode: off/vertical/horizontal/both
+        # Swing - only send if mode supports it AND value is in supported list
+        # v2.2.0 Fix: Validate swing values against capabilities (#128 - @BirbByte)
+        # Some AC units (e.g., Mitsubishi) don't support "OFF" as a swing value
         if 'verticalSwing' in mode_caps:
+            supported_v_swings = mode_caps.get('verticalSwing') or []
             if vertical_swing is not None:
-                setting["verticalSwing"] = vertical_swing
+                # Explicit value passed - validate it
+                if vertical_swing in supported_v_swings:
+                    setting["verticalSwing"] = vertical_swing
+                # else: don't send unsupported value
             elif self._attr_swing_mode in ("vertical", "both"):
-                setting["verticalSwing"] = "ON"
+                if "ON" in supported_v_swings:
+                    setting["verticalSwing"] = "ON"
+                elif supported_v_swings:
+                    # Fallback to first supported value
+                    setting["verticalSwing"] = supported_v_swings[0]
             else:
-                setting["verticalSwing"] = "OFF"
+                # User wants swing off - only send if "OFF" is supported
+                if "OFF" in supported_v_swings:
+                    setting["verticalSwing"] = "OFF"
+                # else: don't send verticalSwing field at all
         
         if 'horizontalSwing' in mode_caps:
+            supported_h_swings = mode_caps.get('horizontalSwing') or []
             if horizontal_swing is not None:
-                setting["horizontalSwing"] = horizontal_swing
+                # Explicit value passed - validate it
+                if horizontal_swing in supported_h_swings:
+                    setting["horizontalSwing"] = horizontal_swing
+                # else: don't send unsupported value
             elif self._attr_swing_mode in ("horizontal", "both"):
-                setting["horizontalSwing"] = "ON"
+                if "ON" in supported_h_swings:
+                    setting["horizontalSwing"] = "ON"
+                elif supported_h_swings:
+                    # Fallback to first supported value
+                    setting["horizontalSwing"] = supported_h_swings[0]
             else:
-                setting["horizontalSwing"] = "OFF"
+                # User wants swing off - only send if "OFF" is supported
+                if "OFF" in supported_h_swings:
+                    setting["horizontalSwing"] = "OFF"
+                # else: don't send horizontalSwing field at all
         
         # Termination
         # v2.1.0: Use per-zone overlay mode (Issue #101 - @leoogermenia)
