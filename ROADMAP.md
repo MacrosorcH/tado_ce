@@ -6,6 +6,45 @@ For completed features, see [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
+## 🚧 In Progress
+
+**Multi-Home Support** ([#110](https://github.com/hiall-fyi/tado_ce/issues/110) - @robvol87, [#145](https://github.com/hiall-fyi/tado_ce/issues/145) - @Blankf):
+
+Refactoring global state to per-entry context to enable multiple Tado accounts/homes in a single HA instance.
+
+✅ Already done (v1.7.0+):
+- Per-home data files (`zones_{home_id}.json`, `ratelimit_{home_id}.json`, etc.)
+- Per-home unique_id (`tado_ce_{home_id}`) for config entries
+- Per-home ZoneConfigManager and APICallTracker
+- Home selection in config flow
+
+🔧 Remaining work:
+- `_current_home_id` global → per-entry context (`hass.data[DOMAIN][entry_id]`)
+- `get_async_client()` singleton → per-entry client instances
+- `async_sync_tado()` → per-entry coordinator
+- Per-entry cleanup in `async_unload_entry()`
+- Multi-home setup guide documentation
+
+This is also a prerequisite for the HomeKit / Data Source Abstraction work — the same `data_loader.py` coupling that blocks multi-home is the same code that needs refactoring for the data source router.
+
+---
+
+## Up Next
+
+**Local API / HomeKit Hybrid** ([Discussion #29](https://github.com/hiall-fyi/tado_ce/discussions/29)):
+
+After Multi-Home is done, the path to HomeKit local control follows these phases:
+
+1. **Data Source Abstraction Layer (Phase 1)** - Build a `DataSourceRouter` between entities and data sources (Cloud, HomeKit, future Local API/Matter). Cloud-only mode wraps existing `data_loader.py` with zero behavior change. Pure refactor.
+2. **Entity Migration (Phase 2)** - Migrate entities per-file to use the router instead of direct `data_loader.py` calls. Each file independently tested. Pure refactor — no new features.
+3. **HomeKit Local Control (Phase 3)** - Add HomeKit (HAP) as a data source. Local reads/writes for temperature, humidity, HVAC mode. Cloud API for data not available locally (heating %, battery, schedules, hot water). Proof of concept working — see Discussion #29 for details.
+4. **Pure Local (Long-term research)** - Investigating 868MHz 6LoWPAN protocol between Bridge and TRVs for 100% local control. Requires specialized RF hardware and community help.
+
+- **Prerequisite**: Multi-Home Support (in progress above)
+- **Target**: April 2026
+
+---
+
 ## Future Consideration
 
 **API Management:**
@@ -38,24 +77,7 @@ For completed features, see [CHANGELOG.md](CHANGELOG.md).
 - **Per-Zone Temperature Sensor Override** - Allow selecting any HA temperature sensor (HomeKit, Zigbee, etc.) per zone for faster updates
 - **Note**: v2.2.0 added Window Predicted sensor using local Tado temperature analysis; external sensor override for even faster detection still under consideration
 
-**Climate Group Support** ([#139](https://github.com/hiall-fyi/tado_ce/discussions/139) - @merlinpimpim):
-- ~~**Group Expansion for Custom Services**~~ - ✅ Done in v2.2.3: `tado_ce.set_climate_timer`, `tado_ce.set_water_heater_timer`, and `tado_ce.resume_schedule` now support climate groups defined in configuration.yaml
-- Groups are automatically expanded to individual entities with domain filtering
-
 **Other:**
 - Apply for HACS default repository inclusion
 - Max Flow Temperature control (requires OpenTherm, [#15](https://github.com/hiall-fyi/tado_ce/issues/15))
-- ~~Combi boiler mode~~ - ✅ Fixed in v2.2.1: Hot water detection now correctly skips overlay/timer entities for combi boilers ([#115](https://github.com/hiall-fyi/tado_ce/issues/115))
 - **Temperature Update Delay Investigation** ([#124](https://github.com/hiall-fyi/tado_ce/issues/124) - @hapklaar) - User reports ~2 hour update intervals and slow climate card updates. Awaiting debug logs.
-
-**Local API (Experimental):**
-- **Local-first, cloud-fallback** - Use local API when available, fall back to cloud. Requires community help to test across different Tado hardware versions. See [Discussion #29](https://github.com/hiall-fyi/tado_ce/discussions/29).
-- **Hybrid mode** - Configurable per-feature (e.g., local for reads, cloud for writes)
-
-**Multi-Home Support:**
-- **Multi-home preference in config flow** - New users asked "Plan to add multiple homes?" to enable home_id prefix
-- **Allow multiple integration entries** - Each entry for a different home
-- **Thread-safe home_id handling** - Replace global `_current_home_id` with per-entry context (current architecture uses global state that would conflict with multiple homes)
-- **Per-home async_api client** - Change from singleton to per-entry client instances
-- **Multi-home setup guide** - Documentation for users with multiple properties
-- **Note**: Multi-home infrastructure (per-home data files, device identifiers) is already in place. Remaining work is primarily refactoring global state to per-entry context.
