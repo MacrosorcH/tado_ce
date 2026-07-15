@@ -9,7 +9,12 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.util import dt as dt_util
 
-from .calculations import classify_comfort_level, classify_mold_risk_level
+from .calculations import (
+    calculate_heat_index,
+    classify_comfort_level,
+    classify_heat_risk_level,
+    classify_mold_risk_level,
+)
 from .const import ENTITY_DATA_CONDENSATION_RISK, ENTITY_DATA_WINDOW_PREDICTED
 from .helpers import get_zone_states, merge_homekit_into_zone_data, parse_iso_datetime
 from .insights_api import (
@@ -65,6 +70,21 @@ _HEATING_ANOMALY_POWER_PCT = 80  # %: high power threshold for anomaly detection
 _HEATING_ANOMALY_TEMP_DELTA = 0.5  # °C: near-target threshold for anomaly detection
 _OUTDOOR_TEMP_MIN_SAMPLES = 48  # minimum outdoor temp readings for 7-day average
 
+# NOAA heat-risk bands, low to high, for vulnerable-group promotion.
+_HEAT_RISK_BANDS = ("None", "Caution", "Extreme Caution", "Danger", "Extreme Danger")
+
+
+def _promote_one_band(risk: str) -> str:
+    """Bump a NOAA heat-risk band up one step for vulnerable-group homes.
+
+    "None" (not hot) stays "None" so a mild room never becomes a warning;
+    "Extreme Danger" saturates because there is no higher band.
+    """
+    if risk == "None":
+        return "None"
+    idx = _HEAT_RISK_BANDS.index(risk)
+    return _HEAT_RISK_BANDS[min(idx + 1, len(_HEAT_RISK_BANDS) - 1)]
+
 
 @dataclass(frozen=True)
 class InsightContext:
@@ -77,6 +97,7 @@ class InsightContext:
     weather_enabled: bool
     presence_enabled: bool
     geofencing_active: bool
+    comfort_heat_vulnerable_group: bool = False
 
     @classmethod
     def from_coordinator(cls, coordinator: TadoDataUpdateCoordinator) -> InsightContext:
@@ -102,6 +123,7 @@ class InsightContext:
             weather_enabled=cfg.get_weather_enabled(),
             presence_enabled=presence_enabled,
             geofencing_active=geofencing_active,
+            comfort_heat_vulnerable_group=cfg.get_comfort_heat_vulnerable_group(),
         )
 
 
@@ -134,19 +156,46 @@ def _collect_comfort_insight(
     zone_name: str,
     inside_temp: float,
     insights: list[Any],
+    power: str = "ON",
+    is_cooling_zone: bool = False,
+    humidity: float | None = None,
+    is_vulnerable_group: bool = False,
 ) -> None:
     """Collect comfort insight if temperature is outside comfortable range."""
     comfort_state = classify_comfort_level(inside_temp)
-    if comfort_state in ("Cold", "Cool", "Freezing"):
+    heat_index: float | None = None
+    heat_risk: str | None = None
+    if comfort_state in ("Cold", "Cool"):
+        # Cold comfort only when powered ON. When heating is off, a room well
+        # below target is already flagged by the heating-off-cold insight, so
+        # firing here too would duplicate it.
+        if power != "ON":
+            return
         severity = "too_cold"
-    elif comfort_state in ("Hot", "Sweltering"):
-        severity = "too_hot"
+    elif comfort_state == "Hot":
+        # Hot comfort fires regardless of power; summer overheat matters most
+        # exactly when heating is off. Severity follows the NOAA heat-index band.
+        if humidity is None:
+            severity = "too_hot"
+        else:
+            heat_index = calculate_heat_index(inside_temp, humidity)
+            heat_risk = classify_heat_risk_level(heat_index)
+            risk_for_severity = (
+                _promote_one_band(heat_risk) if is_vulnerable_group else heat_risk
+            )
+            severity = {
+                "Extreme Danger": "extreme_danger",
+                "Danger": "danger",
+            }.get(risk_for_severity, "too_hot")
     else:
         return
     rec = calculate_comfort_recommendation(
         comfort_state=comfort_state,
         zone_name=zone_name,
         current_temp=inside_temp,
+        is_cooling_zone=is_cooling_zone,
+        heat_index=heat_index,
+        heat_risk_level=heat_risk,
     )
     insights.append(
         Insight(
@@ -252,11 +301,15 @@ def collect_single_zone_insights(
     if ctx.environment_enabled and humidity is not None and inside_temp is not None:
         _collect_mold_risk_insight(zone_name, inside_temp, humidity, insights)
 
-    # --- Comfort (environment, skip when heating OFF) ---
+    # --- Comfort (environment): hot fires even when heating OFF; cold gated ON ---
     setting = zone_data.get("setting") or {}
     power = setting.get("power", "OFF")
-    if ctx.environment_enabled and inside_temp is not None and power == "ON":
-        _collect_comfort_insight(zone_name, inside_temp, insights)
+    is_cooling_zone = setting.get("type") == "AIR_CONDITIONING"
+    if ctx.environment_enabled and inside_temp is not None:
+        _collect_comfort_insight(
+            zone_name, inside_temp, insights, power, is_cooling_zone,
+            humidity, ctx.comfort_heat_vulnerable_group,
+        )
 
     # --- Coordinator-based insights (condensation, window, preheat, anomaly) ---
     _collect_ha_entity_insights(
@@ -271,14 +324,24 @@ def collect_single_zone_insights(
     )
 
     # --- Heating off + cold room (always relevant: basic safety) ---
-    insight = calculate_heating_off_cold_room_insight(
+    result = calculate_heating_off_cold_room_insight(
         power_state=setting.get("power"),
         current_temp=inside_temp,
         target_temp=(setting.get("temperature") or {}).get("celsius"),
         zone_name=zone_name,
+        is_vulnerable_group=ctx.comfort_heat_vulnerable_group,
     )
-    if insight:
-        insights.append(insight)
+    if result:
+        severity, recommendation = result
+        priority = get_insight_priority("heating_off_cold", severity)
+        insights.append(
+            Insight(
+                priority=priority,
+                recommendation=recommendation,
+                insight_type="heating_off_cold",
+                zone_name=zone_name,
+            )
+        )
 
     # --- Optional insights gated by config ---
     _collect_optional_zone_insights(

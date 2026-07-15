@@ -14,7 +14,7 @@ Thank you to everyone who supported the project through [Buy Me a Coffee](https:
 | ☕☕☕☕☕☕ | [@jeverley](https://github.com/jeverley) |
 | ☕☕☕☕☕ | Marcel v.H., [@rodneyha](https://github.com/rodneyha), [@UKICS](https://github.com/UKICS), [@wisskid](https://github.com/wisskid) |
 | ☕☕☕☕ | [@hapklaar](https://github.com/hapklaar), [@Prodeguerriero](https://github.com/Prodeguerriero) |
-| ☕☕ | Arnaud L., [@janchrillesen](https://github.com/janchrillesen), [@jeromewir](https://github.com/jeromewir), Luke R., [@marcovn](https://github.com/marcovn) |
+| ☕☕ | Arnaud L., [@janchrillesen](https://github.com/janchrillesen), [@jeromewir](https://github.com/jeromewir), Luke R., [@marcovn](https://github.com/marcovn), [@ratormat](https://github.com/ratormat) |
 | ☕ | Alby T., [@MathiasB112](https://github.com/MathiasB112) |
 
 ---
@@ -22,6 +22,11 @@ Thank you to everyone who supported the project through [Buy Me a Coffee](https:
 ## Per-Version Credits
 
 Community contributors who helped shape each release through bug reports, feature requests, testing, and feedback.
+
+### v4.2.0
+
+- **[@rustyd0g](https://github.com/rustyd0g)** — Requested the per-zone heating circuit select ([#316](https://github.com/hiall-fyi/tado_ce/issues/316)), pointing at the Core work and the open draft PR, and laid out the residual-heat use case that makes it worth having: set a zone to "No heating circuit" so its valves still soak up spare heat when the boiler runs for another room, without that room firing the boiler itself. Offered to test the multi-circuit side, which is the part I can't exercise on my own single-circuit setup.
+- **[@Siiya27](https://github.com/Siiya27)** — Tested the v4.1.4 hot-water fix on his temperature-controlled tank ([#317](https://github.com/hiall-fyi/tado_ce/issues/317)) and reported that Heat came back at the tank's maximum instead of his chosen 52°. Worked through the diagnosis step by step and confirmed the target wasn't surviving the overnight off period, and that the temperature control only reappeared after a poll. That testing is what turned the follow-up into a definite fix, since his setup is the one that actually exercises this and mine can't.
 
 ### v4.1.4
 

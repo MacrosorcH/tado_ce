@@ -118,23 +118,23 @@ When the Internet Bridge is configured, Tado CE discovers entities from the brid
 
 | Function | CE? | Friendly Name | Platform | Wiring |
 |---|---|---|---|---|
-| Boiler wiring state | ✓ | Bridge Wiring State | `sensor` | All |
-| Boiler output temperature | ✓ | Bridge Boiler Output Temp | `sensor` | OpenTherm |
-| Boiler flow temperature | ✓ | Bridge Boiler Flow Temp | `sensor` | eBUS |
+| Boiler wiring state | ✓ | Boiler Wiring State | `sensor` | All |
+| Boiler output temperature | ✓ | Boiler Output Temperature | `sensor` | OpenTherm |
+| Boiler flow temperature | ✓ | Boiler Flow Temperature | `sensor` | eBUS |
 | Max output temperature control | ✓ | Max Flow Temperature | `number` | OpenTherm |
 
 ### Default Disabled
 
 | Function | CE? | Friendly Name | Platform | Wiring |
 |---|---|---|---|---|
-| Output temp timestamp | ✓ | Bridge Boiler Output Temp Time | `sensor` | OpenTherm |
-| Flow temp timestamp | ✓ | Bridge Boiler Flow Temp Time | `sensor` | eBUS |
-| Max output temperature (read-only) | ✓ | Bridge Boiler Max Output Temp | `sensor` | OpenTherm |
-| Hot water zone present | ✓ | Bridge Hot Water Present | `sensor` | All |
-| Bridge device type | ✓ | Bridge Device Type | `sensor` | All |
-| Bridge device serial | ✓ | Bridge Device Serial | `sensor` | All |
-| Therm interface type | ✓ | Bridge Therm Interface Type | `sensor` | All |
-| Bridge device connected | ✓ | Bridge Device Connected | `sensor` | All |
+| Output temp timestamp | ✓ | Boiler Output Temperature Time | `sensor` | OpenTherm |
+| Flow temp timestamp | ✓ | Boiler Flow Temperature Time | `sensor` | eBUS |
+| Max output temperature (read-only) | ✓ | Boiler Max Output Temperature | `sensor` | OpenTherm |
+| Hot water zone present | ✓ | Hot Water Present | `sensor` | All |
+| Boiler device type | ✓ | Boiler Device Type | `sensor` | All |
+| Boiler device serial | ✓ | Boiler Device Serial | `sensor` | All |
+| Therm interface type | ✓ | Boiler Interface Type | `sensor` | All |
+| Boiler device connected | ✓ | Boiler Device Connected | `sensor` | All |
 | Bridge capabilities summary | ✓ | Bridge Capabilities | `sensor` | All |
 | Bridge schema version | ✓ | Bridge Schema Version | `sensor` | All |
 

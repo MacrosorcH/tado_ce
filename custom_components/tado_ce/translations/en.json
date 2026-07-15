@@ -1071,6 +1071,12 @@
             "name": "API calls per change"
           }
         }
+      },
+      "heating_circuit": {
+        "name": "Heating Circuit",
+        "state": {
+          "no_heating_circuit": "No heating circuit"
+        }
       }
     },
     "switch": {
@@ -1341,7 +1347,8 @@
         "weather_compensation": "Weather Compensation",
         "bridge": "Internet Bridge",
         "homekit": "HomeKit",
-        "polling_api": "Polling & API"
+        "polling_api": "Polling & API",
+        "comfort_safety": "Comfort & Safety"
       }
     }
   },
@@ -1534,14 +1541,16 @@
               "weather_enabled": "Weather Data",
               "mobile_devices_enabled": "Mobile Device Tracking",
               "schedule_calendar_enabled": "Schedule Calendar",
-              "offset_enabled": "Device Temperature Offsets"
+              "offset_enabled": "Device Temperature Offsets",
+              "heating_circuit_enabled": "Heating Circuit Control"
             },
             "data_description": {
               "home_state_sync_enabled": "Sync your home's overall presence (Home/Away). About 1 API call each refresh. Refresh interval configurable in Advanced Settings → Polling & API.",
               "weather_enabled": "Outside temperature and solar intensity from Tado. About 1 API call each refresh. Refresh interval configurable in Advanced Settings → Polling & API.",
               "mobile_devices_enabled": "Track each phone's location for per-device presence. Updates on HA restart only. To refresh in the background, turn this on, save, then enable Frequent Mobile Sync in Advanced Settings → Polling & API.",
               "schedule_calendar_enabled": "See your Tado heating schedules as calendar entries in HA",
-              "offset_enabled": "Show the temperature calibration offset that appears in the Tado app on climate entities (+1 API call per device on restart)"
+              "offset_enabled": "Show the temperature calibration offset that appears in the Tado app on climate entities (+1 API call per device on restart)",
+              "heating_circuit_enabled": "Assign each heating zone to a boiler circuit, or to none so its valves still open for residual heat without firing the boiler. Needs a bridge with boiler circuits. Refreshes on the normal sync cadence, not instantly."
             }
           },
           "hardware_connections": {
@@ -1708,6 +1717,15 @@
               "presence_min_refresh_minutes": "How often to check home presence (1–60 min, default 5). At 1 min: ~1,440 calls/day; at 5 min: ~288 calls/day.",
               "weather_min_refresh_minutes": "How often to fetch weather data (15–120 min, default 30). Tado's weather updates roughly hourly, so going below 15 min won't give fresher readings.",
               "mobile_devices_min_refresh_minutes": "How often to update mobile device locations (1–60 min, default 5). At 1 min: ~1,440 calls/day per device; at 5 min: ~288 calls/day per device."
+            }
+          },
+          "comfort_safety": {
+            "name": "Comfort & Safety",
+            "data": {
+              "comfort_heat_vulnerable_group": "Heat and cold alerts for vulnerable occupants"
+            },
+            "data_description": {
+              "comfort_heat_vulnerable_group": "Raise heat and cold warnings one level earlier for homes with elderly, infant, or unwell occupants, where the same temperature carries more risk. Off by default."
             }
           }
         }

@@ -431,21 +431,10 @@ HOMEKIT_SAVINGS_RESET_RATIO: Final[float] = 0.05
 # scheduled for removal in v5.0.0.
 HOMEKIT_WEATHER_SKIP_MINUTES: Final[int] = 30  # legacy, superseded by WEATHER_MIN_REFRESH_MINUTES
 
-# Periodic device-offset resync interval.
-#
-# Tado's own adaptive calibration can change a device offset without
-# Home Assistant having written it, e.g. the user changes the offset in
-# the Tado app, or the Tado backend nudges it as part of its own
-# learning loop. The Offset Sync controller's per-write readback gate
-# only proves "what we wrote landed"; it does not detect later
-# server-side drift, so the cached `offsets[zone_id]` value can still
-# diverge from Tado's stored value across a session.
-#
-# To bound that drift, the coordinator re-fetches every device offset
-# from Tado at least this often (in addition to the existing fetch on
-# the first poll after a restart). 30 minutes is a small fraction of an
-# Offset Sync evaluation cycle and adds at most one GET per zone every
-# half hour.
+# Periodic device-offset resync interval. Tado's own calibration or the
+# user's app can change an offset with no HA write, and the per-write
+# readback gate only proves our writes landed, not later server-side
+# drift, so re-fetch every offset at least this often.
 OFFSET_DRIFT_REFRESH_SECONDS: Final[int] = 30 * 60
 
 # Without a periodic refresh, `connectionState` / `currentFwVersion` /

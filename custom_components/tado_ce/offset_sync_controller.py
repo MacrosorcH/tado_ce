@@ -374,7 +374,7 @@ class OffsetSyncController:
 
             handle_background_write_error(
                 e, self._coordinator.config_entry, self._hass, self._coordinator,
-                f"Offset Sync: zone {self._zone_id} write failed — "
+                f"Offset Sync: zone {self._zone_id} write failed, "
                 "starting recovery; will retry on next sensor change",
             )
 
@@ -654,7 +654,7 @@ class OffsetSyncController:
 
             handle_background_write_error(
                 e, self._coordinator.config_entry, self._hass, self._coordinator,
-                f"Offset Sync: zone {self._zone_id} could not read offset — "
+                f"Offset Sync: zone {self._zone_id} could not read offset, "
                 "starting recovery; starting with offset 0.0°C",
             )
         except (TimeoutError, aiohttp.ClientError):

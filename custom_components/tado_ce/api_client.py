@@ -837,6 +837,37 @@ class TadoApiClient(TadoAuthMixin):
         )
         return result is not None
 
+    async def get_heating_circuits(self) -> list[dict[str, Any]]:
+        """Return the home's boiler heating circuits.
+
+        GET /homes/{id}/heatingCircuits. Each item carries a stable ``number``
+        (identity / write key) and a ``driverShortSerialNo`` (display). Returns
+        an empty list when unavailable so single- or no-circuit homes degrade cleanly.
+        """
+        result = await self.api_call("heatingCircuits")
+        return result if isinstance(result, list) else []
+
+    async def get_zone_control(self, zone_id: str) -> dict[str, Any]:
+        """Return a zone's control block (carries ``heatingCircuit``).
+
+        GET /zones/{id}/control. Returns an empty dict when unavailable.
+        """
+        result = await self.api_call(f"zones/{zone_id}/control")
+        return result if isinstance(result, dict) else {}
+
+    async def set_zone_heating_circuit(self, zone_id: str, circuit_number: int | None) -> None:
+        """Reassign a zone to a boiler circuit, or unassign it.
+
+        PUT /zones/{id}/control/heatingCircuit with ``{"circuitNumber": n}``;
+        ``None`` unassigns the zone ("No heating circuit"), so its valves still
+        open for residual heat but the room never fires the boiler itself.
+        """
+        await self.api_call(
+            f"zones/{zone_id}/control/heatingCircuit",
+            method="PUT",
+            data={"circuitNumber": circuit_number},
+        )
+
     async def get_zone_default_overlay(self, zone_id: str) -> str | None:
         """Return the zone's server-side default termination type, or None.
 
@@ -997,6 +1028,36 @@ class TadoApiClient(TadoAuthMixin):
             await self._sync_offsets(zones_info)
 
         await self._sync_ac_capabilities(zones_info)
+
+        if (
+            self._config_manager is not None
+            and self._config_manager.get_heating_circuit_enabled()
+        ):
+            await self._sync_heating_circuits(zones_info)
+
+    async def _sync_heating_circuits(self, zones_info: list[dict[str, Any]]) -> None:
+        """Fetch the home's circuit list + each zone's current circuit (full-sync only).
+
+        Rides the full-sync cadence, with no separate timer, because the
+        circuit list rarely changes; per-zone control is re-read here so a
+        Tado-app reassignment surfaces within one full-sync interval. Stores are
+        overwrite-on-fetch, so a dropped circuit / zone self-evicts.
+        """
+        if self._data_loader is None:
+            return
+        circuits = await self.get_heating_circuits()
+        self._data_loader.update_cache("heating_circuits", {"circuits": circuits})
+        await self._data_loader.async_update_store("heating_circuits", {"circuits": circuits})
+
+        control: dict[str, Any] = {}
+        for zone in zones_info:
+            if zone.get("type") != "HEATING":
+                continue
+            zone_id = str(zone.get("id"))
+            zone_control = await self.get_zone_control(zone_id)
+            control[zone_id] = {"heatingCircuit": zone_control.get("heatingCircuit")}
+        self._data_loader.update_cache("heating_circuit_control", control)
+        await self._data_loader.async_update_store("heating_circuit_control", control)
 
     async def async_sync(
         self,

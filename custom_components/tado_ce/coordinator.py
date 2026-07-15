@@ -389,6 +389,8 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         offsets_data = self.data_loader.get_cached("offsets")
         schedules_data = self.data_loader.get_cached("schedules")
         ac_capabilities = self.data_loader.get_cached("ac_capabilities")
+        heating_circuits_data = self.data_loader.get_cached("heating_circuits")
+        heating_circuit_control_data = self.data_loader.get_cached("heating_circuit_control")
 
         await self._accumulate_outdoor_temp_history(weather_data)
 
@@ -441,6 +443,8 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "home_devices": home_devices_data or [],
             "offsets": offsets_data or {},
             "schedules": schedules_data or {},
+            "heating_circuits": heating_circuits_data or {},
+            "heating_circuit_control": heating_circuit_control_data or {},
         }
         if bridge_data is not None:
             result["bridge"] = bridge_data
@@ -703,7 +707,7 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             async_create_auth_issue(self.hass, self.home_id)
             raise ConfigEntryAuthFailed(
-                "Refresh token expired — user must re-authenticate",
+                "Refresh token expired; user must re-authenticate",
             ) from e
         except TadoSyncError as e:
             if self.is_homekit_active:
@@ -1529,6 +1533,7 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for store_name in (
             "schedules", "zone_config", "smart_comfort_cache",
             "ac_capabilities", "ac_capabilities_fp", "offsets",
+            "heating_circuit_control",
         ):
             try:
                 data = await self.data_loader.async_load_auxiliary(store_name)

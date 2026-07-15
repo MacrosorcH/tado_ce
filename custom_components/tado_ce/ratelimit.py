@@ -131,7 +131,7 @@ def should_block_manual_action(
             minutes = (reset_seconds % 3600) // 60
             reset_info = f"reset in {hours}h {minutes}m"
         else:
-            reset_info = "reset time unknown — will auto-recover after the next successful API response"
+            reset_info = "reset time unknown, will auto-recover after the next successful API response"
 
         reason = (
             f"API limit reached ({remaining} calls remaining). "

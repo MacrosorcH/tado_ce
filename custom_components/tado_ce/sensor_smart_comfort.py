@@ -647,7 +647,7 @@ class TadoPreheatAdvisorSensor(TadoZoneSensor):
             if home_state and home_state.get("presence") != "HOME":
                 self._set_simple_status(
                     "Away", confidence="away_mode",
-                    summary="Preheat suppressed — home is in away mode",
+                    summary="Preheat suppressed: home is in away mode",
                 )
                 return
 

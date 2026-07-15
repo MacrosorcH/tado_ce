@@ -155,6 +155,13 @@ FEATURE_GROUP_CONTEXTS: tuple[FeatureGroupContext, ...] = (
         label="HomeKit",
         legacy_suffixes=(),
     ),
+    FeatureGroupContext(
+        cleanup_flag="_cleanup_heating_circuit",
+        feature_group="heating_circuit",
+        label="Heating Circuit",
+        legacy_suffixes=(),
+        platform_filter="select",
+    ),
 )
 
 
@@ -244,6 +251,7 @@ FEATURE_CLEANUP_MAP: list[tuple[str, str, bool]] = [
     ("mobile_devices_enabled", "_cleanup_mobile_devices", False),
     ("wc_enabled", "_cleanup_weather_compensation", False),
     ("homekit_enabled", "_cleanup_homekit", False),
+    ("heating_circuit_enabled", "_cleanup_heating_circuit", False),
 ]
 
 # ---------------------------------------------------------------------------

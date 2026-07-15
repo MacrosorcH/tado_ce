@@ -99,11 +99,11 @@ async def _async_init_data_layer(
         )
     except TadoAuthError as err:
         raise ConfigEntryNotReady(
-            "Authentication failed during setup — check credentials",
+            "Authentication failed during setup; check credentials",
         ) from err
     except (OSError, TimeoutError) as err:
         raise ConfigEntryNotReady(
-            "Failed to create entry components — will retry",
+            "Failed to create entry components; will retry",
         ) from err
 
     return data_loader, zone_config_manager, overlay_mode, timer_duration, components

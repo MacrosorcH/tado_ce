@@ -1071,6 +1071,12 @@
             "name": "API-Aufrufe pro Änderung"
           }
         }
+      },
+      "heating_circuit": {
+        "name": "Heizkreislauf",
+        "state": {
+          "no_heating_circuit": "Kein Heizkreis"
+        }
       }
     },
     "switch": {
@@ -1334,7 +1340,8 @@
         "weather_compensation": "Wetterkompensation",
         "bridge": "Internet-Brücke",
         "polling_api": "Abfrage & API",
-        "homekit": "HomeKit"
+        "homekit": "HomeKit",
+        "comfort_safety": "Komfort & Sicherheit"
       }
     },
     "svc_mode": {
@@ -1620,14 +1627,16 @@
               "weather_enabled": "Wetterdaten",
               "mobile_devices_enabled": "Ortung mobiler Geräte",
               "schedule_calendar_enabled": "Terminkalender",
-              "offset_enabled": "Gerätetemperatur-Offsets"
+              "offset_enabled": "Gerätetemperatur-Offsets",
+              "heating_circuit_enabled": "Steuerung des Heizkreises"
             },
             "data_description": {
               "home_state_sync_enabled": "Synchronisieren Sie den Gesamtstatus Ihres Zuhauses (Zuhause/Nicht zu Hause). Pro Aktualisierung erfolgt etwa ein API-Aufruf. Das Aktualisierungsintervall lässt sich unter „Erweiterte Einstellungen“ → „Abfrage & API“ konfigurieren.",
               "weather_enabled": "Außentemperatur und Sonneneinstrahlung von Tado. Pro Aktualisierung etwa ein API-Aufruf. Das Aktualisierungsintervall lässt sich unter „Erweiterte Einstellungen“ → „Abfrage & API“ konfigurieren.",
               "mobile_devices_enabled": "Verfolgen Sie den Standort jedes Telefons, um die Anwesenheit pro Gerät zu ermitteln. Aktualisierungen erfolgen nur beim Neustart von HA. Um die Daten im Hintergrund zu aktualisieren, aktivieren Sie diese Option, speichern Sie die Einstellungen und aktivieren Sie anschließend „Häufige mobile Synchronisierung“ unter „Erweiterte Einstellungen“ → „Abfrage & API“.",
               "schedule_calendar_enabled": "Zeige deine Tado-Heizungszeitpläne als Kalendereinträge in HA an",
-              "offset_enabled": "Zeige den Temperaturkalibrierungs-Offset an, der in der Tado-App bei Klimageräten angezeigt wird (+1 API-Aufruf pro Gerät beim Neustart)"
+              "offset_enabled": "Zeige den Temperaturkalibrierungs-Offset an, der in der Tado-App bei Klimageräten angezeigt wird (+1 API-Aufruf pro Gerät beim Neustart)",
+              "heating_circuit_enabled": "Weisen Sie jede Heizzone einem Kesselkreis zu oder gar keinem, damit deren Ventile für Restwärme weiterhin geöffnet bleiben, ohne den Kessel zu zünden. Erfordert eine Brücke zu den Kesselkreisen. Die Aktualisierung erfolgt im normalen Synchronisationsrhythmus, nicht sofort."
             }
           },
           "hardware_connections": {
@@ -1794,6 +1803,15 @@
               "wc_step_size": "Runden Sie die Vorlauftemperatur auf diese Schrittgröße ab - größere Schritte bedeuten weniger Kesseleinstellungen (0,5-2,0°C)",
               "wc_hysteresis": "Senden Sie nur dann eine neue Vorlauftemperatur, wenn sie sich von der letzten um mindestens diesen Wert unterscheidet (0,5-3,0°C)",
               "wc_heating_system_preset": "Durch Auswahl einer Voreinstellung werden empfohlene Standardwerte für Steigungs- und Vorlauftemperaturen festgelegt. Wählen Sie „Benutzerdefiniert“, um jedes Feld manuell anzupassen."
+            }
+          },
+          "comfort_safety": {
+            "name": "Komfort & Sicherheit",
+            "data": {
+              "comfort_heat_vulnerable_group": "Hitze- und Kältewarnungen für schutzbedürftige Bewohner"
+            },
+            "data_description": {
+              "comfort_heat_vulnerable_group": "Hitze- und Kältewarnungen sollten für Haushalte mit älteren Menschen, Kleinkindern oder kranken Personen eine Stufe früher ausgegeben werden, da dort bereits bei derselben Temperatur ein höheres Risiko besteht. Standardmäßig deaktiviert."
             }
           }
         }

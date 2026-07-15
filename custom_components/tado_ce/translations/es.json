@@ -1071,6 +1071,12 @@
             "name": "Llamadas a la API por cambio"
           }
         }
+      },
+      "heating_circuit": {
+        "name": "Circuito de calefacción",
+        "state": {
+          "no_heating_circuit": "Sin circuito de calefacción"
+        }
       }
     },
     "switch": {
@@ -1334,7 +1340,8 @@
         "weather_compensation": "Compensación meteorológica",
         "bridge": "Puente Internet",
         "polling_api": "Sondeo y API",
-        "homekit": "HomeKit"
+        "homekit": "HomeKit",
+        "comfort_safety": "Comodidad y seguridad"
       }
     },
     "svc_mode": {
@@ -1620,14 +1627,16 @@
               "weather_enabled": "Datos meteorológicos",
               "mobile_devices_enabled": "Seguimiento de dispositivos móviles",
               "schedule_calendar_enabled": "Calendario de actividades",
-              "offset_enabled": "Compensaciones de temperatura del dispositivo"
+              "offset_enabled": "Compensaciones de temperatura del dispositivo",
+              "heating_circuit_enabled": "Control del circuito de calefacción"
             },
             "data_description": {
               "home_state_sync_enabled": "Sincroniza el estado general de tu hogar (En casa/Fuera). Aproximadamente una llamada a la API por cada actualización. El intervalo de actualización se puede configurar en «Ajustes avanzados» → «Sondeo y API».",
               "weather_enabled": "Temperatura exterior e intensidad solar de Tado. Aproximadamente una llamada a la API por cada actualización. El intervalo de actualización se puede configurar en «Ajustes avanzados» → «Sondeo y API».",
               "mobile_devices_enabled": "Realiza un seguimiento de la ubicación de cada teléfono para comprobar la presencia de cada dispositivo. Solo se actualiza al reiniciar HA. Para actualizar en segundo plano, activa esta opción, guarda los cambios y, a continuación, habilita «Sincronización móvil frecuente» en «Configuración avanzada» → «Sondeo y API».",
               "schedule_calendar_enabled": "Consulta los horarios de calefacción de Tado como entradas del calendario en HA",
-              "offset_enabled": "Mostrar el desplazamiento de calibración de temperatura que aparece en la aplicación de Tado en las entidades de climatización (+1 llamada a la API por dispositivo al reiniciar)"
+              "offset_enabled": "Mostrar el desplazamiento de calibración de temperatura que aparece en la aplicación de Tado en las entidades de climatización (+1 llamada a la API por dispositivo al reiniciar)",
+              "heating_circuit_enabled": "Asigna cada zona de calefacción a un circuito de la caldera, o a ninguno, de modo que sus válvulas sigan abiertas para aprovechar el calor residual sin encender la caldera. Requiere un puente con los circuitos de la caldera. Se actualiza con la cadencia de sincronización habitual, no al instante."
             }
           },
           "hardware_connections": {
@@ -1794,6 +1803,15 @@
               "wc_step_size": "Redondee la temperatura de impulsión a este tamaño de paso - pasos más grandes significan menos ajustes de la caldera (0,5-2,0°C)",
               "wc_hysteresis": "Sólo envía una nueva temperatura de impulsión cuando difiere de la última en al menos este valor (0,5-3,0°C)",
               "wc_heating_system_preset": "Al seleccionar un ajuste preestablecido, se establecen los valores predeterminados recomendados para la temperatura de la pendiente y la temperatura de flujo. Seleccione «Personalizado» para ajustar cada campo manualmente."
+            }
+          },
+          "comfort_safety": {
+            "name": "Comodidad y seguridad",
+            "data": {
+              "comfort_heat_vulnerable_group": "Alertas por calor y frío para personas vulnerables"
+            },
+            "data_description": {
+              "comfort_heat_vulnerable_group": "Activar las alertas de calor y frío un nivel antes en los hogares con personas mayores, bebés o personas enfermas, donde una misma temperatura supone un mayor riesgo. Desactivado por defecto."
             }
           }
         }

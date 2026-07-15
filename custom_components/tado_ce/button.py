@@ -728,14 +728,8 @@ class TadoIdentifyButton(CoordinatorEntity[TadoDataUpdateCoordinator], ButtonEnt
         self._attr_entity_category = get_entity_category(_meta)
         self._attr_device_info = get_zone_device_info(zone_id, zone_name, zone_type, coordinator.home_id)
 
-        # Pin the entity_id explicitly. Home Assistant 2026.6 prefixes a
-        # freshly-registered entity's slug with BOTH its area name and its
-        # device name, with no de-duplication between the two. Each Tado zone
-        # device sits in an area of the same name (e.g. device "Lounge" in area
-        # "Lounge"), so the auto-derived slug doubles to `{zone}_{zone}_identify`.
-        # Setting entity_id directly takes priority over the derived object id
-        # and is not area/device-prefixed, sidestepping the doubling. The suffix
-        # disambiguates multiple devices in one zone (" VA02").
+        # Pin entity_id so HA 2026.6 doesn't double the slug on same-named
+        # zone/area. Suffix disambiguates multiple devices in one zone.
         suffix = get_device_name_suffix(zone_id, self._device_serial, self._device_type, zones_info or [])
         self._attr_name = f"Identify{suffix}"
         self.entity_id = f"button.{slugify(f'{zone_name} identify{suffix}')}"

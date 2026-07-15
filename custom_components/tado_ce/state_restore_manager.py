@@ -139,12 +139,8 @@ class StateRestoreManager:
         # Tracks whether a zone had an overlay in the previous poll so
         # `on_poll_update` can detect timer expiry (overlay → no overlay).
         self._previous_overlay_states: dict[str, bool] = {}
-        # Counts consecutive polls reporting overlay=null after a zone's
-        # overlay was last seen. Fires the restoration event only on
-        # CONSECUTIVE_CLEARED_THRESHOLD, defending against transient
-        # overlay-null blips during quota-reset windows or partial poll
-        # responses. Reset to 0 the moment an overlay re-appears;
-        # reset to 0 once the event fires.
+        # Consecutive overlay=null polls per zone (see CONSECUTIVE_CLEARED_THRESHOLD
+        # for why). Reset to 0 when an overlay re-appears or once the event fires.
         self._consecutive_cleared: dict[str, int] = {}
         self._store: Store[dict[str, Any]] = Store(
             hass,

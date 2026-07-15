@@ -493,6 +493,13 @@ ENTITY_REGISTRY: dict[str, EntityMeta] = {
         entity_category="config",
         icon="mdi:timer",
     ),
+    "select_heating_circuit": EntityMeta(
+        translation_key="heating_circuit",
+        unique_id_suffix="heating_circuit",  # per-zone (suffixed with zone_id)
+        entity_category="config",
+        icon="mdi:radiator",
+        feature_group="heating_circuit",  # cleaned up when the toggle is turned off
+    ),
     # ===================================================================
     # Switches (switch.py): 3 entries (early_start, child_lock, quota_reserve)
     # ===================================================================

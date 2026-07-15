@@ -17,9 +17,10 @@ from homeassistant.components.water_heater import (
     WaterHeaterEntity,
     WaterHeaterEntityFeature,
 )
-from homeassistant.const import STATE_OFF, UnitOfTemperature
+from homeassistant.const import ATTR_TEMPERATURE, STATE_OFF, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MAX_RETRY_ATTEMPTS
@@ -94,7 +95,7 @@ async def async_setup_entry(
         _LOGGER.debug("Water Heater: no hot-water zones found in this home")
 
 
-class TadoWaterHeater(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdateCoordinator"], WaterHeaterEntity):
+class TadoWaterHeater(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdateCoordinator"], WaterHeaterEntity, RestoreEntity):
     """Tado CE Water Heater Entity."""
 
     _attr_has_entity_name = True
@@ -139,6 +140,20 @@ class TadoWaterHeater(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpd
         self._expected_temperature: float | None = None
 
     # ------------------------------------------------------------------
+    async def async_added_to_hass(self) -> None:
+        """Restore the last-known target temperature across an HA restart."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.attributes.get(ATTR_TEMPERATURE) is not None:
+            self._attr_target_temperature = last_state.attributes[ATTR_TEMPERATURE]
+            _LOGGER.debug(
+                "Water Heater: %s restored target %s°C from previous HA state",
+                self._zone_name,
+                self._attr_target_temperature,
+            )
+        # No sensible universal default for a water heater, so leave None and
+        # let _resolve_on_temperature handle the fallback (last-known, caps.max).
+
     # Public API (TadoZoneEntity Protocol, see entity_types.py)
     # ------------------------------------------------------------------
 
@@ -247,16 +262,15 @@ class TadoWaterHeater(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpd
             temp_data = setting.get("temperature") or {}
             api_target_temp = temp_data.get("celsius")
 
-            if api_target_temp is not None and not self._supports_temperature:
+            # The poll flag is only a cold-boot fallback; the feature set is
+            # driven by the capability so the slider shows before any poll.
+            if api_target_temp is not None:
                 self._supports_temperature = True
-                self._attr_supported_features = (
-                    WaterHeaterEntityFeature.OPERATION_MODE | WaterHeaterEntityFeature.TARGET_TEMPERATURE
-                )
-                _LOGGER.debug(
-                    "Water Heater: %s supports temperature control "
-                    "(setting.temperature.celsius is non-null)",
-                    self._zone_name,
-                )
+            self._attr_supported_features = (
+                WaterHeaterEntityFeature.OPERATION_MODE | WaterHeaterEntityFeature.TARGET_TEMPERATURE
+                if self._zone_can_set_temperature()
+                else WaterHeaterEntityFeature.OPERATION_MODE
+            )
 
             api_operation = self._resolve_api_operation(overlay, api_overlay_type, power)
 
@@ -281,7 +295,10 @@ class TadoWaterHeater(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpd
             else:
                 self._attr_current_operation = api_operation
                 self._overlay_type = api_overlay_type
-                self._attr_target_temperature = api_target_temp
+                if api_target_temp is not None:
+                    self._attr_target_temperature = api_target_temp
+                # OFF tank reports no target, so keep the last-known one rather
+                # than clobbering to None, else Heat later falls back to tank max.
 
             self._data_present = True
 
@@ -543,7 +560,7 @@ class TadoWaterHeater(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpd
             )
             return
 
-        if not self._supports_temperature:
+        if not self._zone_can_set_temperature():
             _LOGGER.warning(
                 "Water Heater: %s does not support temperature control "
                 "(combi system), set-temperature ignored",

@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
+## [4.2.0] - 2026-07-16
+
+### ⚠️ Heads-up: a legacy-cleanup release (v5.0.0) is on the horizon
+
+Nothing changes for you in this release. But v5.0.0 will be a spring-clean that drops backward-compat code built up over the v3.x and v4.x cycles, and a few of those removals are worth knowing about early because they affect how you call services or which entity IDs you script against. Two to plan around:
+
+- **Old swing values.** Automations calling `climate.set_swing_mode` with the old unified values (`off` / `vertical` / `horizontal` / `both`) have logged a deprecation warning since v4.1.0 and still work today, but the compatibility shim is removed at v5.0.0. Move them to the per-axis services (`climate.set_swing_horizontal_mode` and `climate.set_swing_vertical_mode`) before then. If your swing automations don't log a deprecation warning, they're already on the new services and need no change.
+- **Boiler sensor entity IDs.** v4.1.4 renamed the boiler diagnostic sensors' display names from "Bridge …" to "Boiler …", but their entity IDs still carry the old `bridge_` wording. v5.0.0 aligns the IDs to `boiler_` with a migration step, so anything scripting against the old IDs will want updating around then.
+
+There's no date for v5.0.0 yet. The full list of planned removals (option-key migration, entity-naming polish, dead-code sweep, service-call consistency, and more) is in [ROADMAP.md](ROADMAP.md) under "v5.0.0 — Legacy cleanup", worth a read if you have automations or dashboards built on Tado CE.
+
+### Features
+
+- **Heating circuit control** ([#316](https://github.com/hiall-fyi/tado_ce/issues/316) - @rustyd0g) — a new per-zone select to assign a heating zone to a boiler circuit, or to "No heating circuit". Setting a zone to no circuit lets its radiator valves still open to soak up residual heat whenever the boiler is already running for another room, without that room ever firing the boiler itself, which is a genuine energy lever on a multi-circuit system. It's off by default; turn on **Heating Circuit Control** under Settings, and each heating zone gets the select (single-circuit homes get it too, for the no-circuit option). The circuit assignment reads back on the normal sync cadence rather than instantly, and it's fetched only when you enable the option, so it adds no polling for anyone who doesn't use it. Needs a bridge with boiler circuits. If you use the [Pulse Climate Card](https://github.com/hiall-fyi/pulse-card), version 1.9.0 adds an opt-in `heating_circuit` chip that shows a zone's circuit at a glance.
+
+### Bug fixes
+
+- **Hot-room comfort insights show up in summer** — a room getting too hot only raised a comfort insight while its heating was on, so all summer (heating off) a room could sit at 30°C or more and the insight list stayed silent, even though the Comfort Level sensor already read "Sweltering". The hot-side insight now fires whether or not heating is on. The cold-side one still waits for heating to be on, since a room that sits well below its target with the heating off is already flagged by the "heating off, room cold" insight. On air-conditioning zones the advice now points at the AC (lower the setpoint, turn on cooling) rather than telling you to reduce heating.
+- **A dangerously hot room now outranks a low battery** — comfort insights all carried the same medium priority, so a room hot enough to be a real health risk sat level with, and below, a routine low-battery warning in the insight list. Heat now takes its priority from the feels-like temperature on the standard heat-index scale: the "Danger" band (heat cramps or exhaustion likely) is high priority, "Extreme Danger" (heat stroke likely) is critical, and milder heat stays medium. The priority and the recommendation text now come from the same feels-like reading, so a critical heat insight also carries the "feels like X°C" warning.
+- **Hot water remembers your chosen temperature** ([#317](https://github.com/hiall-fyi/tado_ce/issues/317) - @Siiya27) — on a temperature-controlled tank, switching to Heat after the water had been off jumped to the tank's maximum instead of the temperature you last set. The target was dropped each time the tank went off, and again on a restart, so there was nothing left to resume to. It's now kept through both, so Heat comes back at your value (say 52°C) rather than the maximum. The temperature control also appears as soon as the tank supports it, instead of only after the next poll catches it on.
+
+### Improvements
+
+- **Heat and cold alerts for vulnerable occupants** — a new option under Advanced Settings, in its own Comfort & Safety section. For homes with elderly, infant, or unwell occupants, it raises both heat and cold warnings one level earlier, since the same temperature carries more risk for them. Cold alerts step up when a room with the heating off drops into a health-risk range (high below 16°C, critical below 12°C). Off by default.
+
 ## [4.1.4] - 2026-07-11
 
 ### Bug fixes
@@ -93,7 +118,7 @@ Upgrading from v4.0.3: HACS auto-update, no config changes needed. All per-zone 
 
 ### ⚠️ Migration
 
-**Service-call automations using the old unified swing value** (`swing_mode: off / vertical / horizontal / both`) keep working with a deprecation warning logged per call. The compat shim is removed in v4.2.0:
+**Service-call automations using the old unified swing value** (`swing_mode: off / vertical / horizontal / both`) keep working with a deprecation warning logged per call. The compat shim is removed in v5.0.0:
 
 ```yaml
 # Before (v4.0)
@@ -300,7 +325,7 @@ The unified `Off / Vertical / Horizontal / Both` swing dropdown is replaced with
 
 ### ⚠️ Migration
 
-**Service-call automations** — calls using the old unified value (`swing_mode: off / vertical / horizontal / both`) keep working with a deprecation warning logged each call. The compat shim is removed in v4.2.0. Recipe:
+**Service-call automations** — calls using the old unified value (`swing_mode: off / vertical / horizontal / both`) keep working with a deprecation warning logged each call. The compat shim is removed in v5.0.0. Recipe:
 
 ```yaml
 # Before (v4.0)

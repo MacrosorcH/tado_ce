@@ -589,6 +589,8 @@ Existing users with preheat enabled are automatically migrated to Active mode. P
 4. Set **Temperature History days** (1–30)
 5. Optionally select an **Outdoor Temperature Entity** for weather-adjusted comfort targets
 
+**Heat and cold alerts for vulnerable occupants** live under Advanced Settings, in their own Comfort & Safety section (you don't need Smart Comfort on to use them). For homes with elderly, infant, or unwell occupants, the option raises both heat and cold warnings one level earlier, since the same temperature carries more risk. Cold alerts step up when a room with the heating off drops into a health-risk range (high below 16°C, critical below 12°C). Off by default.
+
 ### Usage Scenarios
 
 #### Scenario 1: Detect Unusual Patterns
@@ -870,6 +872,8 @@ target:
 data:
   time_period: 60
 ```
+
+On a temperature-controlled tank (solar or cylinder systems, where you set a target rather than a plain on/off), switching to Heat comes back at the temperature you last set, say 52°C, rather than jumping to the tank's maximum. That target is kept even after the tank has been off overnight and across a Home Assistant restart. The temperature control also shows on the entity as soon as the tank is known to support it. On/off-only combi tanks don't take a target and are unaffected.
 
 #### 5. Temperature Offset
 
@@ -1248,6 +1252,20 @@ Turning off the Internet Bridge toggle automatically cleans up all bridge-relate
 | Boiler Max Output Temperature | Bridge API (`boilerMaxOutputTemperature`) | Bridge credentials |
 
 Both can coexist — they read from different data sources.
+
+### Heating Circuit Control
+
+On a system with more than one boiler circuit, each heating zone is assigned to a circuit. Tado CE can expose that assignment as a per-zone select so you can move a zone between circuits, or set it to **No heating circuit**.
+
+"No heating circuit" is the interesting one: the zone's radiator valves still open when the boiler is already running for another room, so the room soaks up residual heat, but the room never fires the boiler on its own. Paired with an automation (by schedule, occupancy, or anything else), that's a real energy lever — a room can coast on spare heat during the day and only claim its own circuit when you want it to.
+
+**Turning it on:** it's off by default. Enable **Heating Circuit Control** under Settings → Devices & Services → Tado CE → Configure. Each heating zone then gets a `select.<zone>_heating_circuit` entity. Single-circuit homes get it too, so the "No heating circuit" option is available there as well.
+
+**Cost:** the circuit list and each zone's current circuit are fetched only when you enable the option, and only on the normal sync cycle — no extra background polling. Changing a zone's circuit is one API call.
+
+**Two things worth knowing:**
+- The selection reflects a change made in the Tado app after the next sync, not instantly (the same refresh cadence as the rest of the integration). Changes you make from the select apply immediately.
+- The option labels use each circuit's driver serial. If you re-pair a circuit's driver, Tado issues a new serial, so an automation that stored the old serial needs updating. The assignment itself is keyed on the stable circuit number internally, so only automations that hard-coded a serial are affected.
 
 ### Usage Scenarios
 
@@ -2357,7 +2375,7 @@ Numeric 0-100 score reflecting overall home health:
 | Insight | Priority | Trigger |
 |---------|----------|---------|
 | Mold Risk | Critical/High/Medium | Dew point margin < 7°C |
-| Comfort Level | High/Medium | Temperature outside 18–24°C |
+| Comfort Level | Critical/High/Medium | Room below 18°C or above 26°C (the hot side fires even with heating off). Heat priority follows the feels-like heat-index band: Danger = High, Extreme Danger = Critical, milder heat = Medium |
 | Window Predicted | High | Rapid temperature drop |
 | Battery Low | Critical/Low | Device battery LOW/CRITICAL |
 | Device Offline | High | Connection lost |

@@ -104,6 +104,7 @@ _ALL_TOGGLE_KEYS = (
     "mobile_devices_enabled",
     "offset_enabled",
     "zone_configuration_enabled",
+    "heating_circuit_enabled",
 )
 
 # Per-scope default values for Reset to Defaults
@@ -114,6 +115,9 @@ RESET_DEFAULTS: dict[str, dict[str, Any]] = {
         "mold_risk_window_type": "double_pane",
         "smart_comfort_history_days": 7,
         "outdoor_temp_entity": "",
+    },
+    "comfort_safety": {
+        "comfort_heat_vulnerable_group": False,
     },
     "thermal_analytics": {
         "thermal_analytics_zones": [],
@@ -163,6 +167,7 @@ RESET_DEFAULTS: dict[str, dict[str, Any]] = {
 _RESET_SCOPE_OPTIONS = [
     "everything",
     "smart_comfort",
+    "comfort_safety",
     "thermal_analytics",
     "weather_compensation",
     "bridge",
@@ -222,6 +227,10 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                             vol.Optional(
                                 "offset_enabled",
                                 default=opt("offset_enabled", False),
+                            ): BooleanSelector(),
+                            vol.Optional(
+                                "heating_circuit_enabled",
+                                default=opt("heating_circuit_enabled", False),
                             ): BooleanSelector(),
                         },
                     ),
@@ -406,6 +415,19 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                 {"collapsed": True},
             )
 
+        # --- Comfort & Safety (always visible) ---
+        sections[vol.Required("comfort_safety")] = data_entry_flow.section(
+            vol.Schema(
+                {
+                    vol.Optional(
+                        "comfort_heat_vulnerable_group",
+                        default=opt("comfort_heat_vulnerable_group", False),
+                    ): BooleanSelector(),
+                },
+            ),
+            {"collapsed": False},
+        )
+
         # --- Polling & API (always visible) ---
         polling_schema_fields: dict[vol.Optional | vol.Required, Any] = {}
 
@@ -568,6 +590,12 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
 
         self._process_smart_comfort(user_input, processed_input)
         self._process_polling_api(user_input, processed_input, errors)
+
+        # Flatten comfort_safety section
+        if "comfort_safety" in user_input:
+            section = user_input["comfort_safety"]
+            if "comfort_heat_vulnerable_group" in section:
+                processed_input["comfort_heat_vulnerable_group"] = section["comfort_heat_vulnerable_group"]
 
         # Flatten thermal_analytics section
         if "thermal_analytics" in user_input:
@@ -1011,11 +1039,8 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
 
         if "sensor_section" in user_input:
             s = user_input["sensor_section"]
-            # When toggle is ON but entity field is missing (collapsed section),
-            # preserve existing value instead of clearing it.
-            # Auto-enable toggle when user selects a sensor entity but forgets
-            # the toggle, only when toggle key is absent (collapsed section).
-            # When toggle is explicitly False, respect the user's intent.
+            # A collapsed section omits its fields, so a missing toggle key means
+            # "collapsed", not "off": preserve/auto-enable rather than clear.
             submitted_temp = (s.get("external_temp_sensor") or "").strip()
             if "use_external_temp" in s:
                 use_ext_temp = s["use_external_temp"]

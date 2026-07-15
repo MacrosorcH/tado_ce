@@ -171,6 +171,26 @@ def classify_heat_risk_level(heat_index: float) -> str:
     return "None"
 
 
+# ============ Cold Risk Level Classification ============
+
+# WHO indoor-temperature health bands (absolute °C), warm → no risk.
+# 16 °C top boundary aligns with COMFORT_COLD; below 18 °C WHO flags risk for
+# vulnerable groups, below 16 °C respiratory, below 12 °C cardiovascular.
+COLD_RISK_THRESHOLDS: tuple[tuple[float, str], ...] = (
+    (16.0, "None"),
+    (12.0, "Respiratory"),
+    (0.0, "Cardiovascular"),
+)
+
+
+def classify_cold_risk_level(inside_temp: float) -> str:
+    """Classify indoor temperature into a WHO cold-health-risk band."""
+    for threshold, level in COLD_RISK_THRESHOLDS:
+        if inside_temp >= threshold:
+            return level
+    return "Cardiovascular"
+
+
 # ============ Dew Point Calculation ============
 
 

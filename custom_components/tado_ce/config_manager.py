@@ -113,6 +113,14 @@ class ConfigurationManager:
         """Check if weather sensors are enabled."""
         return self._get_option("weather_enabled", DEFAULT_WEATHER_ENABLED)  # type: ignore[no-any-return]
 
+    def get_comfort_heat_vulnerable_group(self) -> bool:
+        """Alert one heat-index band earlier for homes with vulnerable occupants."""
+        return self._get_option("comfort_heat_vulnerable_group", False)  # type: ignore[no-any-return]
+
+    def get_heating_circuit_enabled(self) -> bool:
+        """Check if the per-zone heating-circuit select is enabled."""
+        return self._get_option("heating_circuit_enabled", False)  # type: ignore[no-any-return]
+
     def get_mobile_devices_enabled(self) -> bool:
         """Check if mobile device tracking is enabled."""
         return self._get_option("mobile_devices_enabled", DEFAULT_MOBILE_DEVICES_ENABLED)  # type: ignore[no-any-return]

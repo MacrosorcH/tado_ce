@@ -44,15 +44,15 @@ def _build_recommendation(
 
     if confidence == "high":
         return (
-            f"{zone_name}: Close window now — {action}, {total_change:.1f}°C "
+            f"{zone_name}: Close window now: {action}, {total_change:.1f}°C "
             f"change over {anomaly_count} readings"
         )
     if confidence == "medium":
         return (
-            f"{zone_name}: Check windows — {action}, "
+            f"{zone_name}: Check windows: {action}, "
             f"{total_change:.1f}°C change detected"
         )
-    return f"{zone_name}: Verify windows are closed — {action}"
+    return f"{zone_name}: Verify windows are closed: {action}"
 
 
 def detect_window_predicted(
@@ -332,13 +332,13 @@ def detect_window_passive(
 
     if confidence == "high":
         recommendation = (
-            f"{zone_name}: Close window now — temperature dropping "
+            f"{zone_name}: Close window now: temperature dropping "
             f"{total_change:.1f}°C"
             f" over {anomaly_count} readings (passive detection)"
         )
     else:
         recommendation = (
-            f"{zone_name}: Check windows — {total_change:.1f}°C "
+            f"{zone_name}: Check windows: {total_change:.1f}°C "
             f"drop detected (passive detection)"
         )
 

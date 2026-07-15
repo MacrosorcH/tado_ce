@@ -1071,6 +1071,12 @@
             "name": "Chamadas à API por alteração"
           }
         }
+      },
+      "heating_circuit": {
+        "name": "Circuito de aquecimento",
+        "state": {
+          "no_heating_circuit": "Sem circuito de aquecimento"
+        }
       }
     },
     "switch": {
@@ -1334,7 +1340,8 @@
         "weather_compensation": "Compensação meteorológica",
         "bridge": "Ponte Internet",
         "polling_api": "Sondagem e API",
-        "homekit": "HomeKit"
+        "homekit": "HomeKit",
+        "comfort_safety": "Conforto e Segurança"
       }
     },
     "svc_mode": {
@@ -1620,14 +1627,16 @@
               "weather_enabled": "Dados meteorológicos",
               "mobile_devices_enabled": "Rastreamento de dispositivos móveis",
               "schedule_calendar_enabled": "Calendário de eventos",
-              "offset_enabled": "Desvios de temperatura do dispositivo"
+              "offset_enabled": "Desvios de temperatura do dispositivo",
+              "heating_circuit_enabled": "Controlo do Circuito de Aquecimento"
             },
             "data_description": {
               "home_state_sync_enabled": "Sincronize o estado geral da sua casa (Em casa/Fora). Cerca de 1 chamada à API por atualização. O intervalo de atualização é configurável em Definições avançadas → Polling e API.",
               "weather_enabled": "Temperatura exterior e intensidade solar fornecidas pelo Tado. Cerca de uma chamada à API por atualização. O intervalo de atualização é configurável em «Definições avançadas» → «Polling e API».",
               "mobile_devices_enabled": "Acompanhe a localização de cada telemóvel para verificar a presença por dispositivo. As atualizações ocorrem apenas após o reinício do HA. Para atualizar em segundo plano, ative esta opção, guarde e, em seguida, ative a «Sincronização móvel frequente» em «Definições avançadas» → «Polling e API».",
               "schedule_calendar_enabled": "Veja os seus horários de aquecimento do Tado como entradas de calendário no HA",
-              "offset_enabled": "Mostrar o desvio de calibração da temperatura que aparece na aplicação Tado nas entidades de climatização (+1 chamada à API por dispositivo no reinício)"
+              "offset_enabled": "Mostrar o desvio de calibração da temperatura que aparece na aplicação Tado nas entidades de climatização (+1 chamada à API por dispositivo no reinício)",
+              "heating_circuit_enabled": "Atribuir cada zona de aquecimento a um circuito da caldeira, ou a nenhum, para que as suas válvulas permaneçam abertas para permitir o calor residual sem acionar a caldeira. É necessária uma ligação com os circuitos da caldeira. A atualização ocorre na cadência normal de sincronização, não instantaneamente."
             }
           },
           "hardware_connections": {
@@ -1794,6 +1803,15 @@
               "wc_step_size": "Arredondar a temperatura do caudal para este tamanho de passo - passos maiores significam menos ajustes da caldeira (0,5-2,0°C)",
               "wc_hysteresis": "Só envia uma nova temperatura de fluxo quando esta difere da última em pelo menos este valor (0,5-3,0°C)",
               "wc_heating_system_preset": "Ao selecionar uma predefinição, são definidas as configurações padrão recomendadas para as temperaturas de inclinação e de fluxo. Escolha «Personalizar» para ajustar cada campo manualmente."
+            }
+          },
+          "comfort_safety": {
+            "name": "Conforto e Segurança",
+            "data": {
+              "comfort_heat_vulnerable_group": "Alertas de calor e frio para residentes vulneráveis"
+            },
+            "data_description": {
+              "comfort_heat_vulnerable_group": "Aumentar o nível de alerta de calor e frio um nível mais cedo para casas onde vivam idosos, bebés ou pessoas doentes, nas quais a mesma temperatura representa um risco maior. Desativado por predefinição."
             }
           }
         }
