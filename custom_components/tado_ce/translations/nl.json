@@ -1873,7 +1873,7 @@
       "bridge_auth_failed": "Ongeldige bridge-serienummer of auth-code - controleer en probeer het opnieuw",
       "wc_min_exceeds_max": "De minimale aanvoertemperatuur kan niet hoger zijn dan de maximale aanvoertemperatuur",
       "bridge_serial_invalid": "Alleen v3+ Internet Bridges (serieel beginnend met IB) ondersteunen de lokale API. Uw serie suggereert een v2 bridge (GW prefix) die geen lokale API heeft. Weercompensatie kan nog steeds worden gebruikt zonder een bridge via cloudgegevens.",
-      "homekit_wrong_pin": "Onjuiste HomeKit PIN - controleer de code op je bridge of in de Tado app",
+      "homekit_wrong_pin": "De bridge heeft de code geweigerd. Ofwel is de 8-cijferige HomeKit-installatiecode onjuist (controleer deze op de bridge of in de Tado-app), ofwel wordt de bridge door een andere HomeKit-controller (Homebridge, Apple Home of Home Assistant’s eigen HomeKit) in bezit gehouden. Stop de andere controller en probeer het vervolgens opnieuw.",
       "homekit_already_paired": "Bridge is al gekoppeld met een andere controller. Ontkoppel eerst van Apple Home en probeer het dan opnieuw.",
       "homekit_network_error": "Kan de bridge in je netwerk niet bereiken. Controleer of deze is ingeschakeld en verbonden",
       "homekit_timeout": "Het koppelen is uitgelopen - de bridge heeft niet op tijd gereageerd",

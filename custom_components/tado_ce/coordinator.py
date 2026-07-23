@@ -26,6 +26,7 @@ from .const import (
     ENTITY_FRESHNESS_EXPIRY_SECONDS,
     HOMEKIT_SAVINGS_RESET_MIN_JUMP,
     HOMEKIT_SAVINGS_RESET_RATIO,
+    MAPPING_RETRY_STALL_LIMIT,
     OFFSET_DRIFT_REFRESH_SECONDS,
     OUTDOOR_TEMP_HISTORY_MAX,
     OVERLAY_MODE_DEFAULT,
@@ -33,6 +34,7 @@ from .const import (
     ZONES_INFO_FREE_TIER_THRESHOLD,
     ZONES_INFO_REFRESH_SECONDS_FREE,
     ZONES_INFO_REFRESH_SECONDS_PAID,
+    get_climate_zone_ids,
     is_climate_zone,
 )
 from .exceptions import TadoAuthError, TadoBridgeApiError, TadoRateLimitError, TadoSyncError
@@ -220,6 +222,7 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_weather_fetch: datetime | None = None
         self._last_home_state_fetch: datetime | None = None
         self._last_mobile_devices_fetch: datetime | None = None
+        self._mapping_retry_stall_count: int = 0
         self._prev_homekit_connected: bool = False
         self._homekit_reads_saved: int = 0
         self._homekit_writes_saved: int = 0
@@ -523,19 +526,24 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return result
 
     async def _async_retry_homekit_mapping(self) -> None:
-        """Rebuild the HomeKit zone mapping if it never built.
+        """Rebuild the mapping each poll until every mappable zone is covered.
 
-        Runs each poll while the bridge is connected but the mapping is still
-        empty (e.g. the connection wasn't settled when we first tried right
-        after pairing). Self-limiting: once a non-empty mapping installs,
-        zone_aid_map is truthy and this becomes a no-op.
+        Stops on completion, or after MAPPING_RETRY_STALL_LIMIT polls with no
+        newly-mapped zone (an accessory the bridge never exposes).
         """
+        from .homekit_mapping import mapping_covers_all_zones
+
         client = self.homekit_client
-        if client is None or not client.is_connected or client.zone_aid_map:
+        if client is None or not client.is_connected:
             return
         zones_info = (self.data or {}).get("zones_info") or []
         if not zones_info:
             return
+        if mapping_covers_all_zones(client.zone_aid_map, zones_info):
+            return
+        if self._mapping_retry_stall_count >= MAPPING_RETRY_STALL_LIMIT:
+            return
+        zones_mapped_before = len(client.zone_aid_map)
         try:
             mapping = await async_rebuild_and_save_mapping(
                 self.hass, client, self.home_id, zones_info,
@@ -551,12 +559,12 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "HomeKit: zone mapping built on retry: %d zone(s) mapped",
                 len(mapping["serial_to_zone"]),
             )
-            # The mapping just became non-empty. Setup subscribed to events
-            # while zone_aid_map was still empty (0 chars), and no reconnect
-            # has fired (the bridge stayed connected, it was the mapping that
-            # lagged, not the connection). Subscribe now so HomeKit pushes
-            # actually flow; without this the zone stays cloud-only despite a
-            # connected, mapped bridge until an HA restart or a reconnect.
+            # The mapping just gained zones. Setup subscribed to events while
+            # zone_aid_map was still empty (0 chars), and no reconnect has fired
+            # (the bridge stayed connected, it was the mapping that lagged, not
+            # the connection). Subscribe now so HomeKit pushes actually flow;
+            # without this the zone stays cloud-only despite a connected, mapped
+            # bridge until an HA restart or a reconnect.
             provider = self.homekit_provider
             if provider is not None and provider.is_connected:
                 # Both primitives self-protect (refresh → [], subscribe →
@@ -565,6 +573,25 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # tuple this used to carry never matched a bridge error anyway.
                 await provider.async_refresh_accessories()
                 await provider.async_subscribe_events()
+
+        # A stall is a poll that mapped no NEW zone, not merely an incomplete
+        # one, so slow multi-poll enumeration is never abandoned mid-progress.
+        if len(client.zone_aid_map) > zones_mapped_before:
+            self._mapping_retry_stall_count = 0
+        else:
+            self._mapping_retry_stall_count += 1
+            if self._mapping_retry_stall_count >= MAPPING_RETRY_STALL_LIMIT:
+                unmapped = get_climate_zone_ids(zones_info) - set(client.zone_aid_map)
+                _LOGGER.info(
+                    "HomeKit: zone mapping still incomplete after %d polls with "
+                    "no progress, zone(s) %s have no matching bridge accessory "
+                    "and will use cloud-only state",
+                    MAPPING_RETRY_STALL_LIMIT, unmapped,
+                )
+
+    def reset_mapping_retry_budget(self) -> None:
+        """Re-arm the mapping-retry stall budget after a reconnect or zone change."""
+        self._mapping_retry_stall_count = 0
 
     def record_cloud_backoff(self, retry_after: int) -> None:
         """Record a cloud rate-limit window and surface the repair issue.
@@ -1524,6 +1551,7 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if delta.added or delta.removed:
             self.data_loader._cache["zones_info"] = _CACHE_DIRTY
             self._request_full_sync_next_cycle = True
+            self.reset_mapping_retry_budget()
 
         if not delta.removed:
             return

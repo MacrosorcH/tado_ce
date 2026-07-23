@@ -31,6 +31,27 @@ Complete guide to all Tado CE exclusive features, configurations, and usage scen
 21. [Actionable Insights](#-actionable-insights)
 22. [Settings Configured in the Tado App, Not Tado CE](#️-settings-configured-in-the-tado-app-not-tado-ce)
 23. [Troubleshooting](#-troubleshooting)
+24. [What's New in 4.x](#-whats-new-in-4x)
+
+---
+
+## 🆕 What's New in 4.x
+
+New user-facing features and settings added across the 4.x line. Each links to its section below; bug fixes are in [CHANGELOG.md](CHANGELOG.md).
+
+| Version | What you got | Where |
+|---------|-------------|-------|
+| v4.2.0 | Heating circuit control — per-zone boiler-circuit select, "No heating circuit" for residual-heat coasting | [Heating Circuit Control](#heating-circuit-control) |
+| v4.2.0 | Heat and cold alerts for vulnerable occupants (elderly / infant / unwell) | [Smart Comfort Analytics](#-smart-comfort-analytics) |
+| v4.1.0 | Per-zone Temperature source (Automatic / HomeKit / Cloud) | [HomeKit Local Control](#-homekit-local-control) |
+| v4.1.0 | Per-device Identify button (flashes the TRV / thermostat LED) | [Per-Zone Entity Types](#️-per-zone-entity-types) |
+| v4.1.0 | `tado_ce.set_schedule_temperature` — set a target from automations without tripping Smart Valve Control | [Smart Valve Control](#-smart-valve-control) |
+| v4.1.0 | Configurable refresh intervals for Home Presence, Weather, and Mobile Device Tracking | [Optional Features](#-optional-features) |
+| v4.1.0 | Override duration relabelled to match the Tado app (3 options, Timer cap up to 12 hours) | [Per-Zone Configuration](#-per-zone-configuration) |
+| v4.1.4 | Boiler diagnostic sensors renamed "Bridge …" → "Boiler …" (display names only) | [Bridge API Integration](#-bridge-api-integration) |
+| v4.0.1 | AC swing split into independent vertical and horizontal axes | [Enhanced Controls](#-enhanced-controls) |
+| v4.0.1 | Mold Risk % sensor renamed to Mold Risk Indicator | [Enhanced Mold Risk Assessment](#-enhanced-mold-risk-assessment) |
+| v4.0.0 | HomeKit local control, Weather Compensation, Smart Valve Control, and more | across this guide |
 
 ---
 
@@ -240,7 +261,7 @@ Interval = (Time Until Reset / Remaining Calls) / 0.90
 Clamped to: 5 min (floor) – 120 min (ceiling)
 ```
 
-The adaptive floor is a flat 5 minutes whatever your daily call limit. The maths already widens the interval on its own when quota is tight, so the floor is just the fast end: the point past which a faster cadence buys you nothing because zone temperature doesn't change that quickly. A bigger quota doesn't lower the floor, so if you genuinely want faster than 5 minutes, set a custom interval and it's honoured as long as your quota can sustain it. Presence, weather, and mobile device refresh intervals are configurable separately in Advanced Settings → Polling & API.
+The adaptive floor is a flat 5 minutes whatever your daily call limit. The maths already widens the interval on its own when quota is tight, so the floor is just the fast end: the point past which a faster cadence buys you nothing because zone temperature doesn't change that quickly. A bigger quota doesn't lower the floor, so if you genuinely want faster than 5 minutes, set a custom interval and it's honoured as long as your quota can sustain it. Presence, weather, and mobile device refresh intervals are configurable separately in Advanced Settings → Polling & API (v4.1.0, each behind its own toggle; defaults unchanged).
 
 **Day/Night Aware (v2.0.1):**
 - Night period: Fixed 120 min interval to conserve quota
@@ -589,7 +610,7 @@ Existing users with preheat enabled are automatically migrated to Active mode. P
 4. Set **Temperature History days** (1–30)
 5. Optionally select an **Outdoor Temperature Entity** for weather-adjusted comfort targets
 
-**Heat and cold alerts for vulnerable occupants** live under Advanced Settings, in their own Comfort & Safety section (you don't need Smart Comfort on to use them). For homes with elderly, infant, or unwell occupants, the option raises both heat and cold warnings one level earlier, since the same temperature carries more risk. Cold alerts step up when a room with the heating off drops into a health-risk range (high below 16°C, critical below 12°C). Off by default.
+**Heat and cold alerts for vulnerable occupants** (v4.2.0) live under Advanced Settings, in their own Comfort & Safety section (you don't need Smart Comfort on to use them). For homes with elderly, infant, or unwell occupants, the option raises both heat and cold warnings one level earlier, since the same temperature carries more risk. Cold alerts step up when a room with the heating off drops into a health-risk range (high below 16°C, critical below 12°C). Off by default.
 
 ### Usage Scenarios
 
@@ -664,7 +685,7 @@ Uses surface temperature calculation to accurately detect cold spots where mold 
 | Sensor | Friendly Name | Description |
 |--------|--------------|-------------|
 | `sensor.{zone}_mold_risk` | Mold Risk | Risk level: Low / Medium / High / Critical |
-| `sensor.{zone}_mold_risk_percentage` | Mold Risk % | Numeric risk percentage |
+| `sensor.{zone}_mold_risk_pct` | Mold Risk Indicator | Numeric risk percentage (surface relative humidity) |
 | `sensor.{zone}_condensation_risk` | Condensation | Condensation risk (AC zones) |
 | `sensor.{zone}_surface_temperature` | Surface Temp | Calculated surface temperature |
 | `sensor.{zone}_dew_point` | Dew Point | Dew point temperature |
@@ -1178,6 +1199,12 @@ data:
 
 `force_override` is off by default, so a manual override you set by hand on the slider is left alone. Turn it on when the automation should take priority even over a manual change, like a holiday schedule that must win. The main use case (a holiday or bridge-day automation) and a full example are in the [Smart Valve Control section](#-smart-valve-control) under "Holiday or Bridge-Day Automations".
 
+#### 16. AC swing — separate vertical and horizontal axes (v4.0.1+)
+
+AC zones expose a `Swing (vertical)` and a `Swing (horizontal)` dropdown, each populated from the cloud-reported capability set for your specific unit. Pick a fixed louver position on either axis to stop oscillation there, useful in bedrooms where a constantly moving louver is disruptive. Simple `On / Off` units keep a two-value dropdown; units that report fine-grained positions (`UP`, `MID_DOWN`, `LEFT`, `MID_RIGHT`) expose them directly, translated across all seven locales.
+
+Automations calling the old unified `climate.set_swing_mode` (`off` / `vertical` / `horizontal` / `both`) still work with a deprecation warning, but the per-axis services `climate.set_swing_horizontal_mode` and `climate.set_swing_vertical_mode` are the current shape. The compatibility shim is removed in v5.0.0.
+
 ---
 
 ## 🌉 Bridge API Integration
@@ -1255,11 +1282,11 @@ Both can coexist — they read from different data sources.
 
 ### Heating Circuit Control
 
-On a system with more than one boiler circuit, each heating zone is assigned to a circuit. Tado CE can expose that assignment as a per-zone select so you can move a zone between circuits, or set it to **No heating circuit**.
+This lets you stop a room from firing the boiler on its own while still letting it soak up heat that's already going. Set a zone to **No heating circuit** and its radiator valves still open when the boiler is running for another room, so the room stays warm on spare heat, but it never calls for heat itself. Pair that with an automation (by schedule, occupancy, or anything else) and it's a real energy lever: a room can coast on residual heat through the day and only claim its own boiler run when you decide it should.
 
-"No heating circuit" is the interesting one: the zone's radiator valves still open when the boiler is already running for another room, so the room soaks up residual heat, but the room never fires the boiler on its own. Paired with an automation (by schedule, occupancy, or anything else), that's a real energy lever — a room can coast on spare heat during the day and only claim its own circuit when you want it to.
+That works whatever your setup, single boiler circuit or several. If you do have more than one circuit, the same per-zone select also moves a zone from one circuit to another.
 
-**Turning it on:** it's off by default. Enable **Heating Circuit Control** under Settings → Devices & Services → Tado CE → Configure. Each heating zone then gets a `select.<zone>_heating_circuit` entity. Single-circuit homes get it too, so the "No heating circuit" option is available there as well.
+**Turning it on** (v4.2.0)**:** it's off by default. Enable **Heating Circuit Control** under Settings → Devices & Services → Tado CE → Configure. Each heating zone then gets a `select.<zone>_heating_circuit` entity. Single-circuit homes get it too, so the "No heating circuit" option is available there as well.
 
 **Cost:** the circuit list and each zone's current circuit are fetched only when you enable the option, and only on the normal sync cycle — no extra background polling. Changing a zone's circuit is one API call.
 
@@ -1339,7 +1366,7 @@ Pair your Tado bridge via HomeKit to control heating and AC directly on your loc
 
 Tado CE talks to your Tado two ways at once, and each reading follows the side that's right for it:
 
-- **Room temperature follows HomeKit** — instant, the moment the TRV reports a change. A new per-zone **Temperature source** setting (Configure → Zone Configuration → Temperature) lets you override this per zone: Automatic prefers the fast HomeKit reading and falls back to the cloud, HomeKit always prefers local, Cloud always shows Tado's. An external temperature sensor, if you've set one, still takes precedence. This only governs what the dashboard shows; Smart Valve Control always calibrates against its own reading regardless.
+- **Room temperature follows HomeKit** — instant, the moment the TRV reports a change. A new per-zone **Temperature source** setting (v4.1.0; Configure → Zone Configuration → Temperature) lets you override this per zone: Automatic prefers the fast HomeKit reading and falls back to the cloud, HomeKit always prefers local, Cloud always shows Tado's. An external temperature sensor, if you've set one, still takes precedence. This only governs what the dashboard shows; Smart Valve Control always calibrates against its own reading regardless.
 - **HVAC mode follows the cloud** — the only side that knows you're following a schedule. A mode change you make in the Apple Home or Tado app shows up in Home Assistant on the next cloud poll (up to your polling interval). That's deliberate, not a shortfall: the official HomeKit Controller integration has no concept of a schedule at all (its "auto" is just heat/cool switching), and the official Tado integration has no fast local temperature. Tado CE gives you the fast temperature and still reflects an app-side mode change on the next poll.
 
 ### Known Limitations
@@ -2147,6 +2174,8 @@ Organised in the order they appear in the Options Flow — fundamental limits fi
 | Timer | Reverts after the timer duration (15 minutes to 12 hours) |
 
 The starting default for a new zone is "Until you resume schedule". Zones you'd already configured before this release keep whatever setting they had. If you want a different default per zone, set it here under Override duration. (The `next_time_block` value still works as a service argument for anyone using it in automations; it maps to "until next automatic change".)
+
+> **v4.1.0:** the three labels above ("Until you resume schedule" / "Until next automatic change" / "Timer") replaced the older four-option wording to match the Tado app, and the Timer cap rose from 3 hours to 12. Existing zones keep their setting; only the labels and the cap changed.
 
 ---
 

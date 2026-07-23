@@ -177,7 +177,10 @@ async def async_create_entry_components(
                     _home_id: str | None = home_id,
                 ) -> None:
                     """Retry the HomeKit mapping build after the first poll lands."""
-                    from .homekit_mapping import async_rebuild_and_save_mapping
+                    from .homekit_mapping import (
+                        async_rebuild_and_save_mapping,
+                        mapping_covers_all_zones,
+                    )
 
                     zi = coord.data.get("zones_info") or []
                     if not zi:
@@ -191,7 +194,7 @@ async def async_create_entry_components(
                         _hass, _hk_client, _home_id or "default", zi,
                     )
                     s2z = new_mapping.get("serial_to_zone", {})
-                    if s2z:
+                    if mapping_covers_all_zones(_hk_client.zone_aid_map, zi):
                         _LOGGER.info(
                             "Entry Lifecycle: HomeKit deferred rebuild "
                             "complete: %d zone(s) mapped",
@@ -200,7 +203,8 @@ async def async_create_entry_components(
                     else:
                         _LOGGER.debug(
                             "Entry Lifecycle: HomeKit deferred rebuild "
-                            "still empty, coordinator will retry each poll",
+                            "incomplete, coordinator will retry each poll "
+                            "until every zone is mapped",
                         )
 
                 return {
@@ -270,9 +274,12 @@ async def async_cleanup_entry_components(
         coordinator.adaptive_preheat_manager = None
         _LOGGER.debug("Entry Lifecycle: Adaptive Preheat manager torn down")
 
-    if _attr("data_loader") is not None:
+    dl = _attr("data_loader")
+    if dl is not None:
+        # Flush debounced writes before dropping the loader (reload skips FINAL_WRITE).
+        await dl.async_flush_pending_saves()
         coordinator.data_loader = None  # type: ignore[assignment]
-        _LOGGER.debug("Entry Lifecycle: DataLoader torn down")
+        _LOGGER.debug("Entry Lifecycle: DataLoader flushed and torn down")
 
     hkc = _attr("homekit_client")
     if hkc is not None:

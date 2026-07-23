@@ -1873,7 +1873,7 @@
       "bridge_auth_failed": "Code de série ou d'authentification du pont invalide - veuillez vérifier et réessayer",
       "wc_min_exceeds_max": "La température minimale de départ ne peut pas dépasser la température maximale de départ",
       "bridge_serial_invalid": "Seules les passerelles Internet v3+ (série commençant par IB) prennent en charge l'API locale. Votre numéro de série suggère un pont v2 (préfixe GW) qui n'a pas d'API locale. La compensation météorologique peut toujours être utilisée sans passerelle via les données du nuage.",
-      "homekit_wrong_pin": "Code PIN HomeKit incorrect - vérifiez le code sur votre pont ou dans l'appli Tado.",
+      "homekit_wrong_pin": "Le pont a rejeté le code. Soit le code de configuration HomeKit à 8 chiffres est incorrect (vérifiez-le sur le pont ou dans l'application Tado), soit un autre contrôleur HomeKit (Homebridge, Apple Home ou le HomeKit intégré à Home Assistant) a pris le contrôle du pont. Arrêtez l'autre contrôleur, puis réessayez.",
       "homekit_already_paired": "Le Bridge est déjà apparié à un autre contrôleur. Désappareillez d'abord à partir d'Apple Home, puis réessayez.",
       "homekit_network_error": "Impossible d'atteindre le pont sur votre réseau. Vérifiez qu'il est sous tension et connecté",
       "homekit_timeout": "L'appairage a expiré - la passerelle n'a pas répondu à temps",

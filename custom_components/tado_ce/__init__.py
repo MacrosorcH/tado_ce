@@ -375,6 +375,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if coordinator.write_health_tracker:
                 coordinator.write_health_tracker.reset()
             coordinator._reset_write_metrics()
+            coordinator.reset_mapping_retry_budget()
             _LOGGER.info(
                 "Setup: HomeKit reconnect handled, events "
                 "re-subscribed, write-health circuit breaker reset",

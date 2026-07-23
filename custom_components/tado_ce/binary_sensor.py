@@ -709,6 +709,13 @@ class TadoWindowPredictedSensor(PerEntityAvailabilityMixin, CoordinatorEntity["T
 
     async def _async_save_detection_state(self) -> None:
         """Persist window detection state via Store."""
+        if self.coordinator.data_loader is None:
+            _LOGGER.debug(
+                "Binary Sensor: zone %s data loader gone at teardown, "
+                "window detection state not persisted this cycle",
+                self._zone_id,
+            )
+            return
         try:
             raw = await self.coordinator.data_loader.async_load_window_detection()
             all_zones: dict[str, Any] = raw if raw and isinstance(raw, dict) else {}

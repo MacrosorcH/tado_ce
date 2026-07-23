@@ -169,6 +169,26 @@ def validate_mapping(
     return True
 
 
+def mapping_covers_all_zones(
+    zone_aid_map: dict[str, list[int]],
+    zones_info: list[dict[str, Any]],
+) -> bool:
+    """Return True when every climate zone that owns a device serial is mapped.
+
+    A home with no serial-bearing climate zones is trivially complete.
+    """
+    from .const import get_climate_zone_ids
+
+    climate_ids = get_climate_zone_ids(zones_info)
+    mappable = {
+        str(z.get("id"))
+        for z in zones_info
+        if str(z.get("id")) in climate_ids
+        and any(d.get("serialNo") for d in (z.get("devices") or []))
+    }
+    return mappable.issubset(set(zone_aid_map))
+
+
 async def load_device_mapping(
     hass: HomeAssistant,
     home_id: str,

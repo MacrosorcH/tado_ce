@@ -1873,7 +1873,7 @@
       "bridge_auth_failed": "Ungültige Bridge-Seriennummer oder ungültiger Authentifizierungscode - bitte prüfen und erneut versuchen",
       "wc_min_exceeds_max": "Die minimale Vorlauftemperatur kann die maximale Vorlauftemperatur nicht überschreiten.",
       "bridge_serial_invalid": "Nur v3+ Internet Bridges (Seriennummern, die mit IB beginnen) unterstützen die lokale API. Ihre Seriennummer deutet auf eine v2-Brücke (GW-Präfix) hin, die nicht über eine lokale API verfügt. Die Wetterkompensation kann auch ohne Brücke über Cloud-Daten genutzt werden.",
-      "homekit_wrong_pin": "Falsche HomeKit-PIN - überprüfen Sie den Code auf Ihrer Bridge oder in der Tado-App",
+      "homekit_wrong_pin": "Die Bridge hat den Code abgelehnt. Entweder ist der 8-stellige HomeKit-Einrichtungscode falsch (überprüfen Sie ihn an der Bridge oder in der Tado-App), oder ein anderer HomeKit-Controller (Homebridge, Apple Home oder das HomeKit von Home Assistant) hat die Bridge bereits belegt. Beenden Sie den anderen Controller und versuchen Sie es dann erneut.",
       "homekit_already_paired": "Die Bridge ist bereits mit einem anderen Controller gekoppelt. Heben Sie das Pairing mit Apple Home auf und versuchen Sie es dann erneut",
       "homekit_network_error": "Die Bridge in Ihrem Netzwerk konnte nicht erreicht werden. Prüfen Sie, ob sie eingeschaltet und verbunden ist",
       "homekit_timeout": "Zeitüberschreitung beim Pairing - die Brücke hat nicht rechtzeitig geantwortet",

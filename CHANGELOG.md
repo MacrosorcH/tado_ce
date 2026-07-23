@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
+## [4.2.1] - 2026-07-25
+
+### Bug fixes
+
+- **HomeKit local control now maps every room after a re-pair** ([#322](https://github.com/hiall-fyi/tado_ce/issues/322) - @bobbinz) — after re-pairing the bridge, some rooms could stay on cloud control while others went local, and it never sorted itself out. The bridge hands its radiators over one at a time, so a moment after pairing only some were visible, and the mapping stopped as soon as the first room matched instead of carrying on until every room was covered. It now keeps filling in rooms until they are all mapped, so a re-pair brings the whole home back to local control on its own.
+- **Clearer HomeKit pairing error when another controller has the bridge** ([#322](https://github.com/hiall-fyi/tado_ce/issues/322) - @onorbe) — a pairing attempt that failed because Homebridge, Apple Home, or Home Assistant's own HomeKit was already holding the bridge showed a plain "incorrect PIN", pointing you at a code that was actually fine. The message now names the other likely cause, so you know to stop the competing controller and try again.
+- **HomeKit pairing no longer tries to pair a stray bulb** ([#322](https://github.com/hiall-fyi/tado_ce/issues/322) - @bobbinz) — the pairing scan picked the first unpaired HomeKit device it saw on the network, without checking it was actually a tado bridge. On a home with unpaired HomeKit bulbs (or any other loose HomeKit accessory), it could send the tado code to a bulb, which turned it away as a wrong code even though the code was right. It now looks specifically for the tado bridge and walks past everything else.
+- **Window detection counters survive a reload** — removing or reloading the integration dropped that day's open-window detection counts, so they reset instead of carrying over. They are now saved cleanly on the way out.
+
 ## [4.2.0] - 2026-07-16
 
 ### ⚠️ Heads-up: a legacy-cleanup release (v5.0.0) is on the horizon

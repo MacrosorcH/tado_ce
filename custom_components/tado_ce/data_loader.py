@@ -153,6 +153,26 @@ class DataLoader:
         await store.async_save(data)
         self._cache[name] = data
 
+    async def async_flush_pending_saves(self) -> None:
+        """Drain debounced writes before teardown.
+
+        HA's FINAL_WRITE flushes delayed saves on shutdown but not on a
+        config-entry reload, so call this on unload to avoid losing a value
+        queued just before a reload.
+        """
+        for name, store in self._stores.items():
+            try:
+                # HA-internal, untyped: what FINAL_WRITE itself calls to drain a
+                # pending delayed save. No public flush API exists; no-ops when
+                # nothing is pending.
+                await store._async_handle_write_data()  # type: ignore[no-untyped-call]  # noqa: SLF001
+            except Exception:
+                # One store's write failure must not block the rest.
+                _LOGGER.debug(
+                    "Data Loader: could not flush pending save for %r on "
+                    "teardown", name, exc_info=True,
+                )
+
     async def async_load_all_to_cache(self) -> None:
         """Populate the cache with every API-data store on cold start.
 

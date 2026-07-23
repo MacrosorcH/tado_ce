@@ -23,6 +23,11 @@ Thank you to everyone who supported the project through [Buy Me a Coffee](https:
 
 Community contributors who helped shape each release through bug reports, feature requests, testing, and feedback.
 
+### v4.2.1
+
+- **[@bobbinz](https://github.com/bobbinz)** — Pinned two separate HomeKit bugs in one thread ([#322](https://github.com/hiall-fyi/tado_ce/issues/322)). First, HomeKit local control coming up on only one room of three after a re-pair: his sensor snapshot (four hours connected, still `mapped_zones: 1 / unmapped_zones: 2`) is the "stuck partial, never recovers" reading that pointed at the mapping retry giving up after the first room, a bug latent since v4.0.3. Then, when a re-pair attempt threw a wrong-code error, his log showed the tado PIN going to `10.10.64.181` (one of his unpaired HomeKit bulbs) instead of the bridge, which is what exposed the pairing scan grabbing the first unpaired device rather than the tado bridge. Also shared the mapping workaround (unpair, ignore the zeroconf entry, re-pair once every radiator is awake).
+- **[@onorbe](https://github.com/onorbe)** — Chased a pairing that kept rejecting a code that was genuinely correct ([#322](https://github.com/hiall-fyi/tado_ce/issues/322)), through debug logs and photos of the bridge label matched against what he typed. Worked out himself that a running Homebridge was grabbing the bridge mid-handshake, which is exactly the competing-controller case the error message never mentioned. That's why the pairing error now names it.
+
 ### v4.2.0
 
 - **[@rustyd0g](https://github.com/rustyd0g)** — Requested the per-zone heating circuit select ([#316](https://github.com/hiall-fyi/tado_ce/issues/316)), pointing at the Core work and the open draft PR, and laid out the residual-heat use case that makes it worth having: set a zone to "No heating circuit" so its valves still soak up spare heat when the boiler runs for another room, without that room firing the boiler itself. Offered to test the multi-circuit side, which is the part I can't exercise on my own single-circuit setup.

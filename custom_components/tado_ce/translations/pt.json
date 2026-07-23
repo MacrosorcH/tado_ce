@@ -1873,7 +1873,7 @@
       "bridge_auth_failed": "Série da ponte ou código de autenticação inválidos - verifique e tente novamente",
       "wc_min_exceeds_max": "A temperatura mínima do caudal não pode exceder a temperatura máxima do caudal",
       "bridge_serial_invalid": "Apenas as Internet Bridges v3+ (série que começa com IB) suportam a API local. A sua série sugere uma ponte v2 (prefixo GW) que não tem uma API local. A compensação meteorológica pode ainda ser utilizada sem uma ponte através de dados na nuvem.",
-      "homekit_wrong_pin": "PIN do HomeKit incorreto - verifique o código na sua ponte ou na aplicação Tado",
+      "homekit_wrong_pin": "A ponte rejeitou o código. Ou o código de configuração do HomeKit de 8 dígitos está errado (verifique-o na ponte ou na aplicação Tado), ou outro controlador HomeKit (Homebridge, Apple Home ou o próprio HomeKit do Home Assistant) está a bloquear a ponte. Desative o outro controlador e tente novamente.",
       "homekit_already_paired": "O Bridge já está emparelhado com outro controlador. Desemparelhe primeiro a partir do Apple Home e depois tente novamente",
       "homekit_network_error": "Não foi possível contactar a ponte na sua rede. Verifique se está ligada e conectada",
       "homekit_timeout": "O tempo de emparelhamento expirou - a ponte não respondeu a tempo",

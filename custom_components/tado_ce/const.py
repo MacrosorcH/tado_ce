@@ -419,6 +419,10 @@ WRITE_CIRCUIT_OPEN_SECONDS: Final[float] = 300.0  # 5 minutes cooldown
 # Cache refresh failure threshold, trigger reconnect after consecutive failures
 CACHE_REFRESH_FAILURE_THRESHOLD: Final[int] = 3
 
+# HomeKit mapping retry: stop retrying after this many polls with no newly
+# mapped zone (the remaining zones have no matching bridge accessory)
+MAPPING_RETRY_STALL_LIMIT: Final[int] = 3
+
 # HomeKit savings: detect API quota reset by observing a significant jump
 # in remaining calls. The jump must exceed both an absolute minimum and
 # a percentage of the total limit to avoid false positives from normal usage.

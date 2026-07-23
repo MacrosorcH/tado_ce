@@ -1873,7 +1873,7 @@
       "bridge_auth_failed": "Invalid bridge serial or auth code — please check and try again",
       "bridge_serial_invalid": "Only v3+ Internet Bridges (serial starting with IB) support the local API. Your serial suggests a v2 bridge (GW prefix) which does not have a local API. Weather Compensation can still be used without a bridge via cloud data.",
       "wc_min_exceeds_max": "Minimum flow temperature cannot exceed maximum flow temperature",
-      "homekit_wrong_pin": "Incorrect HomeKit PIN — check the code on your bridge or in the Tado app",
+      "homekit_wrong_pin": "The bridge refused the code. Either the 8-digit HomeKit setup code is wrong (check it on the bridge or in the Tado app), or another HomeKit controller (Homebridge, Apple Home, or Home Assistant's own HomeKit) is holding the bridge. Stop the other controller, then try again.",
       "homekit_already_paired": "Bridge is already paired with another controller. Unpair from Apple Home first, then try again",
       "homekit_network_error": "Could not reach the bridge on your network. Check it is powered on and connected",
       "homekit_timeout": "Pairing timed out — the bridge did not respond in time",

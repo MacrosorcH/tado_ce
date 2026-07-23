@@ -59,6 +59,21 @@ CHAR_IDENTIFY: Final = "14"
 _STORE_VERSION = 1
 
 
+def _is_tado_bridge(category: Any, name: str) -> bool:
+    """Return True when a discovered HomeKit device is a tado Internet Bridge.
+
+    The pairing scan must target the tado bridge specifically. A home can have
+    other unpaired HomeKit accessories (bulbs, plugs) advertising themselves at
+    the same time; firing the tado PIN at one of those fails as a wrong-code
+    error. A tado bridge reports the bridge category and a name beginning
+    "tado", which together exclude both other-category devices and other-vendor
+    bridges.
+    """
+    from aiohomekit.model.categories import Categories
+
+    return category == Categories.BRIDGE and "tado" in (name or "").lower()
+
+
 async def async_create_controller(hass: HomeAssistant) -> Any:
     """Build and start an aiohomekit Controller on the shared zeroconf instance.
 
@@ -375,8 +390,11 @@ class HomeKitClient:
 
             saw_paired_bridge = False
             async for discovery in controller.async_discover():
-                if discovery.description.status_flags & StatusFlags.UNPAIRED:
-                    bridge_hkid = discovery.description.id
+                desc = discovery.description
+                if not _is_tado_bridge(desc.category, desc.name):
+                    continue
+                if desc.status_flags & StatusFlags.UNPAIRED:
+                    bridge_hkid = desc.id
                     _LOGGER.info(
                         "HomeKit: found unpaired bridge %s on the network",
                         bridge_hkid,
