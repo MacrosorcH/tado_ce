@@ -163,10 +163,22 @@ def merge_homekit_into_zone_data(
         # display-source preference must NOT bend it.
         merged_temp, temp_src = reconciler.merge_zone_temperature(zone_id, cloud_temp, purpose="control")
         merged_hum, hum_src = reconciler.merge_zone_humidity(zone_id, cloud_humidity)
+        # Rebuild the nested dicts rather than setdefault(...)[key]=: the shallow
+        # .copy() above shares the nested insideTemperature/humidity objects with
+        # the coordinator's cloud cache, so an in-place write would overwrite the
+        # real cloud reading there (defeating display_temp_source="cloud" and
+        # pinning a stale HomeKit value as "cloud"). A fresh nested dict keeps the
+        # merge local to this returned copy.
         if merged_temp is not None:
-            sensor_data.setdefault("insideTemperature", {})["celsius"] = merged_temp
+            sensor_data["insideTemperature"] = {
+                **(sensor_data.get("insideTemperature") or {}),
+                "celsius": merged_temp,
+            }
         if merged_hum is not None:
-            sensor_data.setdefault("humidity", {})["percentage"] = merged_hum
+            sensor_data["humidity"] = {
+                **(sensor_data.get("humidity") or {}),
+                "percentage": merged_hum,
+            }
         # Only log when the merge actually changed something,
         # otherwise multi-zone homes would emit a debug line per
         # zone per poll for no signal.

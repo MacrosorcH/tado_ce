@@ -131,6 +131,8 @@ class HomeKitClient:
         self._is_connected = False
         self._reconnect_task: asyncio.Task[None] | None = None
         self._closing = False
+        self._unsub_config_changed: Any | None = None
+        self._config_changed_task: asyncio.Task[None] | None = None
 
         self._serial_to_zone: dict[str, str] = {}
         self._zone_to_aids: dict[str, list[int]] = {}
@@ -225,6 +227,7 @@ class HomeKitClient:
             # data read.
             await self._pairing.list_accessories_and_characteristics()
             self._is_connected = True
+            self._register_config_changed_listener()
             self._last_connected = dt_util.utcnow().isoformat()
             _LOGGER.info(
                 "HomeKit: connected to bridge for home %s",
@@ -232,8 +235,7 @@ class HomeKitClient:
             )
             return True
         except AuthenticationError as err:
-            self._handle_homekit_pairing_invalid(err)
-            self._pairing = None
+            await self._handle_homekit_pairing_invalid(err)
             return False
         except Exception:
             # Optional local-control path: any connect failure (network,
@@ -247,6 +249,7 @@ class HomeKitClient:
                 mask_home_id(self._home_id),
             )
             _LOGGER.debug("HomeKit: connect error details", exc_info=True)
+            self._teardown_config_changed_listener()
             self._pairing = None
             self._is_connected = False
             return False
@@ -272,6 +275,14 @@ class HomeKitClient:
                 pass
             self._reconnect_task = None
 
+        if self._config_changed_task and not self._config_changed_task.done():
+            self._config_changed_task.cancel()
+            try:
+                await self._config_changed_task
+            except asyncio.CancelledError:
+                pass
+            self._config_changed_task = None
+
         if self._pairing:
             try:
                 await self._pairing.close()
@@ -281,6 +292,7 @@ class HomeKitClient:
                     "with disconnect anyway",
                     exc_info=True,
                 )
+            self._teardown_config_changed_listener()
             self._pairing = None
 
         self._is_connected = False
@@ -341,25 +353,10 @@ class HomeKitClient:
                         "after %d attempt(s)",
                         mask_home_id(self._home_id), backoff_idx + 1,
                     )
-                    for cb in self._on_reconnect_callbacks:
-                        try:
-                            await cb()
-                        except Exception:
-                            # Callbacks are injected by other subsystems, so
-                            # isolate each: one failing must not abort the
-                            # rest or the reconnect. Broad catch is deliberate.
-                            _LOGGER.warning(
-                                "HomeKit: post-reconnect setup callback "
-                                "failed, local control may degrade until "
-                                "the next reconnect cycle",
-                            )
-                            _LOGGER.debug(
-                                "HomeKit: post-reconnect error details",
-                                exc_info=True,
-                            )
+                    await self._run_reconnect_callbacks()
                     return
             except AuthenticationError as err:
-                self._handle_homekit_pairing_invalid(err)
+                await self._handle_homekit_pairing_invalid(err)
                 return  # stop the loop: retrying is pointless
             except Exception:
                 # Detached background task: an uncaught exception would kill
@@ -376,6 +373,23 @@ class HomeKitClient:
                 )
 
             backoff_idx += 1
+
+    async def _run_reconnect_callbacks(self) -> None:
+        """Await every post-reconnect callback, isolating each so one failure can't abort the rest."""
+        for cb in self._on_reconnect_callbacks:
+            try:
+                await cb()
+            except Exception:
+                # Callbacks are injected by other subsystems, so isolate
+                # each: one failing must not abort the rest or the
+                # reconnect. Broad catch is deliberate.
+                _LOGGER.warning(
+                    "HomeKit: post-reconnect setup callback failed, local "
+                    "control may degrade until the next reconnect cycle",
+                )
+                _LOGGER.debug(
+                    "HomeKit: post-reconnect error details", exc_info=True,
+                )
 
     async def async_pair(
         self,
@@ -497,8 +511,38 @@ class HomeKitClient:
             )
             return []
 
-    def _handle_homekit_pairing_invalid(self, err: Exception) -> None:
-        """Stop reconnect loop and surface a Repair issue when pairing is permanently invalid."""
+    async def _shutdown_invalid_pairing(self) -> None:
+        """Irreversibly release a stale pairing so aiohomekit stops re-arming it.
+
+        A bridge reset/eviction leaves the bridge advertising over zeroconf while
+        tado_ce still holds the old pairing. aiohomekit's own connection reconnect
+        loop keeps re-arming on every re-advertise (gated on the pairing's
+        `_shutdown` flag), retrying pair-verify and failing auth every 1-2s.
+        `pairing.shutdown()` sets that flag then closes the connection, which is
+        what actually stops the re-arm; only a brand-new pairing object clears it.
+
+        `shutdown()` -> `close()` -> `_stop_connector()` re-awaits the connector
+        task that stored the AuthenticationError, so it re-raises that error out of
+        shutdown(); the swallow keeps the setup path a degrade, not a crash (the
+        flag is set before close() can raise, so the re-arm is stopped regardless).
+        Idempotent: a second call after `_pairing` is cleared is a no-op, so the
+        reconnect loop's repeated auth failures don't re-await a done connector.
+        """
+        if self._pairing is None:
+            return
+        try:
+            await self._pairing.shutdown()
+        except HomeKitException:
+            _LOGGER.debug(
+                "HomeKit: error while shutting down the invalid pairing, "
+                "proceeding, the re-arm flag is already set",
+                exc_info=True,
+            )
+        self._teardown_config_changed_listener()
+        self._pairing = None
+
+    async def _handle_homekit_pairing_invalid(self, err: Exception) -> None:  # noqa: ARG002
+        """Tear the stale pairing down and surface a Repair issue when pairing is permanently invalid."""
         from homeassistant.helpers import issue_registry as ir
 
         from .const import DOMAIN
@@ -513,13 +557,64 @@ class HomeKitClient:
             _LOGGER.warning(
                 "HomeKit: pairing is no longer valid for home %s, "
                 "bridge may have been factory-reset. Re-pair in "
-                "Settings → Tado CE → Configure → General Settings.",
+                "Settings → Tado CE → Configure → Advanced Settings → "
+                "HomeKit, using the Pair again option.",
                 mask_home_id(self._home_id),
             )
         _LOGGER.debug("HomeKit: pairing invalid error details", exc_info=True)
         self._closing = True
         self._is_connected = False
+        await self._shutdown_invalid_pairing()
         async_create_homekit_pairing_invalid_issue(self._hass, self._home_id)
+
+    def _register_config_changed_listener(self) -> None:
+        """(Re)arm the config-changed listener on the current live pairing."""
+        if self._unsub_config_changed is not None:
+            self._unsub_config_changed()
+            self._unsub_config_changed = None
+        if self._pairing is None:
+            return
+        self._unsub_config_changed = self._pairing.dispatcher_connect_config_changed(
+            self._on_config_changed,
+        )
+
+    def _teardown_config_changed_listener(self) -> None:
+        """Drop the config-changed listener; safe no-op when none is registered."""
+        if self._unsub_config_changed is not None:
+            self._unsub_config_changed()
+            self._unsub_config_changed = None
+
+    def _on_config_changed(self, config_num: int) -> None:  # noqa: ARG002
+        """Handle a bridge config-number bump: log and schedule a single-flight rebuild.
+
+        Sync by aiohomekit contract (invoked from a `for cb in listeners`
+        loop); it must not await or mutate the listener set here, so it only
+        logs and hands off to a scheduled task.
+        """
+        _LOGGER.info(
+            "HomeKit: bridge reconfigured for home %s, rebuilding the local "
+            "device map", mask_home_id(self._home_id),
+        )
+        self._schedule_config_changed_rebuild()
+
+    def _schedule_config_changed_rebuild(self) -> None:
+        """Schedule the rebuild once; a bump arriving mid-rebuild is subsumed.
+
+        aiohomekit refreshes its own accessory model before firing the
+        listener, so an in-flight rebuild already fetches the freshest model,
+        a duplicate schedule would only race it.
+        """
+        if self._config_changed_task is not None and not self._config_changed_task.done():
+            return
+        self._config_changed_task = self._hass.async_create_task(
+            self._async_config_changed_rebuild(),
+        )
+
+    async def _async_config_changed_rebuild(self) -> None:
+        """Rebuild the local iid cache after a config-number bump, reusing the reconnect path."""
+        if not self._is_connected:
+            return
+        await self._run_reconnect_callbacks()
 
 
 # ---------------------------------------------------------------------------
@@ -606,7 +701,20 @@ async def async_step_homekit_pairing(
                 )
 
                 if flow._pending_general_options:
+                    # First enable: writing the options flips homekit_enabled,
+                    # and the update listener reloads the entry for us.
                     return flow.async_create_entry(title="", data=flow._pending_general_options)
+
+                # Re-pair: pairing happened on a throwaway client, so the
+                # entry's live client still holds whatever state it had — and
+                # after a pairing-invalid teardown that state is permanently
+                # inert (`_closing` latched, no pairing). This route returns to
+                # the menu without writing options, so no update listener fires;
+                # reload explicitly or the user keeps cloud-only state despite
+                # valid new credentials.
+                flow.hass.config_entries.async_schedule_reload(
+                    flow.config_entry.entry_id,
+                )
                 return await flow.async_step_init()
 
             except AuthenticationError:

@@ -1284,6 +1284,16 @@
           "description": "Standardmäßig deaktiviert, sodass eine manuelle Änderung, die Sie am Schieberegler vorgenommen haben, beibehalten wird. Aktivieren Sie diese Option für eine Automatisierung, die Vorrang vor einer manuellen Änderung haben soll, beispielsweise bei einem Feiertagsplan, der immer Vorrang hat."
         }
       }
+    },
+    "refresh": {
+      "name": "Aktualisieren",
+      "description": "Erzwingen Sie eine sofortige Abfrage der Präsenzdaten unter Umgehung des minimalen Aktualisierungsintervalls. Für Nutzer, die ihre Aktualisierungsfrequenz über eine Automatisierung selbst steuern, schützt die automatische Abfrage-Untergrenze Ihre API-Quote in der übrigen Zeit weiterhin.",
+      "fields": {
+        "data": {
+          "name": "Zu aktualisierende Daten",
+          "description": "Welche Daten sollen nun abgerufen werden: Anwesenheit auf dem Mobilgerät oder Anwesenheit zu Hause (zu Hause/unterwegs)? Wird ignoriert, wenn diese Funktion deaktiviert ist."
+        }
+      }
     }
   },
   "selector": {
@@ -1341,7 +1351,8 @@
         "bridge": "Internet-Brücke",
         "polling_api": "Abfrage & API",
         "homekit": "HomeKit",
-        "comfort_safety": "Komfort & Sicherheit"
+        "comfort_safety": "Komfort & Sicherheit",
+        "external_sensors": "Außensensoren"
       }
     },
     "svc_mode": {
@@ -1432,7 +1443,7 @@
     },
     "homekit_pairing_invalid": {
       "title": "HomeKit-Kopplung unterbrochen",
-      "description": "Die HomeKit-Kopplung Ihrer Tado-Bridge ist nicht mehr gültig – möglicherweise wurde das Gerät auf die Werkseinstellungen zurückgesetzt. Tado CE läuft bis zur erneuten Kopplung im reinen Cloud-Modus.\n\nSo führen Sie die erneute Kopplung durch: Einstellungen → Tado CE → Konfigurieren → Allgemeine Einstellungen → HomeKit aktivieren."
+      "description": "Die HomeKit-Kopplung Ihrer Tado-Bridge ist nicht mehr gültig; möglicherweise wurde das Gerät auf die Werkseinstellungen zurückgesetzt. Tado CE läuft bis zur erneuten Kopplung im reinen Cloud-Modus.\n\nSo führen Sie die erneute Kopplung durch: „Einstellungen“ → „Tado CE“ → „Konfigurieren“ → „Erweiterte Einstellungen“ → „HomeKit“, dann aktivieren Sie „Erneut koppeln“ und geben Sie den 8-stelligen Einrichtungscode Ihrer Bridge ein."
     }
   },
   "config": {
@@ -1664,7 +1675,7 @@
               "smart_comfort_enabled": "Komfortbewertung, Schimmelrisiko, Kondensations- und Taupunktsensoren für jede Zone",
               "thermal_analytics_enabled": "Verfolgen Sie, wie schnell sich Ihre Räume aufheizen und wie sich die Leistung Ihrer Anlage im Laufe der Zeit entwickelt",
               "adaptive_preheat_enabled": "Die Heizung wird automatisch vorzeitig eingeschaltet, damit Ihr Zimmer warm ist, wenn der Zeitplan greift – ersetzt die „Early Start“-Funktion von Tado durch eine lokale Logik",
-              "wc_enabled": "Passen Sie die Vorlauftemperatur Ihres Heizkessels automatisch an die Außenlufttemperatur an (Internet-Bridge erforderlich)"
+              "wc_enabled": "Zuvor muss die Internet-Brücke aktiviert werden. Passt die Vorlauftemperatur Ihres Heizkessels automatisch an die Außenlufttemperatur an."
             }
           },
           "advanced": {
@@ -1686,16 +1697,12 @@
           "smart_comfort": {
             "name": "Intelligenter Komfort",
             "data": {
-              "use_outdoor_temp_entity": "Entität Außentemperatur verwenden",
-              "outdoor_temp_entity": "Außentemperatur Entität",
               "smart_comfort_mode": "Intelligenter Komfort-Modus",
               "use_feels_like": "Verwenden Sie die gefühlte Temperatur",
               "mold_risk_window_type": "Fenster Typ",
               "smart_comfort_history_days": "Temperaturverlauf (Tage)"
             },
             "data_description": {
-              "use_outdoor_temp_entity": "Ausschalten, um Funktionen zu deaktivieren, die die Außentemperatur benötigen (Komfortbewertung, Schimmelrisiko)",
-              "outdoor_temp_entity": "Sensor für die Außentemperatur (z. B. weather.home oder ein lokaler Sensor)",
               "smart_comfort_mode": "Wie stark Tado CE die Zieltemperatur in Richtung Komfort anpasst. „Leicht“ = kaum spürbar, „Aggressiv“ = deutlich spürbar. Beginnen Sie mit „Leicht“.",
               "use_feels_like": "Berücksichtigung von Windchill und Luftfeuchtigkeit anstelle der Rohtemperatur",
               "mold_risk_window_type": "Ihr Fenstertyp - wirkt sich darauf aus, wie die Oberflächentemperatur für das Schimmelrisiko eingeschätzt wird",
@@ -1724,10 +1731,10 @@
               "night_start_hour": "Nacht Startzeit",
               "custom_day_interval": "Benutzerdefiniertes Tagesintervall (für automatische Einstellung leer lassen)",
               "custom_night_interval": "Benutzerdefiniertes Nachtintervall (für automatische Einstellung leer lassen)",
-              "refresh_debounce_seconds": "Aktualisierungsverzögerung (Sekunden)",
+              "refresh_debounce_seconds": "Aktualisierungsverzögerung nach einer Änderung (Sekunden)",
               "api_history_retention_days": "Aufbewahrung der API-Historie (Tage)",
-              "smart_actions_debounce_seconds": "Temperatur Schieberegler Verzögerung",
-              "device_sync_delay_seconds": "Geräte-Synchronisationsverzögerung",
+              "smart_actions_debounce_seconds": "Verzögerung des Temperaturreglers (Sekunden)",
+              "device_sync_delay_seconds": "Verzögerung bei der Gerätesynchronisierung (Sekunden)",
               "mobile_devices_frequent_sync": "Häufige mobile Synchronisierung",
               "hot_water_timer_duration": "Standardwert für Warmwasser-Timer (Minuten)",
               "presence_min_refresh_minutes": "Startseite – Anwesenheits-Aktualisierungsintervall",
@@ -1802,7 +1809,8 @@
               "wc_room_compensation_factor": "Wie stark die Vorlauftemperatur angepasst werden soll, wenn ein Raum kälter oder wärmer als der Sollwert ist (1,0-5,0)",
               "wc_step_size": "Runden Sie die Vorlauftemperatur auf diese Schrittgröße ab - größere Schritte bedeuten weniger Kesseleinstellungen (0,5-2,0°C)",
               "wc_hysteresis": "Senden Sie nur dann eine neue Vorlauftemperatur, wenn sie sich von der letzten um mindestens diesen Wert unterscheidet (0,5-3,0°C)",
-              "wc_heating_system_preset": "Durch Auswahl einer Voreinstellung werden empfohlene Standardwerte für Steigungs- und Vorlauftemperaturen festgelegt. Wählen Sie „Benutzerdefiniert“, um jedes Feld manuell anzupassen."
+              "wc_heating_system_preset": "Durch Auswahl einer Voreinstellung werden empfohlene Standardwerte für Steigungs- und Vorlauftemperaturen festgelegt. Wählen Sie „Benutzerdefiniert“, um jedes Feld manuell anzupassen.",
+              "wc_room_compensation_enabled": "Passen Sie die Vorlauftemperatur nach oben oder unten an, wenn ein Raum kälter oder wärmer als die Solltemperatur ist, und zwar zusätzlich zur Außenwetterkurve."
             }
           },
           "comfort_safety": {
@@ -1812,6 +1820,17 @@
             },
             "data_description": {
               "comfort_heat_vulnerable_group": "Hitze- und Kältewarnungen sollten für Haushalte mit älteren Menschen, Kleinkindern oder kranken Personen eine Stufe früher ausgegeben werden, da dort bereits bei derselben Temperatur ein höheres Risiko besteht. Standardmäßig deaktiviert."
+            }
+          },
+          "external_sensors": {
+            "name": "Außensensoren",
+            "data": {
+              "use_outdoor_temp_entity": "Entität „Außentemperatur“ verwenden",
+              "outdoor_temp_entity": "Entität „Außentemperatur“"
+            },
+            "data_description": {
+              "use_outdoor_temp_entity": "Deaktivieren Sie diese Option, um Funktionen zu deaktivieren, für die die Außentemperatur benötigt wird (Fenstererkennung, Komfortbewertung, Schimmelrisiko).",
+              "outdoor_temp_entity": "Sensor zur Erfassung der Außentemperatur (z. B. „weather.home“ oder ein lokaler Sensor)"
             }
           }
         }

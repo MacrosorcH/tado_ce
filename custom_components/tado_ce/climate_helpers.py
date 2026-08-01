@@ -193,6 +193,21 @@ def read_external_sensor(
         return None
 
 
+def ac_power_percentage(activity_data: dict[str, Any]) -> int:
+    """Coerce a zone's acPower reading to a percentage across firmware shapes."""
+    # Newer firmware reports acPower.value ("ON"/"OFF"), older only .percentage.
+    ac_power = activity_data.get("acPower") or {}
+    power = ac_power.get("percentage")
+    if power is None:
+        power = 100 if ac_power.get("value") == "ON" else 0
+    return power
+
+
+def ac_power_is_on(activity_data: dict[str, Any]) -> bool:
+    """Return True when the zone's own AC is powered on (either firmware shape)."""
+    return ac_power_percentage(activity_data) > 0
+
+
 @dataclass(slots=True)
 class RollbackPlan:
     """Optimistic-write + rollback plan applied by `_attempt_with_rollback`."""

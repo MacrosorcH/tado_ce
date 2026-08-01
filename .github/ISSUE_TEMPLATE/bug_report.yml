@@ -1,0 +1,117 @@
+name: Bug report
+description: Something in Tado CE isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. A few quick details up front
+        save a lot of back-and-forth. The debug log is the single most useful
+        thing, and there's a link below for how to turn it on.
+  - type: checkboxes
+    attributes:
+      label: Before you start
+      options:
+        - label: I have searched the existing issues and discussions for this
+          required: true
+  - type: input
+    id: tado_ce_version
+    attributes:
+      label: Tado CE version
+      description: Copy it from the integration's device page rather than typing from memory.
+      placeholder: e.g. 4.3.0
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: e.g. 2026.7.1
+    validations:
+      required: true
+  - type: dropdown
+    id: install_type
+    attributes:
+      label: Home Assistant installation type
+      options:
+        - HA OS
+        - Container
+        - Supervised
+        - Core
+    validations:
+      required: true
+  - type: dropdown
+    id: homekit_enabled
+    attributes:
+      label: Is HomeKit local control enabled?
+      description: Many sync and update issues only happen with HomeKit on, so this narrows it down fast.
+      options:
+        - "Yes, and it shows connected"
+        - "Yes, but it shows disconnected"
+        - "No"
+        - "Not sure"
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        **Using Tado X?** This integration doesn't support Tado X hardware (see the
+        FAQ in the README for why and what to use instead), so please raise it as a
+        feature request or in Discussions rather than a bug.
+  - type: checkboxes
+    attributes:
+      label: Tado hardware
+      description: Tick everything that applies.
+      options:
+        - label: V3 / V3+ Internet Bridge
+        - label: Smart Radiator Valve (TRV)
+        - label: Smart AC Control
+        - label: Boiler-wired (Wireless Receiver)
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened?
+    validations:
+      required: true
+  - type: input
+    id: entity
+    attributes:
+      label: Which specific zone or entity?
+      placeholder: e.g. climate.tado_ce_living_room, or zone 14
+  - type: textarea
+    id: debug_log
+    attributes:
+      label: Debug log
+      description: >
+        Not required, but without it most issues are slow to pin down. Turning it
+        on takes a config edit and a restart, see the "Enable debug logging"
+        section under the FAQ in the README:
+        https://github.com/hiall-fyi/tado_ce#faq
+        Paste the relevant lines (filter the log by tado_ce).
+      render: text
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce (if you can)
+  - type: textarea
+    id: already_tried
+    attributes:
+      label: What have you already tried?
+      placeholder: e.g. removed and reinstalled, reset HomeKit on the bridge, disabled the official Tado integration
+  - type: checkboxes
+    attributes:
+      label: Which features are you using?
+      description: Optional, helps rule things in or out.
+      options:
+        - label: Offset Sync / Smart Valve Control
+        - label: Weather Compensation
+        - label: Mobile device presence
+        - label: Heating Circuit Control
+        - label: Per-zone temperature source
+        - label: Custom polling interval

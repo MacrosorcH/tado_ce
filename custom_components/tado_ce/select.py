@@ -482,9 +482,9 @@ class TadoHeatingCircuitSelect(CoordinatorEntity["TadoDataUpdateCoordinator"], S
     def update(self) -> None:
         """Rebuild options from the circuit list and resolve the current option.
 
-        D1 guard: a live circuit number with no matching serial in the list
-        (a mid-drift poll, a re-paired circuit) gets a synthetic ``circuit_<n>``
-        option so the state is always representable and never falsely reads as
+        A live circuit number with no matching serial in the list (a mid-drift
+        poll, a re-paired circuit) gets a synthetic ``circuit_<n>`` option so
+        the state is always representable and never falsely reads as
         "no heating circuit".
         """
         circuits = self._circuits()

@@ -1284,6 +1284,16 @@
           "description": "Per impostazione predefinita è disattivata, quindi le modifiche manuali apportate al cursore vengono mantenute. Attivala per un'automazione che deve avere la precedenza su una modifica manuale, come ad esempio un programma festivo che deve prevalere."
         }
       }
+    },
+    "refresh": {
+      "name": "Aggiorna",
+      "description": "Forza un recupero immediato dei dati di presenza, aggirando l'intervallo minimo di aggiornamento. Per gli utenti che gestiscono autonomamente la frequenza di aggiornamento tramite un'automazione, il limite minimo di interrogazione automatica continua a proteggere la quota API per il resto del tempo.",
+      "fields": {
+        "data": {
+          "name": "Dati da aggiornare",
+          "description": "Quali dati recuperare ora: presenza su dispositivo mobile o presenza a casa (a casa/fuori casa). Viene ignorato se tale funzione è disattivata."
+        }
+      }
     }
   },
   "selector": {
@@ -1341,7 +1351,8 @@
         "bridge": "Ponte Internet",
         "polling_api": "Polling e API",
         "homekit": "HomeKit",
-        "comfort_safety": "Comfort e sicurezza"
+        "comfort_safety": "Comfort e sicurezza",
+        "external_sensors": "Sensori per esterni"
       }
     },
     "svc_mode": {
@@ -1432,7 +1443,7 @@
     },
     "homekit_pairing_invalid": {
       "title": "Perdita dell'accoppiamento HomeKit",
-      "description": "L'accoppiamento HomeKit del tuo bridge Tado non è più valido: è possibile che sia stato ripristinato alle impostazioni di fabbrica. Tado CE funzionerà in modalità solo cloud fino a quando non effettuerai un nuovo accoppiamento.\n\nPer effettuare un nuovo accoppiamento: Impostazioni → Tado CE → Configura → Impostazioni generali → attiva HomeKit."
+      "description": "L'accoppiamento HomeKit del tuo bridge Tado non è più valido; è possibile che sia stato ripristinato alle impostazioni di fabbrica. Tado CE funziona in modalità solo cloud fino a quando non effettuerai un nuovo accoppiamento.\n\nPer effettuare nuovamente l'accoppiamento: Impostazioni → Tado CE → Configura → Impostazioni avanzate → HomeKit, quindi seleziona \"Accoppia di nuovo\" e inserisci il codice di configurazione a 8 cifre riportato sul tuo bridge."
     }
   },
   "config": {
@@ -1664,7 +1675,7 @@
               "smart_comfort_enabled": "Sensori di comfort, rischio di muffa, condensa e punto di rugiada per ogni zona",
               "thermal_analytics_enabled": "Tieni traccia della velocità con cui si riscaldano le stanze e delle prestazioni del tuo impianto nel tempo",
               "adaptive_preheat_enabled": "Avvia automaticamente il riscaldamento in anticipo, in modo che la stanza sia già calda quando scatta la programmazione — sostituisce la funzione \"Early Start\" di Tado con una logica locale",
-              "wc_enabled": "Regola automaticamente la temperatura di mandata della caldaia in base alle condizioni meteorologiche esterne (richiede Internet Bridge)"
+              "wc_enabled": "È necessario che Internet Bridge sia prima attivato. Regola automaticamente la temperatura di mandata della caldaia in base alle condizioni meteorologiche esterne."
             }
           },
           "advanced": {
@@ -1686,16 +1697,12 @@
           "smart_comfort": {
             "name": "Comfort intelligente",
             "data": {
-              "use_outdoor_temp_entity": "Utilizzare l'entità Temperatura esterna",
-              "outdoor_temp_entity": "Entità temperatura esterna",
               "smart_comfort_mode": "Modalità Smart Comfort",
               "use_feels_like": "Utilizzare una temperatura simile a quella delle sensazioni",
               "mold_risk_window_type": "Tipo di finestra",
               "smart_comfort_history_days": "Storia della temperatura (giorni)"
             },
             "data_description": {
-              "use_outdoor_temp_entity": "Spegnere per disabilitare le funzioni che richiedono la temperatura esterna (punteggio di comfort, rischio di muffa).",
-              "outdoor_temp_entity": "Sensore che fornisce la temperatura esterna (ad esempio, weather.home o un sensore locale)",
               "smart_comfort_mode": "Di quanto Tado CE modifica la temperatura target della zona per garantire il comfort. Leggero = leggero, Aggressivo = evidente. Inizia con Leggero.",
               "use_feels_like": "Tenere conto del freddo del vento e dell'umidità invece che della temperatura grezza.",
               "mold_risk_window_type": "Il tipo di finestra - influisce sul modo in cui la temperatura della superficie viene stimata per il rischio di muffa.",
@@ -1724,10 +1731,10 @@
               "night_start_hour": "Ora di inizio della notte",
               "custom_day_interval": "Intervallo giornaliero personalizzato (lasciare vuoto per l'impostazione automatica)",
               "custom_night_interval": "Intervallo notturno personalizzato (lasciare vuoto per l'impostazione automatica)",
-              "refresh_debounce_seconds": "Ritardo di aggiornamento (secondi)",
+              "refresh_debounce_seconds": "Ritardo di aggiornamento dopo una modifica (secondi)",
               "api_history_retention_days": "Conservazione della cronologia API (giorni)",
-              "smart_actions_debounce_seconds": "Ritardo del cursore della temperatura",
-              "device_sync_delay_seconds": "Ritardo di sincronizzazione del dispositivo",
+              "smart_actions_debounce_seconds": "Ritardo del cursore della temperatura (secondi)",
+              "device_sync_delay_seconds": "Ritardo nella sincronizzazione dei dispositivi (secondi)",
               "mobile_devices_frequent_sync": "Sincronizzazione mobile frequente",
               "hot_water_timer_duration": "Impostazione predefinita del timer per l'acqua calda (minuti)",
               "presence_min_refresh_minutes": "Intervallo di aggiornamento della presenza in casa",
@@ -1802,7 +1809,8 @@
               "wc_room_compensation_factor": "Di quanto regolare la temperatura di mandata quando una stanza è più fredda o più calda del suo target (1,0-5,0)",
               "wc_step_size": "Arrotondare la temperatura di mandata a questa dimensione di passo - passi più grandi significano meno regolazioni della caldaia (0,5-2,0°C)",
               "wc_hysteresis": "Inviare una nuova temperatura di mandata solo se differisce dall'ultima di almeno questo valore (0,5-3,0°C).",
-              "wc_heating_system_preset": "Selezionando un'impostazione predefinita si applicano i valori predefiniti consigliati per la pendenza e le temperature di mandata. Scegliere \"Personalizza\" per regolare manualmente ogni campo."
+              "wc_heating_system_preset": "Selezionando un'impostazione predefinita si applicano i valori predefiniti consigliati per la pendenza e le temperature di mandata. Scegliere \"Personalizza\" per regolare manualmente ogni campo.",
+              "wc_room_compensation_enabled": "Regolare la temperatura di mandata verso l'alto o verso il basso quando una stanza è più fredda o più calda rispetto al valore di riferimento, in aggiunta alla curva climatica esterna."
             }
           },
           "comfort_safety": {
@@ -1812,6 +1820,17 @@
             },
             "data_description": {
               "comfort_heat_vulnerable_group": "Elevare di un livello l'allerta per il caldo e il freddo per le abitazioni in cui vivono anziani, neonati o persone malate, dove la stessa temperatura comporta un rischio maggiore. Disattivato per impostazione predefinita."
+            }
+          },
+          "external_sensors": {
+            "name": "Sensori per esterni",
+            "data": {
+              "use_outdoor_temp_entity": "Utilizza l'entità \"Temperatura esterna\"",
+              "outdoor_temp_entity": "Entità \"Temperatura esterna\""
+            },
+            "data_description": {
+              "use_outdoor_temp_entity": "Disattivare per disabilitare le funzioni che richiedono la temperatura esterna (rilevamento delle finestre, valutazione del comfort, rischio di muffa)",
+              "outdoor_temp_entity": "Sensore che rileva la temperatura esterna (ad esempio, weather.home o un sensore locale)"
             }
           }
         }

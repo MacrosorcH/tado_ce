@@ -1213,6 +1213,16 @@
         }
       }
     },
+    "refresh": {
+      "name": "Refresh",
+      "description": "Force an immediate fetch of presence data, bypassing the minimum refresh interval. For users driving their own refresh cadence from an automation; the automatic polling floor still protects your API quota the rest of the time.",
+      "fields": {
+        "data": {
+          "name": "Data to refresh",
+          "description": "Which data to fetch now: mobile device presence, or home presence (home/away). Ignored if that feature is turned off."
+        }
+      }
+    },
     "identify_device": {
       "name": "Identify Device",
       "description": "Make a Tado device flash its LED to help identify it.",
@@ -1343,6 +1353,7 @@
       "options": {
         "everything": "Reset Everything",
         "smart_comfort": "Smart Comfort",
+        "external_sensors": "Outdoor Sensors",
         "comfort_safety": "Comfort & Safety",
         "thermal_analytics": "Thermal Analytics",
         "weather_compensation": "Weather Compensation",
@@ -1432,7 +1443,7 @@
     },
     "homekit_pairing_invalid": {
       "title": "HomeKit pairing lost",
-      "description": "Your Tado bridge's HomeKit pairing is no longer valid — it may have been factory-reset. Tado CE is running in cloud-only mode until you re-pair.\n\nTo re-pair: Settings → Tado CE → Configure → General Settings → enable HomeKit."
+      "description": "Your Tado bridge's HomeKit pairing is no longer valid, it may have been factory-reset. Tado CE is running in cloud-only mode until you re-pair.\n\nTo re-pair: Settings → Tado CE → Configure → Advanced Settings → HomeKit, then tick \"Pair again\" and enter the 8-digit setup code from your bridge."
     }
   },
   "config": {
@@ -1578,7 +1589,7 @@
               "smart_comfort_enabled": "Comfort scoring, mold risk, condensation, and dew point sensors for each zone",
               "thermal_analytics_enabled": "Track how fast your rooms heat up and how your system performs over time",
               "adaptive_preheat_enabled": "Automatically start heating early so your room is warm when the schedule kicks in — replaces Tado's Early Start with local logic",
-              "wc_enabled": "Automatically adjust your boiler's flow temperature based on outdoor weather (requires Internet Bridge)"
+              "wc_enabled": "Needs the Internet Bridge enabled first. Automatically adjusts your boiler's flow temperature based on the outdoor weather."
             }
           },
           "advanced": {
@@ -1600,20 +1611,27 @@
           "smart_comfort": {
             "name": "Smart Comfort",
             "data": {
-              "use_outdoor_temp_entity": "Use Outdoor Temperature Entity",
-              "outdoor_temp_entity": "Outdoor Temperature Entity",
               "smart_comfort_mode": "Smart Comfort Mode",
               "use_feels_like": "Use Feels-Like Temperature",
               "mold_risk_window_type": "Window Type",
               "smart_comfort_history_days": "Temperature History (days)"
             },
             "data_description": {
-              "use_outdoor_temp_entity": "Turn off to disable features that need outdoor temperature (comfort scoring, mold risk)",
-              "outdoor_temp_entity": "Sensor providing outdoor temperature (e.g., weather.home or a local sensor)",
               "smart_comfort_mode": "How much Tado CE nudges zone target temperature toward comfort. Light = subtle, Aggressive = noticeable. Start with Light.",
               "use_feels_like": "Factor in wind chill and humidity instead of raw temperature",
               "mold_risk_window_type": "Your window type — affects how surface temperature is estimated for mold risk",
               "smart_comfort_history_days": "How many days of temperature data to use for heating rate estimates (1–30)"
+            }
+          },
+          "external_sensors": {
+            "name": "Outdoor Sensors",
+            "data": {
+              "use_outdoor_temp_entity": "Use Outdoor Temperature Entity",
+              "outdoor_temp_entity": "Outdoor Temperature Entity"
+            },
+            "data_description": {
+              "use_outdoor_temp_entity": "Turn off to disable features that need outdoor temperature (comfort scoring, mold risk)",
+              "outdoor_temp_entity": "Sensor providing outdoor temperature (e.g., weather.home or a local sensor)"
             }
           },
           "comfort_safety": {
@@ -1675,6 +1693,7 @@
               "wc_shutoff_temp": "Stop heating when outdoor temperature rises above this (5–30°C)",
               "wc_smoothing_method": "How outdoor temperature readings are averaged to avoid sudden changes",
               "wc_smoothing_window": "How long to average outdoor temperature over (15–1440 min)",
+              "wc_room_compensation_enabled": "Nudge the flow temperature up or down when a room is colder or warmer than its target, on top of the outdoor-weather curve.",
               "wc_room_compensation_factor": "How much to adjust flow temperature when a room is colder or warmer than its target (1.0–5.0)",
               "wc_step_size": "Round flow temperature to this step size — larger steps mean fewer boiler adjustments (0.5–2.0°C)",
               "wc_hysteresis": "Only send a new flow temperature when it differs from the last one by at least this much (0.5–3.0°C)",
@@ -1702,10 +1721,10 @@
               "night_start_hour": "Night Start Hour",
               "custom_day_interval": "Custom Day Interval (leave empty for auto)",
               "custom_night_interval": "Custom Night Interval (leave empty for auto)",
-              "refresh_debounce_seconds": "Refresh Delay (seconds)",
+              "refresh_debounce_seconds": "Refresh Delay After a Change (seconds)",
               "api_history_retention_days": "API History Retention (days)",
-              "smart_actions_debounce_seconds": "Temperature Slider Delay",
-              "device_sync_delay_seconds": "Device Sync Delay",
+              "smart_actions_debounce_seconds": "Temperature Slider Delay (seconds)",
+              "device_sync_delay_seconds": "Device Sync Delay (seconds)",
               "mobile_devices_frequent_sync": "Frequent Mobile Sync",
               "presence_min_refresh_minutes": "Home Presence Refresh Interval",
               "weather_min_refresh_minutes": "Weather Data Refresh Interval",

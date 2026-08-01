@@ -15,6 +15,7 @@ from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .climate_helpers import ac_power_percentage
 from .const import SIGNAL_HOMEKIT_UPDATE
 from .device_manager import get_hub_device_info, get_zone_device_info
 from .entity_registry import ENTITY_REGISTRY, get_entity_category
@@ -297,15 +298,7 @@ class TadoACPowerSensor(TadoZoneSensor):
     @callback
     def _update_from_zone_data(self, zone_data: dict[str, Any]) -> None:
         activity_data = zone_data.get("activityDataPoints") or {}
-        ac_power = activity_data.get("acPower") or {}
-        # Newer firmware reports `value` ("ON" / "OFF"); older firmware
-        # reports `percentage`. Coerce to a percentage either way so
-        # the sensor stays a stable shape for users / dashboards.
-        power = ac_power.get("percentage")
-        if power is None:
-            value = ac_power.get("value")
-            power = 100 if value == "ON" else 0
-        self._attr_native_value = power if power is not None else 0
+        self._attr_native_value = ac_power_percentage(activity_data)
 
 
 class TadoBoilerFlowTemperatureSensor(

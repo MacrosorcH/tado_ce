@@ -227,3 +227,16 @@ restore_previous_state:
         - water_heater
 
 turn_off_all_zones:
+
+refresh:
+  fields:
+    data:
+      required: true
+      example: "mobile_devices"
+      selector:
+        select:
+          options:
+            - label: "Mobile device presence"
+              value: "mobile_devices"
+            - label: "Home presence (home/away)"
+              value: "home_state"

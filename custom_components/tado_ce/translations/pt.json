@@ -1284,6 +1284,16 @@
           "description": "Esta opção está desativada por predefinição, pelo que qualquer alteração manual que tenha feito no controlo deslizante é mantida. Ative-a para uma automação que deva ter prioridade sobre uma alteração manual, como um horário de feriados que deve prevalecer."
         }
       }
+    },
+    "refresh": {
+      "name": "Atualizar",
+      "description": "Forçar uma obtenção imediata dos dados de presença, ignorando o intervalo mínimo de atualização. Para os utilizadores que definem o seu próprio ritmo de atualização através de uma automação, o limite mínimo de consultas automáticas continua a proteger a sua quota de API no resto do tempo.",
+      "fields": {
+        "data": {
+          "name": "Dados a atualizar",
+          "description": "Que dados devem ser obtidos neste momento: presença no dispositivo móvel ou presença em casa (em casa/fora de casa). Ignorado se essa funcionalidade estiver desativada."
+        }
+      }
     }
   },
   "selector": {
@@ -1341,7 +1351,8 @@
         "bridge": "Ponte Internet",
         "polling_api": "Sondagem e API",
         "homekit": "HomeKit",
-        "comfort_safety": "Conforto e Segurança"
+        "comfort_safety": "Conforto e Segurança",
+        "external_sensors": "Sensores para o exterior"
       }
     },
     "svc_mode": {
@@ -1432,7 +1443,7 @@
     },
     "homekit_pairing_invalid": {
       "title": "Perda do emparelhamento do HomeKit",
-      "description": "O emparelhamento do seu Tado Bridge com o HomeKit já não é válido — é possível que tenha sido reposto às predefinições de fábrica. O Tado CE está a funcionar no modo «apenas na nuvem» até que volte a emparelhá-lo.\n\nPara voltar a emparelhar: Definições → Tado CE → Configurar → Definições gerais → ativar o HomeKit."
+      "description": "O emparelhamento do seu Tado Bridge com o HomeKit já não é válido; é possível que tenha sido reposto para as predefinições de fábrica. O Tado CE está a funcionar no modo «apenas na nuvem» até que volte a emparelhá-lo.\n\nPara voltar a emparelhar: Definições → Tado CE → Configurar → Definições avançadas → HomeKit; em seguida, assinale «Emparelhar novamente» e introduza o código de configuração de 8 dígitos da sua ponte."
     }
   },
   "config": {
@@ -1664,7 +1675,7 @@
               "smart_comfort_enabled": "Sensores de conforto, risco de bolor, condensação e ponto de orvalho para cada zona",
               "thermal_analytics_enabled": "Acompanhe a rapidez com que os seus quartos aquecem e o desempenho do seu sistema ao longo do tempo",
               "adaptive_preheat_enabled": "Inicie automaticamente o aquecimento mais cedo para que o seu quarto esteja quente quando o horário programado entrar em vigor — substitui a função «Early Start» do Tado por uma lógica local",
-              "wc_enabled": "Ajuste automaticamente a temperatura de saída da sua caldeira com base nas condições meteorológicas exteriores (requer Internet Bridge)"
+              "wc_enabled": "É necessário ativar primeiro a Internet Bridge. Ajusta automaticamente a temperatura de saída da sua caldeira com base nas condições meteorológicas exteriores."
             }
           },
           "advanced": {
@@ -1686,16 +1697,12 @@
           "smart_comfort": {
             "name": "Conforto inteligente",
             "data": {
-              "use_outdoor_temp_entity": "Utilizar a entidade de temperatura exterior",
-              "outdoor_temp_entity": "Entidade da temperatura exterior",
               "smart_comfort_mode": "Modo de conforto inteligente",
               "use_feels_like": "Utilizar uma temperatura agradável",
               "mold_risk_window_type": "Tipo de janela",
               "smart_comfort_history_days": "Histórico de temperatura (dias)"
             },
             "data_description": {
-              "use_outdoor_temp_entity": "Desligar para desativar as funções que necessitam da temperatura exterior (pontuação de conforto, risco de bolor)",
-              "outdoor_temp_entity": "Sensor que fornece a temperatura exterior (por exemplo, weather.home ou um sensor local)",
               "smart_comfort_mode": "Em que medida o Tado CE ajusta a temperatura alvo da zona para um nível de conforto. Suave = subtil, Agressivo = percetível. Comece com a opção Suave.",
               "use_feels_like": "Fator de arrefecimento do vento e humidade em vez de temperatura bruta",
               "mold_risk_window_type": "O seu tipo de janela - afecta a forma como a temperatura da superfície é estimada para o risco de bolor",
@@ -1724,10 +1731,10 @@
               "night_start_hour": "Hora de início da noite",
               "custom_day_interval": "Intervalo de dias personalizado (deixe em branco para a configuração automática)",
               "custom_night_interval": "Intervalo noturno personalizado (deixe em branco para a configuração automática)",
-              "refresh_debounce_seconds": "Atraso de atualização (segundos)",
+              "refresh_debounce_seconds": "Atraso na atualização após uma alteração (segundos)",
               "api_history_retention_days": "Retenção do histórico da API (dias)",
-              "smart_actions_debounce_seconds": "Atraso do seletor de temperatura",
-              "device_sync_delay_seconds": "Atraso de sincronização do dispositivo",
+              "smart_actions_debounce_seconds": "Atraso do controlo deslizante de temperatura (segundos)",
+              "device_sync_delay_seconds": "Atraso na sincronização do dispositivo (segundos)",
               "mobile_devices_frequent_sync": "Sincronização móvel frequente",
               "hot_water_timer_duration": "Tempo padrão do temporizador de água quente (minutos)",
               "presence_min_refresh_minutes": "Intervalo de atualização da presença em casa",
@@ -1802,7 +1809,8 @@
               "wc_room_compensation_factor": "Quanto ajustar a temperatura do fluxo quando uma divisão está mais fria ou mais quente do que o seu objetivo (1,0-5,0)",
               "wc_step_size": "Arredondar a temperatura do caudal para este tamanho de passo - passos maiores significam menos ajustes da caldeira (0,5-2,0°C)",
               "wc_hysteresis": "Só envia uma nova temperatura de fluxo quando esta difere da última em pelo menos este valor (0,5-3,0°C)",
-              "wc_heating_system_preset": "Ao selecionar uma predefinição, são definidas as configurações padrão recomendadas para as temperaturas de inclinação e de fluxo. Escolha «Personalizar» para ajustar cada campo manualmente."
+              "wc_heating_system_preset": "Ao selecionar uma predefinição, são definidas as configurações padrão recomendadas para as temperaturas de inclinação e de fluxo. Escolha «Personalizar» para ajustar cada campo manualmente.",
+              "wc_room_compensation_enabled": "Ajuste a temperatura de saída para cima ou para baixo quando uma divisão estiver mais fria ou mais quente do que o valor pretendido, para além da curva meteorológica exterior."
             }
           },
           "comfort_safety": {
@@ -1812,6 +1820,17 @@
             },
             "data_description": {
               "comfort_heat_vulnerable_group": "Aumentar o nível de alerta de calor e frio um nível mais cedo para casas onde vivam idosos, bebés ou pessoas doentes, nas quais a mesma temperatura representa um risco maior. Desativado por predefinição."
+            }
+          },
+          "external_sensors": {
+            "name": "Sensores para o exterior",
+            "data": {
+              "use_outdoor_temp_entity": "Utilizar a entidade «Temperatura exterior»",
+              "outdoor_temp_entity": "Entidade «Temperatura exterior»"
+            },
+            "data_description": {
+              "use_outdoor_temp_entity": "Desative esta opção para desativar as funcionalidades que requerem a temperatura exterior (detecção de janelas, avaliação do conforto, risco de bolor)",
+              "outdoor_temp_entity": "Sensor que fornece a temperatura exterior (por exemplo, o «weather.home» ou um sensor local)"
             }
           }
         }

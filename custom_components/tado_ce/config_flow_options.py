@@ -114,6 +114,8 @@ RESET_DEFAULTS: dict[str, dict[str, Any]] = {
         "use_feels_like": False,
         "mold_risk_window_type": "double_pane",
         "smart_comfort_history_days": 7,
+    },
+    "external_sensors": {
         "outdoor_temp_entity": "",
     },
     "comfort_safety": {
@@ -167,6 +169,7 @@ RESET_DEFAULTS: dict[str, dict[str, Any]] = {
 _RESET_SCOPE_OPTIONS = [
     "everything",
     "smart_comfort",
+    "external_sensors",
     "comfort_safety",
     "thermal_analytics",
     "weather_compensation",
@@ -208,21 +211,19 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                 vol.Required("tado_features"): data_entry_flow.section(
                     vol.Schema(
                         {
+                            # presence
                             vol.Optional(
                                 "home_state_sync_enabled",
                                 default=opt("home_state_sync_enabled", False),
                             ): BooleanSelector(),
                             vol.Optional(
-                                "weather_enabled",
-                                default=opt("weather_enabled", False),
-                            ): BooleanSelector(),
-                            vol.Optional(
                                 "mobile_devices_enabled",
                                 default=opt("mobile_devices_enabled", False),
                             ): BooleanSelector(),
+                            # data
                             vol.Optional(
-                                "schedule_calendar_enabled",
-                                default=opt("schedule_calendar_enabled", False),
+                                "weather_enabled",
+                                default=opt("weather_enabled", False),
                             ): BooleanSelector(),
                             vol.Optional(
                                 "offset_enabled",
@@ -231,6 +232,11 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                             vol.Optional(
                                 "heating_circuit_enabled",
                                 default=opt("heating_circuit_enabled", False),
+                            ): BooleanSelector(),
+                            # view
+                            vol.Optional(
+                                "schedule_calendar_enabled",
+                                default=opt("schedule_calendar_enabled", False),
                             ): BooleanSelector(),
                         },
                     ),
@@ -269,6 +275,7 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                                 "adaptive_preheat_enabled",
                                 default=opt("adaptive_preheat_enabled", False),
                             ): BooleanSelector(),
+                            # wc last: it has the most prerequisites (needs the bridge)
                             vol.Optional(
                                 "wc_enabled",
                                 default=opt("wc_enabled", False),
@@ -302,90 +309,18 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
         opt = options.get
         sections: dict[vol.Required, Any] = {}
 
-        # --- Smart Comfort (if enabled) ---
-        if opt("smart_comfort_enabled", False):
-            # First-enable default: if smart_comfort_mode has never been set,
-            # suggest "light" as a sensible starting point. Otherwise preserve
-            # whatever the user chose (including "none" if they explicitly set
-            # that). Legacy `weather_compensation` fallback kept for migration.
-            stored_mode = opt("smart_comfort_mode", opt("weather_compensation"))
-            smart_comfort_default = stored_mode if stored_mode is not None else "light"
-            sections[vol.Required("smart_comfort")] = data_entry_flow.section(
-                vol.Schema(
-                    {
-                        vol.Optional(
-                            "use_outdoor_temp_entity",
-                            default=bool(opt("outdoor_temp_entity", "")),
-                        ): BooleanSelector(),
-                        vol.Optional(
-                            "outdoor_temp_entity",
-                            description={"suggested_value": opt("outdoor_temp_entity", "")}
-                            if opt("outdoor_temp_entity", "") else None,
-                        ): EntitySelector(EntitySelectorConfig(domain=["sensor", "weather"])),
-                        vol.Optional(
-                            "smart_comfort_mode",
-                            default=smart_comfort_default,
-                        ): SelectSelector(SelectSelectorConfig(options=["none", "light", "moderate", "aggressive"], translation_key="smart_comfort_mode", mode=SelectSelectorMode.DROPDOWN)),
-                        vol.Optional("use_feels_like", default=opt("use_feels_like", False)): BooleanSelector(),
-                        vol.Optional(
-                            "mold_risk_window_type",
-                            default=opt("mold_risk_window_type", "double_pane"),
-                        ): SelectSelector(SelectSelectorConfig(options=["single_pane", "double_pane", "triple_pane", "passive_house"], translation_key="mold_risk_window_type", mode=SelectSelectorMode.DROPDOWN)),
-                        vol.Optional("smart_comfort_history_days", default=opt("smart_comfort_history_days", 7)): NumberSelector(NumberSelectorConfig(min=1, max=30, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="d")),
-                    },
-                ),
-                {"collapsed": True},
-            )
+        # Computed up front: Weather Compensation depends on it, Internet Bridge gates on it.
+        bridge_enabled = bool(opt("bridge_serial", "")) and bool(opt("bridge_auth_key", ""))
 
-        # --- Thermal Analytics (if enabled) ---
-        if opt("thermal_analytics_enabled", False):
-            current_thermal_zones = options.get("thermal_analytics_zones", [])
-            if not current_thermal_zones and zones_with_heating_power:
-                current_thermal_zones = [z["value"] for z in zones_with_heating_power]
-            sections[vol.Required("thermal_analytics")] = data_entry_flow.section(
-                vol.Schema(
-                    {
-                        vol.Optional("thermal_analytics_zones", default=current_thermal_zones): SelectSelector(
-                            SelectSelectorConfig(options=zones_with_heating_power or [], multiple=True, mode=SelectSelectorMode.DROPDOWN),  # type: ignore[typeddict-item]
-                        ),
-                        vol.Optional("heating_cycle_history_days", default=opt("heating_cycle_history_days", 7)): NumberSelector(NumberSelectorConfig(min=1, max=30, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="d")),
-                        vol.Optional("heating_cycle_min_cycles", default=opt("heating_cycle_min_cycles", 3)): NumberSelector(NumberSelectorConfig(min=1, max=10, step=1, mode=NumberSelectorMode.BOX)),
-                        vol.Optional("heating_cycle_inertia_threshold", default=opt("heating_cycle_inertia_threshold", 0.1)): NumberSelector(NumberSelectorConfig(min=0.05, max=0.5, step=0.05, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")),
-                    },
-                ),
-                {"collapsed": True},
-            )
+        # Section order mirrors General Settings: hardware, then automations, then always-visible last.
 
         # --- Internet Bridge (if credentials exist) ---
-        bridge_enabled = bool(opt("bridge_serial", "")) and bool(opt("bridge_auth_key", ""))
         if bridge_enabled:
             sections[vol.Required("internet_bridge")] = data_entry_flow.section(
                 vol.Schema(
                     {
                         vol.Optional("bridge_serial", description={"suggested_value": opt("bridge_serial", "")}): TextSelector(TextSelectorConfig(type=TextSelectorType.TEXT)),
                         vol.Optional("bridge_auth_key", description={"suggested_value": opt("bridge_auth_key", "")}): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
-                    },
-                ),
-                {"collapsed": True},
-            )
-
-        # --- Weather Compensation (if enabled AND bridge exists) ---
-        if opt("wc_enabled", False) and bridge_enabled:
-            sections[vol.Required("weather_compensation")] = data_entry_flow.section(
-                vol.Schema(
-                    {
-                        vol.Optional("wc_heating_system_preset", default=opt("wc_heating_system_preset", "radiators_standard")): SelectSelector(SelectSelectorConfig(options=["radiators_standard", "radiators_low_temp", "underfloor", "custom"], translation_key="wc_heating_system_preset", mode=SelectSelectorMode.DROPDOWN)),
-                        vol.Optional("wc_slope", default=opt("wc_slope", 1.5)): NumberSelector(NumberSelectorConfig(min=0.3, max=3.0, step=0.1, mode=NumberSelectorMode.BOX)),
-                        vol.Optional("wc_design_outdoor_temp", default=opt("wc_design_outdoor_temp", -5.0)): NumberSelector(NumberSelectorConfig(min=-30, max=10, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")),
-                        vol.Optional("wc_max_flow_temp", default=opt("wc_max_flow_temp", 65.0)): NumberSelector(NumberSelectorConfig(min=25, max=80, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")),
-                        vol.Optional("wc_min_flow_temp", default=opt("wc_min_flow_temp", 25.0)): NumberSelector(NumberSelectorConfig(min=25, max=60, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")),
-                        vol.Optional("wc_shutoff_temp", default=opt("wc_shutoff_temp", 18.0)): NumberSelector(NumberSelectorConfig(min=5, max=30, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")),
-                        vol.Optional("wc_smoothing_method", default=opt("wc_smoothing_method", "ema")): SelectSelector(SelectSelectorConfig(options=["none", "ema", "rolling_average"], translation_key="wc_smoothing_method", mode=SelectSelectorMode.DROPDOWN)),
-                        vol.Optional("wc_smoothing_window", default=opt("wc_smoothing_window", 60)): NumberSelector(NumberSelectorConfig(min=15, max=MAX_CUSTOM_INTERVAL, step=15, mode=NumberSelectorMode.BOX, unit_of_measurement="min")),
-                        vol.Optional("wc_room_compensation_enabled", default=opt("wc_room_compensation_enabled", False)): BooleanSelector(),
-                        vol.Optional("wc_room_compensation_factor", default=opt("wc_room_compensation_factor", 3.0)): NumberSelector(NumberSelectorConfig(min=1.0, max=5.0, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C/°C")),
-                        vol.Optional("wc_step_size", default=opt("wc_step_size", 1.0)): NumberSelector(NumberSelectorConfig(min=0.5, max=2.0, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")),
-                        vol.Optional("wc_hysteresis", default=opt("wc_hysteresis", 1.0)): NumberSelector(NumberSelectorConfig(min=0.5, max=3.0, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")),
                     },
                 ),
                 {"collapsed": True},
@@ -415,6 +350,93 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
                 {"collapsed": True},
             )
 
+        # --- Smart Comfort (if enabled) ---
+        if opt("smart_comfort_enabled", False):
+            # First-enable default: if smart_comfort_mode has never been set,
+            # suggest "light" as a sensible starting point. Otherwise preserve
+            # whatever the user chose (including "none" if they explicitly set
+            # that). Legacy `weather_compensation` fallback kept for migration.
+            stored_mode = opt("smart_comfort_mode", opt("weather_compensation"))
+            smart_comfort_default = stored_mode if stored_mode is not None else "light"
+            sections[vol.Required("smart_comfort")] = data_entry_flow.section(
+                vol.Schema(
+                    {
+                        vol.Optional(
+                            "smart_comfort_mode",
+                            default=smart_comfort_default,
+                        ): SelectSelector(SelectSelectorConfig(options=["none", "light", "moderate", "aggressive"], translation_key="smart_comfort_mode", mode=SelectSelectorMode.DROPDOWN)),
+                        vol.Optional("use_feels_like", default=opt("use_feels_like", False)): BooleanSelector(),
+                        vol.Optional(
+                            "mold_risk_window_type",
+                            default=opt("mold_risk_window_type", "double_pane"),
+                        ): SelectSelector(SelectSelectorConfig(options=["single_pane", "double_pane", "triple_pane", "passive_house"], translation_key="mold_risk_window_type", mode=SelectSelectorMode.DROPDOWN)),
+                        vol.Optional("smart_comfort_history_days", default=opt("smart_comfort_history_days", 7)): NumberSelector(NumberSelectorConfig(min=1, max=30, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="d")),
+                    },
+                ),
+                {"collapsed": True},
+            )
+
+        # --- External Sensors (always visible) ---
+        # Outdoor data is a cross-feature input (window detection, Smart Comfort,
+        # mold risk, Air Comfort AQI), so its bindings live in a neutral section,
+        # not under whichever feature consumes them.
+        sections[vol.Required("external_sensors")] = data_entry_flow.section(
+            vol.Schema(
+                {
+                    vol.Optional(
+                        "use_outdoor_temp_entity",
+                        default=bool(opt("outdoor_temp_entity", "")),
+                    ): BooleanSelector(),
+                    vol.Optional(
+                        "outdoor_temp_entity",
+                        description={"suggested_value": opt("outdoor_temp_entity", "")}
+                        if opt("outdoor_temp_entity", "") else None,
+                    ): EntitySelector(EntitySelectorConfig(domain=["sensor", "weather"])),
+                },
+            ),
+            {"collapsed": False},
+        )
+        # --- Thermal Analytics (if enabled) ---
+        if opt("thermal_analytics_enabled", False):
+            current_thermal_zones = options.get("thermal_analytics_zones", [])
+            if not current_thermal_zones and zones_with_heating_power:
+                current_thermal_zones = [z["value"] for z in zones_with_heating_power]
+            sections[vol.Required("thermal_analytics")] = data_entry_flow.section(
+                vol.Schema(
+                    {
+                        vol.Optional("thermal_analytics_zones", default=current_thermal_zones): SelectSelector(
+                            SelectSelectorConfig(options=zones_with_heating_power or [], multiple=True, mode=SelectSelectorMode.DROPDOWN),  # type: ignore[typeddict-item]
+                        ),
+                        vol.Optional("heating_cycle_history_days", default=opt("heating_cycle_history_days", 7)): NumberSelector(NumberSelectorConfig(min=1, max=30, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="d")),
+                        vol.Optional("heating_cycle_min_cycles", default=opt("heating_cycle_min_cycles", 3)): NumberSelector(NumberSelectorConfig(min=1, max=10, step=1, mode=NumberSelectorMode.BOX)),
+                        vol.Optional("heating_cycle_inertia_threshold", default=opt("heating_cycle_inertia_threshold", 0.1)): NumberSelector(NumberSelectorConfig(min=0.05, max=0.5, step=0.05, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")),
+                    },
+                ),
+                {"collapsed": True},
+            )
+
+        # --- Weather Compensation (if enabled AND bridge exists) ---
+        if opt("wc_enabled", False) and bridge_enabled:
+            sections[vol.Required("weather_compensation")] = data_entry_flow.section(
+                vol.Schema(
+                    {
+                        vol.Optional("wc_heating_system_preset", default=opt("wc_heating_system_preset", "radiators_standard")): SelectSelector(SelectSelectorConfig(options=["radiators_standard", "radiators_low_temp", "underfloor", "custom"], translation_key="wc_heating_system_preset", mode=SelectSelectorMode.DROPDOWN)),
+                        vol.Optional("wc_slope", default=opt("wc_slope", 1.5)): NumberSelector(NumberSelectorConfig(min=0.3, max=3.0, step=0.1, mode=NumberSelectorMode.BOX)),
+                        vol.Optional("wc_design_outdoor_temp", default=opt("wc_design_outdoor_temp", -5.0)): NumberSelector(NumberSelectorConfig(min=-30, max=10, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")),
+                        vol.Optional("wc_max_flow_temp", default=opt("wc_max_flow_temp", 65.0)): NumberSelector(NumberSelectorConfig(min=25, max=80, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")),
+                        vol.Optional("wc_min_flow_temp", default=opt("wc_min_flow_temp", 25.0)): NumberSelector(NumberSelectorConfig(min=25, max=60, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")),
+                        vol.Optional("wc_shutoff_temp", default=opt("wc_shutoff_temp", 18.0)): NumberSelector(NumberSelectorConfig(min=5, max=30, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")),
+                        vol.Optional("wc_smoothing_method", default=opt("wc_smoothing_method", "ema")): SelectSelector(SelectSelectorConfig(options=["none", "ema", "rolling_average"], translation_key="wc_smoothing_method", mode=SelectSelectorMode.DROPDOWN)),
+                        vol.Optional("wc_smoothing_window", default=opt("wc_smoothing_window", 60)): NumberSelector(NumberSelectorConfig(min=15, max=MAX_CUSTOM_INTERVAL, step=15, mode=NumberSelectorMode.BOX, unit_of_measurement="min")),
+                        vol.Optional("wc_room_compensation_enabled", default=opt("wc_room_compensation_enabled", False)): BooleanSelector(),
+                        vol.Optional("wc_room_compensation_factor", default=opt("wc_room_compensation_factor", 3.0)): NumberSelector(NumberSelectorConfig(min=1.0, max=5.0, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C/°C")),
+                        vol.Optional("wc_step_size", default=opt("wc_step_size", 1.0)): NumberSelector(NumberSelectorConfig(min=0.5, max=2.0, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")),
+                        vol.Optional("wc_hysteresis", default=opt("wc_hysteresis", 1.0)): NumberSelector(NumberSelectorConfig(min=0.5, max=3.0, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C")),
+                    },
+                ),
+                {"collapsed": True},
+            )
+
         # --- Comfort & Safety (always visible) ---
         sections[vol.Required("comfort_safety")] = data_entry_flow.section(
             vol.Schema(
@@ -436,11 +458,16 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
 
         custom_day_interval = options.get("custom_day_interval")
         custom_night_interval = options.get("custom_night_interval")
-        # Use default= (not suggested_value) so collapsed sections preserve
-        # existing values. When no custom interval is set (None), omit default
-        # so the field submits None, correctly meaning "use adaptive".
-        custom_day_schema = vol.Optional("custom_day_interval", default=custom_day_interval) if custom_day_interval is not None else vol.Optional("custom_day_interval")
-        custom_night_schema = vol.Optional("custom_night_interval", default=custom_night_interval) if custom_night_interval is not None else vol.Optional("custom_night_interval")
+        # suggested_value, not default: default re-injects the old value when the
+        # box is cleared, so an emptied field could never return to auto.
+        custom_day_schema = (
+            vol.Optional("custom_day_interval", description={"suggested_value": custom_day_interval})
+            if custom_day_interval is not None else vol.Optional("custom_day_interval")
+        )
+        custom_night_schema = (
+            vol.Optional("custom_night_interval", description={"suggested_value": custom_night_interval})
+            if custom_night_interval is not None else vol.Optional("custom_night_interval")
+        )
 
         polling_schema_fields[custom_day_schema] = NumberSelector(NumberSelectorConfig(min=0, max=MAX_CUSTOM_INTERVAL, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="min"))
         polling_schema_fields[custom_night_schema] = NumberSelector(NumberSelectorConfig(min=0, max=MAX_CUSTOM_INTERVAL, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="min"))
@@ -589,6 +616,7 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
         processed_input: dict[str, Any] = {}
 
         self._process_smart_comfort(user_input, processed_input)
+        self._process_external_sensors(user_input, processed_input)
         self._process_polling_api(user_input, processed_input, errors)
 
         # Flatten comfort_safety section
@@ -840,16 +868,30 @@ class TadoCEOptionsFlow(config_entries.OptionsFlow):
             if key in section:
                 processed[key] = section[key]
 
-        # Boolean toggle controls whether EntitySelector value is used.
-        # When toggle is ON but entity field is missing (collapsed section),
-        # preserve existing value instead of clearing it.
-        if section.get("use_outdoor_temp_entity", False):
-            submitted = (section.get("outdoor_temp_entity") or "").strip()
-            processed["outdoor_temp_entity"] = (
-                submitted or self.config_entry.options.get("outdoor_temp_entity", "")
-            )
-        else:
-            processed["outdoor_temp_entity"] = ""
+    def _process_external_sensors(
+        self, user_input: dict[str, Any], processed: dict[str, Any],
+    ) -> None:
+        """Flatten the External Sensors section (outdoor temp + AQI bindings).
+
+        A collapsed section omits its fields, so a missing toggle key means
+        'collapsed', not 'off': preserve/auto-enable rather than clear. Only an
+        explicit toggle-off clears. Mirrors _process_zone_sensor_input's pattern.
+        """
+        if "external_sensors" not in user_input:
+            return
+        section = user_input["external_sensors"]
+        existing = self.config_entry.options
+        for toggle_key, entity_key in (
+            ("use_outdoor_temp_entity", "outdoor_temp_entity"),
+        ):
+            submitted = (section.get(entity_key) or "").strip()
+            if toggle_key in section:
+                use = section[toggle_key]
+            else:  # toggle absent (collapsed) → preserve, do not clear
+                use = bool(submitted) or bool(existing.get(entity_key, ""))
+            processed[entity_key] = (
+                submitted or existing.get(entity_key, "")
+            ) if use else ""
 
     def _process_polling_api(
         self,

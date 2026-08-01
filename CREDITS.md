@@ -23,6 +23,12 @@ Thank you to everyone who supported the project through [Buy Me a Coffee](https:
 
 Community contributors who helped shape each release through bug reports, feature requests, testing, and feedback.
 
+### v4.3.0
+
+- **[@davidjirovec](https://github.com/davidjirovec)** — Came back on [#303](https://github.com/hiall-fyi/tado_ce/issues/303) with the case that turned configurable intervals into a proper service: on his 20,000-call plan he wanted a `homeassistant.update_entity` to force a mobile-presence fetch on demand, and the per-type floor was blocking it just as it blocks the automatic cadence. That distinction, a deliberate forced refresh versus a background poll, is exactly what the new `tado_ce.refresh` service separates out, bypassing the floor for the one call while leaving the automatic protection in place.
+- **[@bobbinz](https://github.com/bobbinz)** — Stayed on the HomeKit thread ([#322](https://github.com/hiall-fyi/tado_ce/issues/322)) past the mapping and pairing-scan fixes to the last piece: after a bridge reset, his debug log showed the connection thrashing pair-verify against a pairing the bridge had already dropped, with the CPU spike that came from it. That log is what pinned the stale-pairing teardown, so a reset bridge now releases its half cleanly instead of spinning.
+- **[@onorbe](https://github.com/onorbe)** — His earlier no-competing-controller finding on the same thread ([#322](https://github.com/hiall-fyi/tado_ce/issues/322)) is what reframed the spin as tado_ce's own stale pairing rather than an external controller, which is the reading the teardown fix is built on.
+
 ### v4.2.1
 
 - **[@bobbinz](https://github.com/bobbinz)** — Pinned two separate HomeKit bugs in one thread ([#322](https://github.com/hiall-fyi/tado_ce/issues/322)). First, HomeKit local control coming up on only one room of three after a re-pair: his sensor snapshot (four hours connected, still `mapped_zones: 1 / unmapped_zones: 2`) is the "stuck partial, never recovers" reading that pointed at the mapping retry giving up after the first room, a bug latent since v4.0.3. Then, when a re-pair attempt threw a wrong-code error, his log showed the tado PIN going to `10.10.64.181` (one of his unpaired HomeKit bulbs) instead of the bridge, which is what exposed the pairing scan grabbing the first unpaired device rather than the tado bridge. Also shared the mapping workaround (unpair, ignore the zeroconf entry, re-pair once every radiator is awake).

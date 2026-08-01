@@ -41,6 +41,7 @@ New user-facing features and settings added across the 4.x line. Each links to i
 
 | Version | What you got | Where |
 |---------|-------------|-------|
+| v4.3.0 | `tado_ce.refresh` service — force an immediate presence fetch past the polling floor | [Force a Presence Refresh](#11-force-a-presence-refresh-v430) |
 | v4.2.0 | Heating circuit control — per-zone boiler-circuit select, "No heating circuit" for residual-heat coasting | [Heating Circuit Control](#heating-circuit-control) |
 | v4.2.0 | Heat and cold alerts for vulnerable occupants (elderly / infant / unwell) | [Smart Comfort Analytics](#-smart-comfort-analytics) |
 | v4.1.0 | Per-zone Temperature source (Automatic / HomeKit / Cloud) | [HomeKit Local Control](#-homekit-local-control) |
@@ -773,14 +774,16 @@ automation:
 
 ### Passive Window Detection (v3.3.0+)
 
-Detects open windows even when your heating or AC is off. Combines temperature drop speed, humidity changes, and indoor-outdoor temperature difference to tell the difference between a natural cooldown and an open window. Adjusts for your window type and is stricter in winter.
+Detects open windows even when your heating or AC is off. Combines temperature drop speed, humidity changes, and indoor-outdoor temperature difference to tell the difference between a natural cooldown and an open window.
 
 **How it differs from active detection:**
 
 | Mode | When It Works | How It Detects |
 |------|---------------|----------------|
 | Active | Only when heating/cooling is running | Rapid temperature drop while HVAC is active |
-| Passive | Anytime, even when HVAC is off | Temperature drop speed + humidity + outdoor differential |
+| Passive | Anytime, even when HVAC is off | Temperature drop rate + humidity + outdoor differential |
+
+**A known limit:** passive detection reads a room drifting towards the outside temperature as a possible open window. On a cold day, a room that has just stopped heating drifts the same way for a while as it settles, so a "check windows" reading shortly after the heating goes off can be the room cooling down rather than a window actually open. The predicted-window sensor drives the display and insights only and never a heating decision, so a false reading here doesn't affect your heating. It's slated for retirement in a future major version rather than further tuning.
 
 ### Per-Zone Sensitivity (v3.3.0+)
 
@@ -1091,7 +1094,34 @@ data:
 
 The serial is the short serial visible on the back of the device (and in `binary_sensor.{zone}_connection`'s `device_serial` attribute). The service also flashes locally over HomeKit when the bridge is connected, falling back to the cloud, in which case it takes a few seconds to start. If nothing happens after about 30 seconds, the device is offline or the serial is wrong — check the log for `identify_device failed`.
 
-#### 11. Hub-level buttons
+#### 11. Force a Presence Refresh (v4.3.0+)
+
+Presence data (mobile-device geofencing, home/away state) refreshes on its own minimum interval so it can't drain your daily API quota. That floor also limits how quickly an automation can pull fresh presence, even one that calls for an update every few seconds. The `tado_ce.refresh` service forces an immediate fetch of one presence type, bypassing the floor for that one call, for anyone who'd rather drive their own refresh cadence than rely on the automatic schedule.
+
+```yaml
+# Force a mobile-device presence fetch now
+service: tado_ce.refresh
+data:
+  data: mobile_devices   # or: home_state
+```
+
+**Automation example — pull presence every 30 seconds while someone's expected home:**
+
+```yaml
+automation:
+  - alias: "Tado — Fast presence while arriving"
+    trigger:
+      - platform: time_pattern
+        seconds: "/30"
+    action:
+      - service: tado_ce.refresh
+        data:
+          data: mobile_devices
+```
+
+The forced type is only fetched if that feature is turned on (mobile-device sync for `mobile_devices`, presence sync for `home_state`); if it's off, the call is ignored and logged. If the forced fetch lands on a cycle that was already due a full sync, mobile devices are fetched twice that cycle (once for the scheduled sync, once forced), so keep the trigger interval sensible rather than every second. It's a single-home service; on a multi-home setup it raises an error listing the homes so you can route explicitly.
+
+#### 12. Hub-level buttons
 
 Three buttons live on the Tado CE Hub device (Settings → Devices & Services → Tado CE → the Hub entry). These are integration-level actions that affect the whole home, not a single zone.
 
@@ -1376,6 +1406,7 @@ Tado CE talks to your Tado two ways at once, and each reading follows the side t
 | HomeKit humidity (fallback only) | Humidity defaults to cloud data (0.1% precision, updates every poll cycle). HomeKit humidity is only used when cloud is unavailable — it provides 1% resolution with infrequent updates due to bridge firmware behaviour. Temperature uses HomeKit first (accurate, real-time). |
 | Cloud-only data | Heating power, battery status, schedules, hot water, and geofencing are only available from Tado's cloud. HomeKit provides temperature and HVAC mode locally on heating zones. |
 | Smart AC Control V3+ | Smart AC Control units are standalone WiFi accessories with their own HomeKit pairing code, separate from the Internet Bridge. Tado CE only handles the bridge's HomeKit pairing today, so Smart AC Control units fall through to the cloud path for every operation regardless of whether the bridge is paired locally. Adding standalone-unit pairing would need parallel multi-pairing management and HAP HeaterCooler service handling on top of the existing Thermostat path; not on the roadmap until that's been scoped against real hardware. Thanks to @MacrosorcH (Discussion #271) for the correction. |
+| A TRV that goes quiet can hold a stale reading briefly | The bridge answers HomeKit on each TRV's behalf. If a TRV loses radio contact but the bridge keeps returning its last reading as if current, the room temperature can sit on that stale value for a few minutes before the freshness check gives up on it and falls back to cloud. A genuine bridge disconnect falls back to cloud right away; this only applies to the bridge staying connected while one TRV stops reporting. HomeKit exposes no per-TRV "last heard from" signal for us to catch it sooner. |
 | Wireless Temp Sensors | Standalone temperature sensors (ST01) don't appear as HomeKit accessories — their data always comes from the cloud. |
 | Single pairing | The bridge can only be paired with one HomeKit controller at a time. |
 | External sensors don't control TRV valve | Per-zone external sensors change the displayed room temperature, but the TRV still uses its own sensor to control the valve. Enable **Smart Valve Control** (Offset Sync or Valve Target) in zone settings to automatically compensate — see [Smart Valve Control](#-smart-valve-control). |
@@ -1399,7 +1430,7 @@ Tado CE talks to your Tado two ways at once, and each reading follows the side t
 
 > **Note:** Your bridge can only be paired with one HomeKit controller at a time. If you're using Apple Home, you'll need to unpair it first. You can re-expose climate entities to Apple Home via the HA HomeKit Bridge integration.
 
-**If you factory-reset your bridge:** a reset issues a new HomeKit identity, so the stored pairing no longer matches. Tado CE detects this, stops retrying, and raises a Home Assistant Repairs notification telling you to re-pair. Go to **Settings → Tado CE → Configure → General Settings → Hardware Connections → HomeKit** and tick **Pair again**, which reopens the setup code prompt directly. (If a pairing attempt was interrupted and left HomeKit switched on but not connected, the same **Pair again** option gets you back to the code prompt without disabling and re-enabling.)
+**If you factory-reset your bridge:** a reset issues a new HomeKit identity, so the stored pairing no longer matches. Tado CE detects this, stops retrying, and raises a Home Assistant Repairs notification telling you to re-pair. Go to **Settings → Tado CE → Configure → Advanced Settings → HomeKit** and tick **Pair again**, which reopens the setup code prompt directly. Local control comes back on its own once the new code is accepted. (If a pairing attempt was interrupted and left HomeKit switched on but not connected, the same **Pair again** option gets you back to the code prompt without disabling and re-enabling.)
 
 ### Settings
 

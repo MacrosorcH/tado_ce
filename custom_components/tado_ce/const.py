@@ -91,6 +91,13 @@ SERVICE_DEACTIVATE_OPEN_WINDOW = "deactivate_open_window"
 SERVICE_SET_OPEN_WINDOW_MODE = "set_open_window_mode"
 SERVICE_RESTORE_PREVIOUS_STATE = "restore_previous_state"
 SERVICE_TURN_OFF_ALL_ZONES = "turn_off_all_zones"
+SERVICE_REFRESH = "refresh"
+
+# Fetch types forceable via tado_ce.refresh (single source: gate, service enum,
+# and request_forced_fetch all use these tokens).
+FORCEABLE_FETCH_MOBILE = "mobile_devices"
+FORCEABLE_FETCH_HOME_STATE = "home_state"
+FORCEABLE_FETCH_WEATHER = "weather"
 
 # API Base URLs
 TADO_API_BASE = "https://my.tado.com/api/v2"
@@ -482,11 +489,25 @@ INSIGHT_ESCALATION_DAYS: Final[int] = 14
 # Insight temperature reading throttle, minimum seconds between readings
 INSIGHT_READING_THROTTLE_SECONDS: Final[int] = 25
 
+# Comfort deviation thresholds (°C from comfort target)
+_COMFORT_FREEZING_THRESHOLD: Final[int] = -6
+_COMFORT_COLD_THRESHOLD: Final[int] = -4
+_COMFORT_COOL_THRESHOLD: Final[int] = -2
+_COMFORT_WARM_THRESHOLD: Final[int] = 2
+_COMFORT_HOT_THRESHOLD: Final[int] = 4
+_COMFORT_SWELTERING_THRESHOLD: Final[int] = 6
+
+# Humidity thresholds for comfort suffix
+_HUMIDITY_DRY_THRESHOLD: Final[int] = 35  # %: below this is "Dry"
+_HUMIDITY_HUMID_THRESHOLD: Final[int] = 70  # %: above this is "Humid"
+
 # =============================================================================
 # Entity Data Keys: cross-component data sharing via coordinator.entity_data
 # =============================================================================
 
 ENTITY_DATA_CONDENSATION_RISK: Final[str] = "condensation_risk"
+# Removed with Air Comfort (C2): still read by sensor_environment's Air Comfort
+# sensor until that batch; the window producer is already gone so it reads empty.
 ENTITY_DATA_WINDOW_PREDICTED: Final[str] = "window_predicted"
 ENTITY_DATA_PREHEAT_NOW: Final[str] = "preheat_now"
 ENTITY_DATA_PREHEAT_ADVISOR: Final[str] = "preheat_advisor"

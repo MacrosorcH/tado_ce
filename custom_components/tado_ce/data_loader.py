@@ -498,3 +498,4 @@ class DataLoader:
         """Persist the window-detection state."""
         self.save_auxiliary("window_detection", data)
         return True
+

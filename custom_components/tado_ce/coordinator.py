@@ -24,6 +24,9 @@ from .const import (
     DEVICE_SYNC_QUEUE_MAX_DEPTH,
     DOMAIN,
     ENTITY_FRESHNESS_EXPIRY_SECONDS,
+    FORCEABLE_FETCH_HOME_STATE,
+    FORCEABLE_FETCH_MOBILE,
+    FORCEABLE_FETCH_WEATHER,
     HOMEKIT_SAVINGS_RESET_MIN_JUMP,
     HOMEKIT_SAVINGS_RESET_RATIO,
     MAPPING_RETRY_STALL_LIMIT,
@@ -620,6 +623,15 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         return self._last_cloud_zone_fetch
 
+    def request_forced_fetch(self, fetch_type: str) -> None:
+        """Force the next poll to bypass the floor for one slow-data type."""
+        self.refresh_handler.request_forced_fetch(fetch_type)
+
+    def _requeue_forced_fetch(self, forced_fetch: set[str]) -> None:
+        """Re-queue forced types that a poll consumed but did not fetch."""
+        for fetch_type in forced_fetch:
+            self.refresh_handler.request_forced_fetch(fetch_type)
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from Tado API. Dynamically adjusts update_interval."""
         was_failing = self.last_update_success is False
@@ -669,7 +681,10 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         do_full_sync = self._should_do_full_sync()
 
-        zone_only, force_zone_fetch = self.refresh_handler.consume_pending_flags()
+        zone_only, force_zone_fetch, forced_fetch = self.refresh_handler.consume_pending_flags()
+        if forced_fetch:
+            # zone-only skips the quick-extras fetch, which would swallow the forced type.
+            zone_only = False
 
         cm = self.config_manager
 
@@ -695,15 +710,15 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         skip_weather = self._should_skip_by_floor(
             self._last_weather_fetch, cm.get_weather_min_refresh_minutes(),
             homekit_connected=homekit_connected,
-        )
+        ) and FORCEABLE_FETCH_WEATHER not in forced_fetch
         skip_home_state = self._should_skip_by_floor(
             self._last_home_state_fetch, cm.get_presence_min_refresh_minutes(),
             homekit_connected=homekit_connected,
-        )
+        ) and FORCEABLE_FETCH_HOME_STATE not in forced_fetch
         skip_mobile_devices = self._should_skip_by_floor(
             self._last_mobile_devices_fetch, cm.get_mobile_devices_min_refresh_minutes(),
             homekit_connected=homekit_connected,
-        )
+        ) and FORCEABLE_FETCH_MOBILE not in forced_fetch
 
         try:
             await self.api_client.async_sync(
@@ -720,6 +735,7 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         except TadoRateLimitError as e:
             self.record_cloud_backoff(e.retry_after)
+            self._requeue_forced_fetch(forced_fetch)
 
             if self.is_homekit_active:
                 self._log_cloud_unavailable(e)
@@ -732,11 +748,13 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except TadoAuthError as e:
             from .repair_helpers import async_create_auth_issue
 
+            self._requeue_forced_fetch(forced_fetch)
             async_create_auth_issue(self.hass, self.home_id)
             raise ConfigEntryAuthFailed(
                 "Refresh token expired; user must re-authenticate",
             ) from e
         except TadoSyncError as e:
+            self._requeue_forced_fetch(forced_fetch)
             if self.is_homekit_active:
                 self._log_cloud_unavailable(e)
                 return self.data or {}
@@ -786,8 +804,10 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if not skip_weather and cm.get_weather_enabled() and not zone_only:
             self._last_weather_fetch = dt_util.utcnow()
+            forced_fetch.discard(FORCEABLE_FETCH_WEATHER)
         if not skip_home_state and cm.get_home_state_sync_enabled() and not zone_only:
             self._last_home_state_fetch = dt_util.utcnow()
+            forced_fetch.discard(FORCEABLE_FETCH_HOME_STATE)
         if (
             not skip_mobile_devices
             and cm.get_mobile_devices_enabled()
@@ -795,6 +815,14 @@ class TadoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             and not zone_only
         ):
             self._last_mobile_devices_fetch = dt_util.utcnow()
+            forced_fetch.discard(FORCEABLE_FETCH_MOBILE)
+        # Drop forced types for disabled features (a no-op that would re-queue
+        # forever); only transiently gated-out types below are re-queued to retry.
+        if not cm.get_home_state_sync_enabled():
+            forced_fetch.discard(FORCEABLE_FETCH_HOME_STATE)
+        if not (cm.get_mobile_devices_enabled() and cm.get_mobile_devices_frequent_sync()):
+            forced_fetch.discard(FORCEABLE_FETCH_MOBILE)
+        self._requeue_forced_fetch(forced_fetch)
 
         if was_failing:
             _LOGGER.info(

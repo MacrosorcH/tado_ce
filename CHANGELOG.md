@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
+## [4.3.0] - 2026-08-01
+
+### Heads-up: two things go away in v5.0.0
+
+Nothing changes for you in this release, but two removals are worth flagging early so anyone who relies on them has time.
+
+**The Predicted Window sensor is slated for retirement.** The `binary_sensor.*_window_predicted` sensor stays exactly as it is in this release. It's on the shortlist to be removed at v5.0.0 rather than kept on tuning: it drives display and insights only, never an actual heating decision, and getting its accuracy right has taken a lot of tweaking for what it gives back. The plan is to retire it and put that effort into the core features that more people rely on. If you lean on it in a dashboard or automation, raise it before v5.0.0 and it can be reconsidered.
+
+**The Download Diagnostics button goes too.** v5.0.0 will remove the **Settings → Download Diagnostics** button (the config-and-state snapshot). In practice it hasn't earned its keep: sorting out an issue always comes down to a debug log, which shows what happened over time, where the snapshot only captures one frozen moment and can't. It also carried an ongoing privacy cost, a redaction list to keep current so it never leaked a serial or token. No automation breaks and nothing you script against changes, the button just won't be there; for any problem, a debug log is the thing to grab.
+
+The full v5.0.0 removal list is in [ROADMAP.md](ROADMAP.md).
+
+### Features
+
+- **New `tado_ce.refresh` service to force a presence fetch** ([#303](https://github.com/hiall-fyi/tado_ce/issues/303) - @davidjirovec). Presence data (mobile devices, home/away) refreshes on a minimum interval to protect your API quota, which also floors how fast an automation can force it. The new service forces an immediate fetch of one of those, bypassing that floor for the one call, for anyone driving their own refresh cadence rather than relying on the automatic schedule. The automatic polling floor still applies the rest of the time.
+- **Structured issue report forms**. Reporting a bug or asking for a feature now goes through GitHub's form chooser instead of a blank box, so the details that speed up a diagnosis (version, Home Assistant version, logs) get asked for up front. The in-app "report an issue" links point at the chooser too.
+
+### Improvements
+
+- **Outdoor temperature binding moved to its own "Outdoor Sensors" setting**. The outdoor temperature entity used to sit under Smart Comfort, so reaching it meant turning on a feature you might not want. It now lives in its own always-visible section under Advanced Settings, so any feature that reads outdoor temperature (Smart Comfort, mold risk) can reach it without switching on something unrelated. Your existing binding carries over untouched.
+- **General Settings toggles regrouped**. The Tado Features toggles were listed in the order they were added, mixing presence, data, and view options together. They're now grouped by what they do: presence first, then data, then view. Weather Compensation moves to the end of Smart Automations since it needs the Internet Bridge first. Display order only, nothing behaves differently.
+
+### Bug fixes
+
+- **Custom polling interval can be cleared again**. Emptying the custom day or night interval box used to re-fill the old value on save, so the only way back to automatic timing was to type 0. Clearing the box now returns that interval to automatic as you'd expect.
+- **AC heating/cooling status reads correctly on older firmware**. On AC units running older Tado firmware, the climate entity's action (Heating / Cooling / Idle) could show wrong because the power reading came in a shape the entity didn't recognise. It now reads both firmware shapes, so the action matches what the unit is actually doing.
+- **The open-window detection count now actually counts**. The "detections today" figure on the open-window sensor was stuck at 0 and its last-detected time never updated, because the counter was checked a moment after the sensor had already marked itself detected, so the check never saw the change. Both now update on each detection.
+- **HomeKit local control recovers on its own after a bridge firmware update or reconfigure**. When the tado bridge updated its firmware or rearranged its devices without dropping the connection, local control could quietly fall back to cloud (slower reactions, temperature offsets not applying straight away) and stay there until you reloaded the integration. It now spots the change and rebuilds its local device map on its own, so control comes back without a reload. It also copes with the bridge being briefly unreachable while it reboots, which is exactly when a firmware update rebuilds the map: it holds on to the working map and retries instead of being left with nothing to poll.
+- **Re-pairing HomeKit brings local control straight back**. After the bridge lost its pairing (most often a factory reset), entering a new setup code saved the pairing and cleared the repair notification, but local control stayed on cloud until you restarted Home Assistant. Re-pairing now reconnects on its own once the code is accepted.
+- **The HomeKit repair notification points at the right setting**. When the bridge pairing was lost, the notification sent you to General Settings to switch HomeKit on, which does nothing when it is already on, so there was no way to reach the setup code prompt by following it. It now points at Advanced Settings → HomeKit → "Pair again", which is the option that actually reopens the prompt.
+- **A factory-reset bridge no longer churns the CPU** ([#322](https://github.com/hiall-fyi/tado_ce/issues/322) - @bobbinz, @onorbe). After the bridge was reset, Tado CE kept holding the old pairing, so every time the bridge announced itself on the network it tried to authenticate again and failed a second or two later, over and over, with a visible CPU cost. It now releases the dead pairing properly, so the retries stop and you get the repair notification instead.
+- **Room temperature no longer shows a stale HomeKit reading as a cloud one**. On any home with the bridge paired, the temperature merge wrote its result back over the cloud reading it had just read, so the real cloud value was lost for that cycle. If you had set a room to read temperature from the cloud, it could show a HomeKit value labelled as cloud, and a stale one at that. The merge now keeps to itself and the cloud reading stays intact.
+- **AC temperature changes sent over HomeKit are now checked against the cloud**. Heating zones already re-checked with Tado shortly after a local write, so a change the bridge accepted but never passed on would correct itself. AC zones did not, so a lost write could sit on screen as if it had worked until the next scheduled refresh. AC now does the same check.
+
 ## [4.2.1] - 2026-07-25
 
 ### Bug fixes

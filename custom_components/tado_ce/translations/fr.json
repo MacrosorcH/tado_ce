@@ -1284,6 +1284,16 @@
           "description": "Cette option est désactivée par défaut, ce qui signifie que toute modification manuelle que vous avez apportée au curseur est conservée. Activez-la pour qu'une automatisation prenne le pas sur une modification manuelle, par exemple dans le cas d'un planning de jours fériés qui doit prévaloir."
         }
       }
+    },
+    "refresh": {
+      "name": "Actualiser",
+      "description": "Forcer une récupération immédiate des données de présence, en contournant l'intervalle de rafraîchissement minimum. Pour les utilisateurs qui gèrent eux-mêmes la fréquence de rafraîchissement via un processus automatisé, le seuil de requêtes automatiques continue de protéger votre quota API le reste du temps.",
+      "fields": {
+        "data": {
+          "name": "Données à actualiser",
+          "description": "Quelles données récupérer maintenant : présence sur un appareil mobile ou présence à domicile (à la maison/absent) ? Ignoré si cette fonctionnalité est désactivée."
+        }
+      }
     }
   },
   "selector": {
@@ -1341,7 +1351,8 @@
         "bridge": "Pont Internet",
         "polling_api": "Interrogation et API",
         "homekit": "HomeKit",
-        "comfort_safety": "Confort et sécurité"
+        "comfort_safety": "Confort et sécurité",
+        "external_sensors": "Capteurs d'extérieur"
       }
     },
     "svc_mode": {
@@ -1432,7 +1443,7 @@
     },
     "homekit_pairing_invalid": {
       "title": "Perte de l'appairage HomeKit",
-      "description": "L'appairage HomeKit de votre pont Tado n'est plus valide — il a peut-être été réinitialisé aux paramètres d'usine. Tado CE fonctionne en mode « cloud uniquement » jusqu'à ce que vous le réappairiez.\n\nPour le réappairer : Paramètres → Tado CE → Configurer → Paramètres généraux → activez HomeKit."
+      "description": "L'appairage HomeKit de votre pont Tado n'est plus valide ; il a peut-être été réinitialisé aux paramètres d'usine. Tado CE fonctionne en mode « cloud uniquement » jusqu'à ce que vous procédiez à un nouvel appairage.\n\nPour effectuer un nouvel appairage : Paramètres → Tado CE → Configurer → Paramètres avancés → HomeKit, puis cochez « Appairer à nouveau » et saisissez le code de configuration à 8 chiffres de votre pont."
     }
   },
   "config": {
@@ -1664,7 +1675,7 @@
               "smart_comfort_enabled": "Capteurs de confort, de risque de moisissure, de condensation et de point de rosée pour chaque zone",
               "thermal_analytics_enabled": "Suivez la vitesse à laquelle vos pièces se réchauffent et les performances de votre système au fil du temps",
               "adaptive_preheat_enabled": "Lancez automatiquement le chauffage plus tôt afin que votre pièce soit déjà chaude lorsque le programme démarre — remplace la fonction « Early Start » de Tado par une logique locale",
-              "wc_enabled": "Réglez automatiquement la température de départ de votre chaudière en fonction des conditions météorologiques extérieures (nécessite un pont Internet)"
+              "wc_enabled": "Il faut d'abord activer la fonction « Internet Bridge ». Ce système ajuste automatiquement la température de départ de votre chaudière en fonction des conditions météorologiques extérieures."
             }
           },
           "advanced": {
@@ -1686,16 +1697,12 @@
           "smart_comfort": {
             "name": "Confort intelligent",
             "data": {
-              "use_outdoor_temp_entity": "Utiliser l'entité température extérieure",
-              "outdoor_temp_entity": "Entité température extérieure",
               "smart_comfort_mode": "Mode confort intelligent",
               "use_feels_like": "Utiliser la température ressentie",
               "mold_risk_window_type": "Type de fenêtre",
               "smart_comfort_history_days": "Historique des températures (jours)"
             },
             "data_description": {
-              "use_outdoor_temp_entity": "Désactiver les fonctions qui ont besoin de la température extérieure (évaluation du confort, risque de moisissure)",
-              "outdoor_temp_entity": "Capteur fournissant la température extérieure (par exemple, weather.home ou un capteur local)",
               "smart_comfort_mode": "Dans quelle mesure Tado CE ajuste la température cible de la zone pour optimiser le confort. « Léger » = ajustement subtil, « Énergique » = ajustement notable. Commencez par « Léger ».",
               "use_feels_like": "Tenir compte du refroidissement éolien et de l'humidité au lieu de la température brute",
               "mold_risk_window_type": "Votre type de fenêtre - affecte la façon dont la température de la surface est estimée pour le risque de moisissure.",
@@ -1724,10 +1731,10 @@
               "night_start_hour": "Heure de début de nuit",
               "custom_day_interval": "Intervalle en jours personnalisé (laisser vide pour le réglage automatique)",
               "custom_night_interval": "Intervalle nocturne personnalisé (laisser vide pour le réglage automatique)",
-              "refresh_debounce_seconds": "Délai de rafraîchissement (secondes)",
+              "refresh_debounce_seconds": "Délai de rafraîchissement après une modification (en secondes)",
               "api_history_retention_days": "Conservation de l'historique de l'API (jours)",
-              "smart_actions_debounce_seconds": "Délai du curseur de température",
-              "device_sync_delay_seconds": "Délai de synchronisation des appareils",
+              "smart_actions_debounce_seconds": "Délai du curseur de température (en secondes)",
+              "device_sync_delay_seconds": "Délai de synchronisation des appareils (en secondes)",
               "mobile_devices_frequent_sync": "Synchronisation mobile fréquente",
               "hot_water_timer_duration": "Durée par défaut du minuteur d'eau chaude (minutes)",
               "presence_min_refresh_minutes": "Accueil - Présence - Intervalle de rafraîchissement",
@@ -1802,7 +1809,8 @@
               "wc_room_compensation_factor": "De combien ajuster la température de départ lorsqu'une pièce est plus froide ou plus chaude que sa cible (1.0-5.0)",
               "wc_step_size": "Arrondir la température de départ à cette taille de pas - des pas plus grands signifient moins de réglages de la chaudière (0,5-2,0°C).",
               "wc_hysteresis": "N'envoyer une nouvelle température de départ que si elle diffère de la précédente d'au moins cette valeur (0,5-3,0 °C).",
-              "wc_heating_system_preset": "La sélection d'un préréglage définit les valeurs par défaut recommandées pour les températures de pente et de débit. Choisissez « Personnalisé » pour régler chaque champ manuellement."
+              "wc_heating_system_preset": "La sélection d'un préréglage définit les valeurs par défaut recommandées pour les températures de pente et de débit. Choisissez « Personnalisé » pour régler chaque champ manuellement.",
+              "wc_room_compensation_enabled": "Ajustez la température de départ à la hausse ou à la baisse lorsqu'une pièce est plus froide ou plus chaude que la température de consigne, en complément de la courbe de température extérieure."
             }
           },
           "comfort_safety": {
@@ -1812,6 +1820,17 @@
             },
             "data_description": {
               "comfort_heat_vulnerable_group": "Activer les alertes de chaleur et de froid un niveau plus tôt pour les foyers comptant des personnes âgées, des nourrissons ou des personnes malades, pour lesquels une même température présente un risque accru. Désactivé par défaut."
+            }
+          },
+          "external_sensors": {
+            "name": "Capteurs d'extérieur",
+            "data": {
+              "use_outdoor_temp_entity": "Utiliser l'entité « Température extérieure »",
+              "outdoor_temp_entity": "Entité « Température extérieure »"
+            },
+            "data_description": {
+              "use_outdoor_temp_entity": "Désactivez cette option pour désactiver les fonctionnalités qui nécessitent la température extérieure (détection des fenêtres, évaluation du confort, risque de moisissure)",
+              "outdoor_temp_entity": "Capteur indiquant la température extérieure (par exemple, weather.home ou un capteur local)"
             }
           }
         }

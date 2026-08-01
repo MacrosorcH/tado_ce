@@ -14,6 +14,8 @@ import voluptuous as vol
 from . import ratelimit as _ratelimit
 from .const import (
     DOMAIN,
+    FORCEABLE_FETCH_HOME_STATE,
+    FORCEABLE_FETCH_MOBILE,
     OPEN_WINDOW_DEFAULT_TEMP,
     OPEN_WINDOW_DEFAULT_TIMEOUT,
     SERVICE_ACTIVATE_OPEN_WINDOW,
@@ -21,6 +23,7 @@ from .const import (
     SERVICE_DEACTIVATE_OPEN_WINDOW,
     SERVICE_GET_TEMP_OFFSET,
     SERVICE_IDENTIFY_DEVICE,
+    SERVICE_REFRESH,
     SERVICE_RESTORE_PREVIOUS_STATE,
     SERVICE_RESUME_SCHEDULE,
     SERVICE_SET_AWAY_CONFIG,
@@ -1129,6 +1132,30 @@ async def handle_add_meter_reading(hass: HomeAssistant, call: ServiceCall) -> No
         )
 
 
+async def handle_refresh(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Service handler for `refresh`: force an immediate fetch of one floored data type."""
+    fetch_type = str(call.data["data"])
+    coord = _resolve_single_coordinator(hass)
+    cm = coord.config_manager
+
+    if fetch_type == FORCEABLE_FETCH_MOBILE:
+        enabled = cm.get_mobile_devices_enabled() and cm.get_mobile_devices_frequent_sync()
+    elif fetch_type == FORCEABLE_FETCH_HOME_STATE:
+        enabled = cm.get_home_state_sync_enabled()
+    else:
+        enabled = False
+
+    if not enabled:
+        _LOGGER.warning(
+            "Services: refresh(%s) requested but the feature is off, ignoring",
+            fetch_type,
+        )
+        return
+
+    coord.request_forced_fetch(fetch_type)
+    await coord.async_request_refresh()
+
+
 async def handle_identify_device(hass: HomeAssistant, call: ServiceCall) -> None:
     """Service handler for `identify_device`: flash the LED on a device by serial."""
     device_serial = call.data.get("device_serial")
@@ -1700,6 +1727,17 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             {
                 vol.Required("reading"): vol.Coerce(int),
                 vol.Optional("date"): cv.string,
+            },
+        ),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REFRESH,
+        functools.partial(handle_refresh, hass),
+        schema=vol.Schema(
+            {
+                vol.Required("data"): vol.In([FORCEABLE_FETCH_MOBILE, FORCEABLE_FETCH_HOME_STATE]),
             },
         ),
     )

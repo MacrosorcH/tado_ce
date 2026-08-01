@@ -186,13 +186,13 @@ Six sensors per zone, all CE-exclusive, all diagnostic.
 | Function | Friendly Name | v2.3.1 entity_id | v3.0+ fresh |
 |---|---|---|---|
 | Mold risk level | Mold Risk | `sensor.lounge_mold_risk` | `sensor.lounge_mold_risk` |
-| Mold risk percentage | Mold Risk % | `sensor.lounge_mold_risk_percentage` | `sensor.lounge_mold_risk_2` (slug collision) |
+| Mold risk percentage | Mold Risk Indicator (was "Mold Risk %" pre-v4.0.1) | `sensor.lounge_mold_risk_percentage` | `sensor.lounge_mold_risk_pct` |
 | Condensation risk | Condensation Risk (was "Condensation" in v3.5.x) | `sensor.lounge_condensation_risk` | `sensor.lounge_condensation` (v3.5) → `sensor.lounge_condensation_risk` (v4.0+) |
 | Surface temperature | Surface Temp | `sensor.lounge_surface_temperature` | `sensor.lounge_surface_temp` |
 | Dew point | Dew Point | `sensor.lounge_dew_point` | `sensor.lounge_dew_point` |
 | Comfort level | Comfort Level | `sensor.lounge_comfort_level` | `sensor.lounge_comfort_level` |
 
-**Mold Risk vs Mold Risk %** — these aren't duplicates. The text sensor's state is the risk level (`Critical` / `High` / `Medium` / `Low` / `None`); the numeric sensor's state is surface relative humidity (0–100%) for HA history graphs and threshold automations. Added together in v2.0.1 by request. The slug collision is a separate problem: HA's slugify drops the `%`, so on a fresh install the second entity gets an `_2` auto-suffix. A rename to break the collision is on the v5.0.0 cleanup list (see `ROADMAP.md`).
+**Mold Risk vs Mold Risk Indicator** — these aren't duplicates. The text sensor's state is the risk level (`Critical` / `High` / `Medium` / `Low` / `None`); the numeric sensor's state is surface relative humidity (0–100%) for HA history graphs and threshold automations. Added together in v2.0.1 by request. The numeric sensor was renamed from "Mold Risk %" to "Mold Risk Indicator" in v4.0.1, which also fixed an earlier slug collision (HA's slugify dropped the `%`, so a fresh install gave the second entity an `_2` suffix); its slug is now `mold_risk_pct`.
 
 ---
 
@@ -320,7 +320,15 @@ The doubled-segment slug (`heating_schedule_schedule`) comes from the calendar d
 
 ## Zone Config
 
-Per-zone configuration entities (heat emitter, UFH buffer, adaptive preheat, smart comfort, window type, overlay mode, overlay timer, min/max temp, temp offset, surface offset) **were removed in v3.1.0**. Settings now live in the Options Flow under **Settings → Tado CE → Configure → Zone Configuration**. Legacy entities are cleaned up automatically on upgrade.
+Per-zone configuration entities (heat emitter, UFH buffer, adaptive preheat, smart comfort, window type, overlay mode, overlay timer, min/max temp, temp offset, surface offset) **were removed in v3.1.0**. Those settings now live in the Options Flow under **Settings → Tado CE → Configure → Zone Configuration**. Legacy entities are cleaned up automatically on upgrade.
+
+One per-zone config entity was reintroduced in v4.2.0:
+
+| Function | Friendly Name | Fresh entity_id |
+|---|---|---|
+| Heating circuit assignment | Heating Circuit | `select.lounge_heating_circuit` |
+
+CE-exclusive, config category, added in v4.2.0. Off unless the Heating Circuit Control toggle is on; needs a bridge with boiler circuits. Assigns a zone to a boiler circuit (or "No heating circuit"), so a zone's valves can open for residual heat without firing the boiler itself.
 
 ---
 
@@ -365,6 +373,7 @@ Requires Bridge API configured and Weather Compensation enabled in **Settings �
 | Device Sensors | 1 sensor + 1 binary per device | — | 0 | 2 |
 | Climate / Water Heater | 1 climate or 1 water_heater | — | 0 | 1 |
 | Zone Switches | 2 | — | 0 | 2 |
+| Zone Config — Heating Circuit | 1 | — | 1 | 0 |
 | Zone Buttons | 4 | — | 3 | 1 |
 | Calendar | 1 | — | 1 | 0 |
 | Device Tracker | — | 1 per mobile device | 1 | 0 |

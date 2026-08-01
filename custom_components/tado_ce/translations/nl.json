@@ -1284,6 +1284,16 @@
           "description": "Standaard uitgeschakeld, zodat een handmatige aanpassing die je via de schuifregelaar hebt aangebracht, ongewijzigd blijft. Schakel deze functie in voor een automatisering die voorrang moet krijgen boven een handmatige aanpassing, zoals een feestdagenschema dat altijd voorrang moet krijgen."
         }
       }
+    },
+    "refresh": {
+      "name": "Vernieuwen",
+      "description": "Dwing het onmiddellijk ophalen van aanwezigheidsgegevens af, waarbij het minimale verversingsinterval wordt omzeild. Voor gebruikers die hun eigen verversingsfrequentie via een automatisering bepalen, zorgt de automatische polling-drempel er de rest van de tijd nog steeds voor dat je API-quotum wordt beschermd.",
+      "fields": {
+        "data": {
+          "name": "Gegevens die moeten worden vernieuwd",
+          "description": "Welke gegevens moeten nu worden opgehaald: aanwezigheid op een mobiel apparaat of aanwezigheid thuis (thuis/afwezig). Wordt genegeerd als deze functie is uitgeschakeld."
+        }
+      }
     }
   },
   "selector": {
@@ -1341,7 +1351,8 @@
         "bridge": "Internet Brug",
         "polling_api": "Polling & API",
         "homekit": "HomeKit",
-        "comfort_safety": "Comfort en veiligheid"
+        "comfort_safety": "Comfort en veiligheid",
+        "external_sensors": "Buiten sensoren"
       }
     },
     "svc_mode": {
@@ -1432,7 +1443,7 @@
     },
     "homekit_pairing_invalid": {
       "title": "HomeKit-koppeling verbroken",
-      "description": "De HomeKit-koppeling van je Tado-bridge is niet langer geldig — mogelijk is het apparaat teruggezet naar de fabrieksinstellingen. Tado CE werkt nu in de ‘alleen cloud’-modus totdat je het opnieuw koppelt.\n\nOm opnieuw te koppelen: Instellingen → Tado CE → Configureren → Algemene instellingen → schakel HomeKit in."
+      "description": "De HomeKit-koppeling van je Tado-bridge is niet langer geldig; mogelijk is het apparaat teruggezet naar de fabrieksinstellingen. Tado CE werkt in de ‘alleen-cloud’-modus totdat je het apparaat opnieuw koppelt.\n\nOm opnieuw te koppelen: Instellingen → Tado CE → Configureren → Geavanceerde instellingen → HomeKit. Vink vervolgens ‘Opnieuw koppelen’ aan en voer de 8-cijferige installatiecode van je bridge in."
     }
   },
   "config": {
@@ -1664,7 +1675,7 @@
               "smart_comfort_enabled": "Comfortscores, schimmelrisico, condensatie en dauwpuntsensoren voor elke zone",
               "thermal_analytics_enabled": "Houd bij hoe snel je kamers opwarmen en hoe je systeem in de loop van de tijd presteert",
               "adaptive_preheat_enabled": "Begin automatisch eerder met verwarmen, zodat je kamer al warm is wanneer het schema ingaat — vervangt Tado's 'Early Start' door lokale logica",
-              "wc_enabled": "Pas de aanvoertemperatuur van uw cv-ketel automatisch aan op basis van het weer buiten (hiervoor is een Internet Bridge nodig)"
+              "wc_enabled": "Hiervoor moet de Internet Bridge eerst worden ingeschakeld. Past de aanvoertemperatuur van je ketel automatisch aan op basis van het weer buiten."
             }
           },
           "advanced": {
@@ -1686,16 +1697,12 @@
           "smart_comfort": {
             "name": "Slim comfort",
             "data": {
-              "use_outdoor_temp_entity": "Gebruik buitentemperatuur entiteit",
-              "outdoor_temp_entity": "Buitentemperatuur Entiteit",
               "smart_comfort_mode": "Slimme Comfortmodus",
               "use_feels_like": "Gebruik gevoelstemperatuur",
               "mold_risk_window_type": "Raamtype",
               "smart_comfort_history_days": "Temperatuurgeschiedenis (dagen)"
             },
             "data_description": {
-              "use_outdoor_temp_entity": "Uitschakelen om functies uit te schakelen die buitentemperatuur nodig hebben (comfortscore, schimmelrisico)",
-              "outdoor_temp_entity": "Sensor die buitentemperatuur levert (bijv. weather.home of een lokale sensor)",
               "smart_comfort_mode": "In hoeverre past Tado CE de streeftemperatuur van de zone aan om het comfort te optimaliseren. Licht = subtiel, Agressief = merkbaar. Begin met Licht.",
               "use_feels_like": "Houd rekening met gevoelstemperatuur en vochtigheid in plaats van met de ruwe temperatuur",
               "mold_risk_window_type": "Je raamtype - beïnvloedt hoe de oppervlaktetemperatuur wordt geschat op schimmelrisico",
@@ -1724,10 +1731,10 @@
               "night_start_hour": "Nacht Start Uur",
               "custom_day_interval": "Aangepast daginterval (leeg laten voor automatische instelling)",
               "custom_night_interval": "Aangepast nachtinterval (leeg laten voor automatisch)",
-              "refresh_debounce_seconds": "Verversingsvertraging (seconden)",
+              "refresh_debounce_seconds": "Vertraging bij het vernieuwen na een wijziging (seconden)",
               "api_history_retention_days": "API geschiedenis retentie (dagen)",
-              "smart_actions_debounce_seconds": "Temperatuur schuifvertraging",
-              "device_sync_delay_seconds": "Apparaat synchronisatievertraging",
+              "smart_actions_debounce_seconds": "Vertraging van de temperatuurschuifregelaar (seconden)",
+              "device_sync_delay_seconds": "Vertraging bij het synchroniseren van apparaten (seconden)",
               "mobile_devices_frequent_sync": "Frequente mobiele synchronisatie",
               "hot_water_timer_duration": "Standaardinstelling warmwatertimer (minuten)",
               "presence_min_refresh_minutes": "Startpagina - Weergave-interval",
@@ -1802,7 +1809,8 @@
               "wc_room_compensation_factor": "Hoeveel moet de aanvoertemperatuur worden aangepast als een kamer kouder of warmer is dan de doelstelling (1,0-5,0)?",
               "wc_step_size": "Rond de aanvoertemperatuur af op deze stapgrootte - grotere stappen betekenen minder aanpassingen aan de ketel (0,5-2,0°C)",
               "wc_hysteresis": "Verstuur alleen een nieuwe aanvoertemperatuur als deze ten minste zoveel verschilt van de vorige (0,5-3,0°C).",
-              "wc_heating_system_preset": "Als u een voorinstelling selecteert, worden de aanbevolen standaardwaarden voor de helling en de aanvoertemperatuur ingesteld. Kies 'Aangepast' om elk veld handmatig in te stellen."
+              "wc_heating_system_preset": "Als u een voorinstelling selecteert, worden de aanbevolen standaardwaarden voor de helling en de aanvoertemperatuur ingesteld. Kies 'Aangepast' om elk veld handmatig in te stellen.",
+              "wc_room_compensation_enabled": "Pas de aanvoertemperatuur iets naar boven of naar beneden aan wanneer een ruimte kouder of warmer is dan de streeftemperatuur, bovenop de buitentemperatuurcurve."
             }
           },
           "comfort_safety": {
@@ -1812,6 +1820,17 @@
             },
             "data_description": {
               "comfort_heat_vulnerable_group": "Verhoog de hitte- en koudewaarschuwingen één niveau eerder voor woningen met ouderen, baby’s of zieke bewoners, waar dezelfde temperatuur een groter risico met zich meebrengt. Standaard uitgeschakeld."
+            }
+          },
+          "external_sensors": {
+            "name": "Buiten sensoren",
+            "data": {
+              "use_outdoor_temp_entity": "Gebruik de entiteit 'Buitentemperatuur'",
+              "outdoor_temp_entity": "Entiteit 'Buitentemperatuur'"
+            },
+            "data_description": {
+              "use_outdoor_temp_entity": "Schakel deze functie uit om functies uit te schakelen die de buitentemperatuur nodig hebben (raamdetectie, comfortbeoordeling, schimmelrisico)",
+              "outdoor_temp_entity": "Sensor die de buitentemperatuur weergeeft (bijvoorbeeld weather.home of een lokale sensor)"
             }
           }
         }

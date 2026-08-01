@@ -32,12 +32,14 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .climate_helpers import (
+    ac_power_is_on,
+    ac_power_percentage,
     api_call_with_rollback,
     read_external_sensor,
     setup_climate_external_sensor_subscription,
     unsubscribe_external_sensors,
 )
-from .const import DOMAIN, SIGNAL_HOMEKIT_UPDATE
+from .const import CLOUD_VERIFICATION_BUFFER_SECONDS, DOMAIN, SIGNAL_HOMEKIT_UPDATE
 from .device_manager import get_zone_device_info
 from .entity_registry import ENTITY_REGISTRY
 from .format_helpers import (
@@ -365,7 +367,8 @@ class TadoACClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdat
         self._attr_current_humidity = None
 
         self._overlay_type = None
-        self._ac_power_percentage = None
+        self._ac_power_percentage: int | None = None
+        self._cloud_verification_handle: asyncio.TimerHandle | None = None
 
         self._temperature_source = "cloud"
         self._humidity_source = "cloud"
@@ -495,6 +498,35 @@ class TadoACClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdat
             self._handle_homekit_update,
         )
 
+    def _schedule_cloud_verification(self) -> None:
+        """Schedule a coordinator refresh to verify a HomeKit write reached the cloud.
+
+        A HomeKit put ACKs the characteristic but does not prove the bridge relayed
+        the change; mirror the heating path and force one cloud re-poll after the
+        optimistic window so an ACK-without-effect reconciles instead of sitting on
+        a stale optimistic value until the next natural poll.
+        """
+        if self._cloud_verification_handle is not None:
+            self._cloud_verification_handle.cancel()
+            self._cloud_verification_handle = None
+
+        from .helpers import get_optimistic_window
+
+        delay = get_optimistic_window(self.hass, entry_id=self._entry_id) + CLOUD_VERIFICATION_BUFFER_SECONDS
+        entity_id = self.entity_id
+
+        def _fire() -> None:
+            self._cloud_verification_handle = None
+            self.hass.async_create_task(
+                async_trigger_immediate_refresh(self.hass, entity_id, "homekit_verification"),
+            )
+
+        try:
+            loop = asyncio.get_running_loop()
+            self._cloud_verification_handle = loop.call_later(delay, _fire)
+        except RuntimeError:
+            pass
+
     async def async_will_remove_from_hass(self) -> None:
         """Tear down zone-config / external-sensor / HomeKit listeners."""
         self._unsubscribe_external_sensors()
@@ -504,6 +536,9 @@ class TadoACClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdat
         if self._unsub_zone_config:
             self._unsub_zone_config()
             self._unsub_zone_config = None
+        if self._cloud_verification_handle is not None:
+            self._cloud_verification_handle.cancel()
+            self._cloud_verification_handle = None
         await super().async_will_remove_from_hass()
 
     @callback
@@ -645,7 +680,7 @@ class TadoACClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdat
         self,
         setting: dict[str, Any],
         zone_data: dict[str, Any],
-        ac_power_value: str | None,
+        ac_power_on: bool,
     ) -> None:
         """Extract AC power-on state from zone data into entity attributes."""
         # Temperature
@@ -669,7 +704,6 @@ class TadoACClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdat
         self._overlay_type = zone_data.get("overlayType")
 
         # HVAC action
-        ac_power_on = ac_power_value == "ON"
         api_hvac_action = self._calculate_hvac_action(hvac_mode=self._attr_hvac_mode, ac_power_on=ac_power_on)
 
         # Build api_values for optimistic resolution. Include
@@ -843,15 +877,14 @@ class TadoACClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdat
             self._update_ac_sensor_data(zone_data)
 
             activity_data = zone_data.get("activityDataPoints") or {}
-            ac_power = activity_data.get("acPower") or {}
-            ac_power_value = ac_power.get("value")
-            self._ac_power_percentage = ac_power.get("percentage")
+            ac_on = ac_power_is_on(activity_data)
+            self._ac_power_percentage = ac_power_percentage(activity_data)
 
             setting = zone_data.get("setting") or {}
             power = setting.get("power")
 
             if power == "ON":
-                self._extract_ac_power_state(setting, zone_data, ac_power_value)
+                self._extract_ac_power_state(setting, zone_data, ac_on)
             else:
                 self._handle_ac_off_state()
 
@@ -863,7 +896,7 @@ class TadoACClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdat
                     _scm.record_temperature(
                         zone_id=self._zone_id, zone_name=self._zone_name,
                         temperature=self._attr_current_temperature,
-                        is_heating=(ac_power_value == "ON"),
+                        is_heating=ac_on,
                         target_temperature=self._attr_target_temperature,
                     )
                 except (KeyError, TypeError, ValueError) as e:
@@ -1032,6 +1065,7 @@ class TadoACClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdat
         if local_success:
             self.coordinator.record_homekit_write_saved(self._zone_id)
             self._last_write_source = "homekit"
+            self._schedule_cloud_verification()
             _LOGGER.debug(
                 "Climate AC: %s set target %s°C via HomeKit",
                 self._zone_name, temperature,

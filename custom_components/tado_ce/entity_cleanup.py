@@ -36,6 +36,9 @@ class FeatureGroupContext:
     feature_group: str
     label: str
     legacy_suffixes: tuple[str, ...]
+    # The options-flow toggle that gates this group's entities, or None when
+    # the group is always-on (no disable transition).
+    toggle_option: str | None = None
     match_mode: str = "suffix"  # "suffix" or "contains"
     platform_filter: str | None = None
     remove_device: str | None = None
@@ -48,6 +51,7 @@ class FeatureGroupContext:
 FEATURE_GROUP_CONTEXTS: tuple[FeatureGroupContext, ...] = (
     FeatureGroupContext(
         cleanup_flag="_cleanup_zone_config",
+        toggle_option="zone_configuration_enabled",
         feature_group="zone_config",
         label="Zone Configuration",
         legacy_suffixes=(
@@ -94,6 +98,7 @@ FEATURE_GROUP_CONTEXTS: tuple[FeatureGroupContext, ...] = (
     ),
     FeatureGroupContext(
         cleanup_flag="_cleanup_thermal_analytics",
+        toggle_option="thermal_analytics_enabled",
         feature_group="thermal",
         label="Thermal Analytics",
         legacy_suffixes=(
@@ -102,6 +107,7 @@ FEATURE_GROUP_CONTEXTS: tuple[FeatureGroupContext, ...] = (
     ),
     FeatureGroupContext(
         cleanup_flag="_cleanup_smart_comfort",
+        toggle_option="smart_comfort_enabled",
         feature_group="smart_comfort",
         label="Smart Comfort",
         legacy_suffixes=(
@@ -111,6 +117,7 @@ FEATURE_GROUP_CONTEXTS: tuple[FeatureGroupContext, ...] = (
     ),
     FeatureGroupContext(
         cleanup_flag="_cleanup_schedule_calendar",
+        toggle_option="schedule_calendar_enabled",
         feature_group="schedule_calendar",
         label="Schedule Calendar",
         legacy_suffixes=(),
@@ -124,12 +131,14 @@ FEATURE_GROUP_CONTEXTS: tuple[FeatureGroupContext, ...] = (
     ),
     FeatureGroupContext(
         cleanup_flag="_cleanup_weather",
+        toggle_option="weather_enabled",
         feature_group="weather",
         label="Weather",
         legacy_suffixes=(),
     ),
     FeatureGroupContext(
         cleanup_flag="_cleanup_mobile_devices",
+        toggle_option="mobile_devices_enabled",
         feature_group="mobile_devices",
         label="Mobile Devices",
         legacy_suffixes=("_device_",),
@@ -145,18 +154,21 @@ FEATURE_GROUP_CONTEXTS: tuple[FeatureGroupContext, ...] = (
     ),
     FeatureGroupContext(
         cleanup_flag="_cleanup_weather_compensation",
+        toggle_option="wc_enabled",
         feature_group="weather_compensation",
         label="Weather Compensation",
         legacy_suffixes=(),
     ),
     FeatureGroupContext(
         cleanup_flag="_cleanup_homekit",
+        toggle_option="homekit_enabled",
         feature_group="homekit",
         label="HomeKit",
         legacy_suffixes=(),
     ),
     FeatureGroupContext(
         cleanup_flag="_cleanup_heating_circuit",
+        toggle_option="heating_circuit_enabled",
         feature_group="heating_circuit",
         label="Heating Circuit",
         legacy_suffixes=(),
@@ -238,20 +250,14 @@ def match_zone_only_suffix(unique_id: str, zone_only_patterns: frozenset[re.Patt
 
 
 # ---------------------------------------------------------------------------
-# Feature toggle → cleanup flag mapping
-# Used by config_flow (detect transitions) and cleanup handler (execute).
+# Feature toggle → cleanup flag mapping, derived from FEATURE_GROUP_CONTEXTS'
+# toggle_option (single source, so a toggle can't be created but not cleaned up).
 # ---------------------------------------------------------------------------
 
 FEATURE_CLEANUP_MAP: list[tuple[str, str, bool]] = [
-    ("zone_configuration_enabled", "_cleanup_zone_config", True),
-    ("thermal_analytics_enabled", "_cleanup_thermal_analytics", False),
-    ("smart_comfort_enabled", "_cleanup_smart_comfort", False),
-    ("schedule_calendar_enabled", "_cleanup_schedule_calendar", False),
-    ("weather_enabled", "_cleanup_weather", False),
-    ("mobile_devices_enabled", "_cleanup_mobile_devices", False),
-    ("wc_enabled", "_cleanup_weather_compensation", False),
-    ("homekit_enabled", "_cleanup_homekit", False),
-    ("heating_circuit_enabled", "_cleanup_heating_circuit", False),
+    (ctx.toggle_option, ctx.cleanup_flag, False)
+    for ctx in FEATURE_GROUP_CONTEXTS
+    if ctx.toggle_option is not None
 ]
 
 # ---------------------------------------------------------------------------

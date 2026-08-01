@@ -15,9 +15,7 @@ from homeassistant.util import dt as dt_util
 
 from .calculations import (
     HEAT_INDEX_ACTIVATION_TEMP,
-    calculate_ashrae_comfort_temp,
     calculate_heat_index,
-    calculate_seasonal_comfort_target,
     classify_condensation_risk,
     classify_heat_risk_level,
     classify_mold_risk_by_margin,
@@ -29,7 +27,15 @@ from .calculations import calculate_surface_rh as _calculate_surface_rh
 from .calculations import (
     calculate_surface_temperature as _calculate_surface_temperature,
 )
-from .const import ENTITY_DATA_CONDENSATION_RISK
+from .const import (
+    _COMFORT_COLD_THRESHOLD,
+    _COMFORT_COOL_THRESHOLD,
+    _COMFORT_FREEZING_THRESHOLD,
+    _COMFORT_HOT_THRESHOLD,
+    _COMFORT_SWELTERING_THRESHOLD,
+    _COMFORT_WARM_THRESHOLD,
+    ENTITY_DATA_CONDENSATION_RISK,
+)
 from .entity_registry import ENTITY_REGISTRY, get_entity_category
 from .format_helpers import (
     format_comfort_model as _format_comfort_model,
@@ -41,6 +47,10 @@ from .format_helpers import (
     strip_zone_prefix as _strip_zone_prefix,
 )
 from .helpers import get_zone_states
+from .insights_air_comfort import (
+    classify_humidity_level,
+    compute_comfort_target,
+)
 from .insights_environment import (
     calculate_comfort_recommendation,
     calculate_condensation_recommendation,
@@ -58,18 +68,6 @@ if TYPE_CHECKING:
     from .coordinator import TadoDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
-
-# Comfort deviation thresholds (°C from comfort target)
-_COMFORT_FREEZING_THRESHOLD = -6
-_COMFORT_COLD_THRESHOLD = -4
-_COMFORT_COOL_THRESHOLD = -2
-_COMFORT_WARM_THRESHOLD = 2
-_COMFORT_HOT_THRESHOLD = 4
-_COMFORT_SWELTERING_THRESHOLD = 6
-
-# Humidity thresholds for comfort suffix
-_HUMIDITY_DRY_THRESHOLD = 35  # %: below this is "Dry"
-_HUMIDITY_HUMID_THRESHOLD = 70  # %: above this is "Humid"
 
 
 def _classify_comfort_deviation(deviation: float) -> str:
@@ -936,6 +934,7 @@ class TadoComfortLevelSensor(TadoZoneSensor):
             "dew_point": round(self._dew_point, 1) if self._dew_point is not None else None,
             "heat_index": round(self._heat_index, 1) if self._heat_index is not None else None,
             "heat_risk_level": self._heat_risk_level,
+            "humidity_level": classify_humidity_level(self._humidity),
             **self._base_zone_attributes,
             "recommendation": _strip_zone_prefix(self._recommendation, self._zone_name),
         }
@@ -1053,36 +1052,35 @@ class TadoComfortLevelSensor(TadoZoneSensor):
 
     def _calculate_adaptive_comfort(self) -> str:
         """Calculate comfort using ASHRAE 55 Adaptive Comfort model (0.31*outdoor + 17.8°C, ±3°C band)."""
-        self._comfort_temp = round(calculate_ashrae_comfort_temp(self._outdoor_temp), 1)  # type: ignore[arg-type]
-
-        effective_temp = self._heat_index if self._heat_index is not None else self._temperature
-        deviation = effective_temp - self._comfort_temp  # type: ignore[operator]
-
+        latitude = 51.5 if not self.hass else (self.hass.config.latitude or 51.5)
+        month = dt_util.now().month
+        self._comfort_temp, deviation = compute_comfort_target(
+            self._temperature,  # type: ignore[arg-type]
+            self._humidity,
+            self._outdoor_temp,
+            latitude,
+            month,
+        )
         return _classify_comfort_deviation(deviation)
 
     def _calculate_seasonal_comfort(self) -> str:
         """Calculate comfort using latitude-based seasonal thresholds."""
-        latitude = 51.5  # Default to London if not available
-        if self.hass:
-            latitude = self.hass.config.latitude or 51.5
-
+        latitude = 51.5 if not self.hass else (self.hass.config.latitude or 51.5)
         month = dt_util.now().month
-
-        comfort_target = calculate_seasonal_comfort_target(latitude, month)
-        self._comfort_temp = comfort_target
-
-        effective_temp = self._heat_index if self._heat_index is not None else self._temperature
-        deviation = effective_temp - comfort_target  # type: ignore[operator]
-
+        self._comfort_temp, deviation = compute_comfort_target(
+            self._temperature,  # type: ignore[arg-type]
+            self._humidity,
+            None,  # outdoor_temp=None triggers seasonal path in helper
+            latitude,
+            month,
+        )
         return _classify_comfort_deviation(deviation)
 
     def _get_humidity_suffix(self) -> str:
         """Get humidity suffix for comfort display (Dry <35%, Humid >70%)."""
-        if self._humidity is None:
-            return ""
-
-        if self._humidity < _HUMIDITY_DRY_THRESHOLD:
+        level = classify_humidity_level(self._humidity)
+        if level == "dry":
             return " Dry"
-        if self._humidity > _HUMIDITY_HUMID_THRESHOLD:
+        if level == "humid":
             return " Humid"
         return ""

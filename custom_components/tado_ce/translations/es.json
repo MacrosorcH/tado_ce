@@ -1284,6 +1284,16 @@
           "description": "Está desactivada por defecto, por lo que cualquier cambio manual que hayas realizado en el control deslizante se mantendrá. Actívala si quieres que una automatización tenga prioridad sobre un cambio manual, como un horario festivo que debe prevalecer."
         }
       }
+    },
+    "refresh": {
+      "name": "Actualizar",
+      "description": "Forzar una obtención inmediata de los datos de presencia, sin respetar el intervalo mínimo de actualización. Para los usuarios que gestionan su propio ritmo de actualización mediante una automatización, el límite mínimo de consultas automáticas sigue protegiendo tu cuota de API el resto del tiempo.",
+      "fields": {
+        "data": {
+          "name": "Datos que hay que actualizar",
+          "description": "Qué datos se deben recuperar ahora: presencia en el dispositivo móvil o presencia en casa (en casa/fuera). Se ignora si esa función está desactivada."
+        }
+      }
     }
   },
   "selector": {
@@ -1341,7 +1351,8 @@
         "bridge": "Puente Internet",
         "polling_api": "Sondeo y API",
         "homekit": "HomeKit",
-        "comfort_safety": "Comodidad y seguridad"
+        "comfort_safety": "Comodidad y seguridad",
+        "external_sensors": "Sensores para exteriores"
       }
     },
     "svc_mode": {
@@ -1432,7 +1443,7 @@
     },
     "homekit_pairing_invalid": {
       "title": "Se ha perdido el emparejamiento con HomeKit",
-      "description": "El emparejamiento de tu puente Tado con HomeKit ya no es válido; es posible que se haya restablecido a los valores de fábrica. Tado CE funciona en modo «solo en la nube» hasta que vuelvas a emparejarlo.\n\nPara volver a emparejarlo: Ajustes → Tado CE → Configurar → Ajustes generales → activa HomeKit."
+      "description": "El emparejamiento de tu puente Tado con HomeKit ya no es válido; es posible que se haya restablecido a los valores de fábrica. Tado CE funciona en modo «solo en la nube» hasta que vuelvas a emparejarlo.\n\nPara volver a emparejarlo: Ajustes → Tado CE → Configurar → Ajustes avanzados → HomeKit; a continuación, marca «Emparejar de nuevo» e introduce el código de configuración de 8 dígitos de tu puente."
     }
   },
   "config": {
@@ -1664,7 +1675,7 @@
               "smart_comfort_enabled": "Sensores de confort, riesgo de moho, condensación y punto de rocío para cada zona",
               "thermal_analytics_enabled": "Controla la rapidez con la que se calientan tus habitaciones y el rendimiento de tu sistema a lo largo del tiempo",
               "adaptive_preheat_enabled": "Inicia automáticamente la calefacción con antelación para que la habitación esté caliente cuando se active el programa; sustituye la función «Early Start» de Tado por una lógica local",
-              "wc_enabled": "Ajusta automáticamente la temperatura de impulsión de tu caldera en función de las condiciones meteorológicas exteriores (requiere un puente de Internet)"
+              "wc_enabled": "Es necesario activar primero el «Internet Bridge». Ajusta automáticamente la temperatura de impulsión de tu caldera en función de las condiciones meteorológicas exteriores."
             }
           },
           "advanced": {
@@ -1686,16 +1697,12 @@
           "smart_comfort": {
             "name": "Confort inteligente",
             "data": {
-              "use_outdoor_temp_entity": "Utilizar entidad de temperatura exterior",
-              "outdoor_temp_entity": "Temperatura exterior Entidad",
               "smart_comfort_mode": "Modo Confort Inteligente",
               "use_feels_like": "Utilizar la temperatura para sentir",
               "mold_risk_window_type": "Tipo de ventana",
               "smart_comfort_history_days": "Historial de temperaturas (días)"
             },
             "data_description": {
-              "use_outdoor_temp_entity": "Apagar para desactivar las funciones que necesitan temperatura exterior (puntuación de confort, riesgo de moho).",
-              "outdoor_temp_entity": "Sensor que proporciona la temperatura exterior (por ejemplo, weather.home o un sensor local)",
               "smart_comfort_mode": "En qué medida Tado CE ajusta la temperatura objetivo de la zona para lograr un mayor confort. «Suave» = sutil, «Agresivo» = notable. Empieza por «Suave».",
               "use_feels_like": "Factor de sensación térmica y humedad en lugar de temperatura bruta",
               "mold_risk_window_type": "El tipo de ventana: afecta a la estimación de la temperatura de la superficie para determinar el riesgo de moho.",
@@ -1724,10 +1731,10 @@
               "night_start_hour": "Hora de inicio de la noche",
               "custom_day_interval": "Intervalo de días personalizado (dejar en blanco para que se aplique el ajuste automático)",
               "custom_night_interval": "Intervalo nocturno personalizado (dejar en blanco para que se aplique el ajuste automático)",
-              "refresh_debounce_seconds": "Retraso de actualización (segundos)",
+              "refresh_debounce_seconds": "Retardo de actualización tras un cambio (segundos)",
               "api_history_retention_days": "Retención del historial API (días)",
-              "smart_actions_debounce_seconds": "Retraso del deslizador de temperatura",
-              "device_sync_delay_seconds": "Retraso de sincronización del dispositivo",
+              "smart_actions_debounce_seconds": "Retardo del control deslizante de temperatura (segundos)",
+              "device_sync_delay_seconds": "Retardo en la sincronización del dispositivo (segundos)",
               "mobile_devices_frequent_sync": "Sincronización frecuente de móviles",
               "hot_water_timer_duration": "Valor predeterminado del temporizador de agua caliente (minutos)",
               "presence_min_refresh_minutes": "Intervalo de actualización de «Presencia en casa»",
@@ -1802,7 +1809,8 @@
               "wc_room_compensation_factor": "Cuánto ajustar la temperatura de impulsión cuando una habitación está más fría o más caliente de lo previsto (1,0-5,0)",
               "wc_step_size": "Redondee la temperatura de impulsión a este tamaño de paso - pasos más grandes significan menos ajustes de la caldera (0,5-2,0°C)",
               "wc_hysteresis": "Sólo envía una nueva temperatura de impulsión cuando difiere de la última en al menos este valor (0,5-3,0°C)",
-              "wc_heating_system_preset": "Al seleccionar un ajuste preestablecido, se establecen los valores predeterminados recomendados para la temperatura de la pendiente y la temperatura de flujo. Seleccione «Personalizado» para ajustar cada campo manualmente."
+              "wc_heating_system_preset": "Al seleccionar un ajuste preestablecido, se establecen los valores predeterminados recomendados para la temperatura de la pendiente y la temperatura de flujo. Seleccione «Personalizado» para ajustar cada campo manualmente.",
+              "wc_room_compensation_enabled": "Ajusta la temperatura de impulsión al alza o a la baja cuando una habitación esté más fría o más cálida que su temperatura objetivo, además de la curva meteorológica exterior."
             }
           },
           "comfort_safety": {
@@ -1812,6 +1820,17 @@
             },
             "data_description": {
               "comfort_heat_vulnerable_group": "Activar las alertas de calor y frío un nivel antes en los hogares con personas mayores, bebés o personas enfermas, donde una misma temperatura supone un mayor riesgo. Desactivado por defecto."
+            }
+          },
+          "external_sensors": {
+            "name": "Sensores para exteriores",
+            "data": {
+              "use_outdoor_temp_entity": "Utilizar la entidad «Temperatura exterior»",
+              "outdoor_temp_entity": "Entidad «Temperatura exterior»"
+            },
+            "data_description": {
+              "use_outdoor_temp_entity": "Desactiva esta opción para deshabilitar las funciones que requieren la temperatura exterior (detección de ventanas, índice de confort, riesgo de moho).",
+              "outdoor_temp_entity": "Sensor que proporciona la temperatura exterior (por ejemplo, weather.home o un sensor local)"
             }
           }
         }
