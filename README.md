@@ -6,7 +6,7 @@
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2025.11%2B-blue?style=for-the-badge&logo=home-assistant) ![Python](https://img.shields.io/badge/Python-3.13%2B-blue?style=for-the-badge&logo=python&logoColor=white) ![Tado](https://img.shields.io/badge/Tado-V2%2FV3%2FV3%2B-1E3A8A?style=for-the-badge) ![HACS](https://img.shields.io/badge/HACS-Default-41BDF5?style=for-the-badge)
 
 <!-- Status -->
-![Stable](https://img.shields.io/badge/Stable-4.3.0-brightgreen?style=for-the-badge) ![License](https://img.shields.io/badge/License-AGPL--3.0-lightgrey?style=for-the-badge) ![Coverage](https://img.shields.io/badge/Coverage-93%25-green?style=for-the-badge)
+![Stable](https://img.shields.io/badge/Stable-4.3.1-brightgreen?style=for-the-badge) ![License](https://img.shields.io/badge/License-AGPL--3.0-lightgrey?style=for-the-badge) ![Coverage](https://img.shields.io/badge/Coverage-93%25-green?style=for-the-badge)
 
 <!-- Community -->
 ![GitHub stars](https://img.shields.io/github/stars/hiall-fyi/tado_ce?style=for-the-badge&logo=github) ![GitHub issues](https://img.shields.io/github/issues/hiall-fyi/tado_ce?style=for-the-badge&logo=github) ![GitHub Release Date](https://img.shields.io/github/release-date/hiall-fyi/tado_ce?style=for-the-badge&logo=github)
@@ -74,7 +74,7 @@ Tado X is intentionally out of scope — those devices are Matter-over-Thread an
 - Tado V2, V3, or V3+ hardware (see [Supported devices](#supported-devices))
 - Optional but recommended: an Internet Bridge V3+ for HomeKit local control
 
-> **Heads up for v3.x users.** A future v5.0.0 will drop the in-place migration code that upgrades v3.x option keys, entity IDs, and storage layouts. If you're on v3.5.3 or earlier, upgrade to any v4.x release first (your settings carry over automatically), then upgrade to v5.0.0 when it lands. Running v3.x to v5.0.0 in one jump won't be supported. No timeline for v5.0.0 yet, so there's no rush.
+> **Heads up if you're on v4.0.x or older.** v5.0.0 drops the code that reads the pre-v4.1 data format, so it needs you to be on **v4.1.0 or later** first. If you're on v3.x or v4.0.x, install v4.3.x before moving to v5.0.0 (your settings carry over automatically). Going straight to v5.0.0 from older than v4.1.0 won't work: it refuses to load and tells you what to do rather than failing quietly. Anyone already on v4.1.0 or later has nothing to do.
 
 ### 1. Install via HACS
 

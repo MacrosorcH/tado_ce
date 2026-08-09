@@ -12,16 +12,21 @@ Thank you to everyone who supported the project through [Buy Me a Coffee](https:
 |---|-----------|
 | ☕☕☕☕☕☕☕☕ | [@ChrisMarriott38](https://github.com/ChrisMarriott38) |
 | ☕☕☕☕☕☕ | [@jeverley](https://github.com/jeverley) |
-| ☕☕☕☕☕ | Marcel v.H., [@rodneyha](https://github.com/rodneyha), [@UKICS](https://github.com/UKICS), [@wisskid](https://github.com/wisskid) |
-| ☕☕☕☕ | [@hapklaar](https://github.com/hapklaar), [@Prodeguerriero](https://github.com/Prodeguerriero) |
-| ☕☕ | Arnaud L., [@janchrillesen](https://github.com/janchrillesen), [@jeromewir](https://github.com/jeromewir), Luke R., [@marcovn](https://github.com/marcovn), [@ratormat](https://github.com/ratormat) |
-| ☕ | Alby T., [@MathiasB112](https://github.com/MathiasB112) |
+| ☕☕☕☕☕ | Marcel v.H., [@Prodeguerriero](https://github.com/Prodeguerriero), [@rodneyha](https://github.com/rodneyha), [@UKICS](https://github.com/UKICS), [@wisskid](https://github.com/wisskid) |
+| ☕☕☕☕ | [@hapklaar](https://github.com/hapklaar) |
+| ☕☕ | Arnaud L., [@janchrillesen](https://github.com/janchrillesen), [@jeromewir](https://github.com/jeromewir), Luke R., [@marcovn](https://github.com/marcovn), [@ratormat](https://github.com/ratormat), Vit P. |
+| ☕ | Alby T., kottrupk, [@MathiasB112](https://github.com/MathiasB112) |
 
 ---
 
 ## Per-Version Credits
 
 Community contributors who helped shape each release through bug reports, feature requests, testing, and feedback.
+
+### v4.3.1
+
+- **[@jaimievansanten](https://github.com/jaimievansanten)** — Reported the Home Assistant 2026.8 clash ([#327](https://github.com/hiall-fyi/tado_ce/issues/327)) the day after Core released it, with the piece that made it diagnosable in one read: not just "HomeKit Controller won't start" but both manifest requirements side by side, the exact constructor error, and the fact that unrelated HomeKit pairings were going down with it. That last detail is what marked it urgent rather than cosmetic. Tado CE runs its own HomeKit client, so a setup that only pairs the tado bridge sees nothing wrong, and without his report this would have sat unnoticed on my side while it broke other people's accessories.
+- **[@Prodeguerriero](https://github.com/Prodeguerriero)** — Reported that the first build of this release installed on his Home Assistant 2026.6 even though the note said it couldn't, then failed to load ([#329](https://github.com/hiall-fyi/tado_ce/issues/329)). One report, two defects underneath it: the minimum-version guard doesn't block the download the way I'd claimed, and the #327 fix had pinned the HomeKit library rather than following it, which made Tado CE the incompatible one on every Home Assistant below 2026.8. His screenshot of the version he was running is what made the first undeniable, and the second only came to light because he reported it at all: upgrading Home Assistant had already fixed his own setup, so he had nothing left to gain by writing it up.
 
 ### v4.3.0
 

@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
+## [4.3.1] - 2026-08-07
+
+### Works on Home Assistant 2025.11 and newer, same as v4.3.0
+
+No minimum-version change in this release, and none was ever needed.
+
+The first build of v4.3.1 did require Home Assistant 2026.8, because of how it fixed the HomeKit clash below. That requirement is gone: the fix now works on everything from 2025.11 on. This note also claimed HACS would refuse to install v4.3.1 on an older Home Assistant, so you couldn't land on it by accident. That part was simply wrong. HACS offers it regardless of your version, and the check meant to stop the download usually has no version to compare against, so it goes ahead.
+
+If you got the first build on a Home Assistant older than 2026.8 and the integration stopped loading, this replaces it: in HACS, open Tado CE, then ⋮ → Redownload → v4.3.1, and restart Home Assistant. Nothing was lost, and going back to v4.3.0 was always safe too.
+
+### Still worth knowing: three things change at v5.0.0
+
+Repeated from v4.3.0 because the release is closer now, with one correction and one addition. Nothing changes for you in this release.
+
+**You'll need to be on v4.1.0 or later before installing v5.0.0.** This is the new one, and it's the only item here that can stop an upgrade. v5.0.0 drops the code that reads the pre-v4.1 data format, so it refuses to load if it finds settings older than that and tells you what to do instead of failing quietly. If you're on v4.1.0 or later, which almost everyone is, there is nothing to do. If you're on v3.x or v4.0.x, install v4.3.x first (your settings carry over automatically), then move to v5.0.0.
+
+**The Predicted Window sensor is slated for retirement.** The `binary_sensor.*_window_predicted` sensor stays exactly as it is here. It drives display and insights only, never an actual heating decision, and getting its accuracy right has taken a lot of tweaking for what it gives back, so the plan is to retire it and put that effort into the core features more people rely on. If you lean on it in a dashboard or automation, raise it before v5.0.0 and it can be reconsidered.
+
+**The Download Diagnostics button goes too.** v5.0.0 removes the **Settings → Download Diagnostics** button (the config-and-state snapshot). Sorting out an issue always comes down to a debug log, which shows what happened over time, where the snapshot only captures one frozen moment. It also carried an ongoing privacy cost, a redaction list to keep current so it never leaked a serial or token. No automation breaks and nothing you script against changes, the button just won't be there.
+
+**Correction to the v4.3.0 note.** That note said the boiler diagnostic sensors' `bridge_` entity IDs would be renamed to `boiler_` at v5.0.0. That was wrong, and it's worth correcting because it would have read as a breaking change you needed to prepare for. Home Assistant derives an entity ID once when the entity is first created, from the name shown in your own language, and it belongs to you after that, so the integration neither sets it nor renames it. What v5.0.0 actually tidies is the internal ID these sensors use behind the scenes, which nothing you write in an automation ever refers to. Your entity IDs stay exactly as they are, and if you renamed any of them yourself, that stays too.
+
+The full v5.0.0 list is in [ROADMAP.md](ROADMAP.md).
+
+### Bug fixes
+
+- **HomeKit Controller works again alongside Tado CE on Home Assistant 2026.8** ([#327](https://github.com/hiall-fyi/tado_ce/issues/327) - @jaimievansanten) — Home Assistant 2026.8 moved its built-in HomeKit Controller onto a newer version of the shared HomeKit library, while Tado CE still asked for the older one. Only one version can be installed at a time, so HomeKit Controller failed to start and every HomeKit device paired through it went unavailable, including bridges and accessories with nothing to do with Tado. Tado CE now accepts either version rather than asking for a specific one, so it uses whichever your Home Assistant ships and there is nothing left for the two to disagree about. Tado CE's own HomeKit local control was never affected, which is why this could go unnoticed on a setup that only pairs the tado bridge.
+- **Installing on a Home Assistant older than 2026.8 no longer breaks the integration** ([#329](https://github.com/hiall-fyi/tado_ce/issues/329) - @Prodeguerriero) — The first build of the HomeKit fix above asked for the exact library version Home Assistant 2026.8 ships. That sorted 2026.8 and created the mirror-image problem everywhere below it, back to 2025.11, where Home Assistant wants the older library and Tado CE was then the side insisting on the newer one. The integration failed to load after a restart. Accepting either version fixes both directions, so there is nothing left to be incompatible with.
+
 ## [4.3.0] - 2026-08-01
 
 ### Heads-up: two things go away in v5.0.0
@@ -55,7 +84,7 @@ The full v5.0.0 removal list is in [ROADMAP.md](ROADMAP.md).
 Nothing changes for you in this release. But v5.0.0 will be a spring-clean that drops backward-compat code built up over the v3.x and v4.x cycles, and a few of those removals are worth knowing about early because they affect how you call services or which entity IDs you script against. Two to plan around:
 
 - **Old swing values.** Automations calling `climate.set_swing_mode` with the old unified values (`off` / `vertical` / `horizontal` / `both`) have logged a deprecation warning since v4.1.0 and still work today, but the compatibility shim is removed at v5.0.0. Move them to the per-axis services (`climate.set_swing_horizontal_mode` and `climate.set_swing_vertical_mode`) before then. If your swing automations don't log a deprecation warning, they're already on the new services and need no change.
-- **Boiler sensor entity IDs.** v4.1.4 renamed the boiler diagnostic sensors' display names from "Bridge …" to "Boiler …", but their entity IDs still carry the old `bridge_` wording. v5.0.0 aligns the IDs to `boiler_` with a migration step, so anything scripting against the old IDs will want updating around then.
+- **Boiler sensor entity IDs.** v4.1.4 renamed the boiler diagnostic sensors' display names from "Bridge …" to "Boiler …", but their entity IDs still carry the old `bridge_` wording. v5.0.0 aligns the IDs to `boiler_` with a migration step, so anything scripting against the old IDs will want updating around then. *(Corrected in v4.3.1: this turned out to be wrong. Entity IDs are yours, not the integration's, and v5.0.0 does not touch them. Nothing to update. See the v4.3.1 entry.)*
 
 There's no date for v5.0.0 yet. The full list of planned removals (option-key migration, entity-naming polish, dead-code sweep, service-call consistency, and more) is in [ROADMAP.md](ROADMAP.md) under "v5.0.0 — Legacy cleanup", worth a read if you have automations or dashboards built on Tado CE.
 
