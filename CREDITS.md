@@ -21,7 +21,11 @@ Thank you to everyone who supported the project through [Buy Me a Coffee](https:
 
 ## Per-Version Credits
 
-Community contributors who helped shape each release through bug reports, feature requests, testing, and feedback.
+Community contributors who helped shape each release through bug reports, feature requests, testing, feedback, and code.
+
+### v4.3.2
+
+- **[@Flavien](https://github.com/Flavien)** — Opened [#330](https://github.com/hiall-fyi/tado_ce/pull/330) with three HomeKit sync problems, each traced to the line that produces it and each with a patch. Two of them are the first two fixes in this release. The reverting-temperature one had been live since v4.0.2 and my own notes recorded it as already fixed, so it was never going to surface from my side: it needed someone to sit with the symptom and follow it into the write path. He also found the same omission in the air-conditioning code, so the heating and AC halves are fixed together rather than one now and one later. The third of his three is a real problem too, but the patch reopens a subtler one, so it is deferred to v5.0.0 where the fix can be shaped properly.
 
 ### v4.3.1
 

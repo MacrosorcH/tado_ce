@@ -1655,6 +1655,7 @@ Smart Valve Control offers two approaches to solve this problem. You choose one 
 | **What it does** | Corrects the TRV's temperature reading so Tado sees the right number | Overrides the TRV's target temperature to force the valve open/closed |
 | **How it works** | Writes a device offset → Tado app and Tado's own algorithm both use the corrected temperature | Calculates a boosted target and writes it directly to the TRV, bypassing Tado's logic |
 | **Tado app shows** | ✅ Your external sensor's temperature (accurate) | ⚠️ An inflated target (e.g. 25°C when you want 20°C) |
+| **Home Assistant shows** | ✅ Your external sensor's temperature | ⚠️ The same inflated target, once Tado's data catches up. `desired_target` carries yours |
 | **Who decides when to heat** | Tado's built-in algorithm (using corrected data) | The integration (actively monitors and adjusts) |
 | **Best for** | Most setups — TRV reads 1-5°C off, Tado's algorithm works fine with correct data | Difficult rooms where Tado still undershoots even with correct temperature data |
 | **API cost** | 1 call per adjustment per TRV (device offset write) | 0 (HomeKit) or 1 (cloud overlay write) |
@@ -1867,7 +1868,7 @@ If you have existing automations that call `set_climate_temperature_offset`, you
 > **Note:** If you want to keep your offset automations, use **Offset Sync** instead — it replaces your automation with a built-in equivalent that stays in sync automatically.
 
 Pick one approach per zone:
-- **Smart Valve Control** — zero API cost (HomeKit), automatic, but climate card shows inflated target
+- **Smart Valve Control** — zero API cost (HomeKit), automatic, but both the Tado app and the climate card show the inflated target, because that is genuinely what the valve is set to. Your own target stays available in `desired_target`.
 - **Offset automations** — costs API calls per TRV, manual automation, but climate card shows your real target
 
 #### Scenario 4: Monitoring SVC Behaviour on Your Dashboard

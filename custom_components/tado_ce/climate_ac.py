@@ -1065,6 +1065,9 @@ class TadoACClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdat
         if local_success:
             self.coordinator.record_homekit_write_saved(self._zone_id)
             self._last_write_source = "homekit"
+            # Unstamped, a replayed bridge target overwrites this write.
+            if self.coordinator.state_reconciler:
+                self.coordinator.state_reconciler.record_local_write(self._zone_id)
             self._schedule_cloud_verification()
             _LOGGER.debug(
                 "Climate AC: %s set target %s°C via HomeKit",

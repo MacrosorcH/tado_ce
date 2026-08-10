@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
+## [4.3.2] - 2026-08-12
+
+### Bug fixes
+
+- **A temperature you set no longer springs back a few seconds later** ([#330](https://github.com/hiall-fyi/tado_ce/pull/330) - @Flavien) — With a HomeKit bridge paired, changing a zone's target temperature could show the new value, then quietly revert to the old one moments afterwards, and the change never reached the Tado app either. The bridge keeps reporting the previous target for a short while after a write, and on this one path the integration was accepting that stale reading back over the value you had just set. There is already a three-minute window that tells it to trust your own change over anything the bridge echoes; the heating path never opened that window, and the air-conditioning path only opened it for changes that went via the cloud. Both now do. If you have been nudging a radiator up half a degree at a time and watching it slide back, that is this.
+- **Switching a zone to Heat or Off shows straight away instead of after twenty seconds** ([#330](https://github.com/hiall-fyi/tado_ce/pull/330) - @Flavien) — With a bridge paired, changing the mode wrote to the radiator immediately but left the card showing the old mode until a follow-up check with Tado's cloud came back, about twenty seconds later. Temperature changes have always updated the card on the spot; mode changes now do the same. Zones following your schedule are unaffected, because "follow the schedule" is not something the bridge can express, so those still go via the cloud as before.
+- **A Smart Valve Control zone no longer jumps to the valve figure the moment it compensates** — Smart Valve Control works by deliberately over-driving the radiator valve, so on a zone using it the card could jump to a number well above the one you asked for, 26°C against a setting of 21°C for instance, within seconds of a compensation write. That early jump is gone: the card holds the temperature you set until Tado itself reports the change. Note the card does still follow the valve figure once Tado's own data catches up a poll later, because Valve Target genuinely sets the zone's overlay to that temperature and the integration shows what Tado reports. If you want your own target on a dashboard, the `desired_target` attribute carries it, and the Smart Valve Control section of the feature guide has a template sensor for it.
+
 ## [4.3.1] - 2026-08-07
 
 ### Works on Home Assistant 2025.11 and newer, same as v4.3.0

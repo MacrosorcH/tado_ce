@@ -282,6 +282,16 @@ class SmartValveController:
     # Write operations
     # ------------------------------------------------------------------
 
+    def _stamp_local_write(self) -> None:
+        """Open the write-protection window so the bridge cannot echo the valve target back.
+
+        Only the display merge reads the window; this controller reads the
+        cloud overlay, so stamping cannot starve its own next evaluation.
+        """
+        reconciler = self._coordinator.state_reconciler
+        if reconciler is not None:
+            reconciler.record_local_write(self._zone_id)
+
     async def _async_write_valve_target(self, valve_target: float) -> bool:
         """Write the valve target via HomeKit, falling back to cloud on failure."""
         if self._homekit_provider is not None:
@@ -294,6 +304,7 @@ class SmartValveController:
                         "Smart Valve: zone %s set TRV target to %.1f°C via HomeKit",
                         self._zone_id, valve_target,
                     )
+                    self._stamp_local_write()
                     self._runtime.last_valve_target = valve_target
                     self._runtime.overlay_set_by_controller = True
                     self._runtime.last_evaluation_ts = time.monotonic()
@@ -344,6 +355,7 @@ class SmartValveController:
                     "Smart Valve: zone %s set TRV target to %.1f°C via cloud",
                     self._zone_id, valve_target,
                 )
+                self._stamp_local_write()
                 self._runtime.last_valve_target = valve_target
                 self._runtime.last_cloud_write_ts = now
                 self._runtime.overlay_set_by_controller = True

@@ -23,7 +23,9 @@ Both are wanted and well-specified, and the foundation they build on (persistenc
 
 A spring-clean release that drops backward-compat code accumulated through the v3.x and v4.x cycles. The cleanup is laser-focused on dead surface area, not behaviour change.
 
-**Minimum supported upgrade path: v4.x.x.** Installs running v3.x or earlier should upgrade to v4.x first (any v4 release is fine), then to v5.0.0. v5.0.0 will not auto-migrate v3.x option keys, entity unique_ids, or storage layouts; the migration code that handled those upgrades will be removed. The v3 to v4 migration path stays open through every v4.x release, so there is no rush to upgrade in one jump.
+**You will need v4.1.0 or later installed before you upgrade to v5.0.0, and if you are older than that, go through v4.3.x.** Two different numbers, so worth separating. v4.1.0 is the line v5.0.0 refuses to load below, because that is where the saved-settings format it reads begins. v4.3.x is what to install if you are below that line: any 4.1.0+ release would update your settings, but there is no reason to pick an older one. Coming from v4.1.0 or later, there is nothing to do. v5.0.0 will not auto-migrate the v3.x option keys, entity unique_ids or storage layouts, because the code that handled those upgrades is removed in that release. The path through v4.3.x stays open, so there is no rush to do it in one jump.
+
+Note this is v5.0.0's rule, not this release's. v4.3.2 itself still accepts an entry from v3.0.0 onwards.
 
 Planned removals:
 
