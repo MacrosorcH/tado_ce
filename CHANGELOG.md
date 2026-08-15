@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
+## [4.3.3] - 2026-08-16
+
+### Bug fixes
+
+- **Turning a zone off now shows 5°C straight away, as one change instead of two** ([#332](https://github.com/hiall-fyi/tado_ce/issues/332) - @davidjirovec) — Switch a heating zone off and the card said "off" while still showing the old target, then jumped to 5°C by itself a few seconds later. Both now arrive together. Beyond looking odd, that second jump was indistinguishable from someone turning the dial by hand, so an automation watching for manual changes could take the 5°C as your new preference and leave the room cold when it should have warmed back up. Local control through a bridge did the same and is fixed too.
+- **Turning a zone back to Heat no longer sets it to 5°C** — Because an off zone shows the 5°C frost target, switching it back to Heat without naming a temperature took that 5°C as the new setting, so the room read as on and never warmed up. It now falls back to 20°C, the same default a fresh install starts from. A 5°C you chose yourself while in Heat is left alone.
+- **A zone turned on no longer reads as off underneath** — the mode changed on the card straight away while the heating indicator beside it stayed "off", until Tado caught up, which on a quiet system is a long wait. That happened both when switching a zone to Heat and when setting a timer on it, and on an AC zone the mode itself stayed off although Tado had already been told to turn on. They now match the write.
+- **An off zone no longer shows a stale radiator target after a restart** — with a bridge paired, a zone that was off could show an old target read from the radiator, 16°C say, while Tado was actually holding frost protection at 5°C, flipping between the two every couple of minutes and settling on the wrong one. It lasted about five minutes after each Home Assistant restart or integration reload. Changing a target in the Tado app still reaches the card in seconds, as before.
+- **A temperature change that fails no longer leaves the failed number on the card** — When Tado rejected a temperature change or the request timed out, the card kept showing the value you had tried to set until the next refresh, rather than the one still in force.
+
+### Improvements
+
+- **A timer's temperature reaches the card with the write** — `tado_ce.set_climate_timer` set the new target on Tado but left the previous one on the card until Tado's next refresh, which on a quiet system is a long wait. The timer itself was working; only the number shown was stale. Heating and AC zones both update straight away now. An AC mode that carries no target of its own, Fan for one, is unchanged, since there is no temperature to show.
+- **Refresh Schedule button: what the guide said about it was wrong** — The feature guide offered the button as the impatient option, "rather than waiting for the next sync". There is no next sync. A zone's schedule is read once, when its calendar entity is first set up, and cached from then on, so a schedule you edit in the Tado app reaches Home Assistant only when you press this button. The guide now says so, and names what else goes stale until you do: the calendar entity, the `scheduled_target_temperature` attribute, and the target shown for a zone that is off.
+- **Resuming the schedule still updates the target one step behind** — switching a zone to Auto clears the override, and the new target still turns up a few seconds after the mode, the way Off used to. It is not fixed here, and the difference is real rather than an oversight: with Off the answer is always 5°C so it can be stated up front, while after a resume the target is whatever your schedule says at that moment and only Tado knows that. Getting it right needs the integration's copy of your schedule kept up to date first, which is its own piece of work.
+
 ## [4.3.2] - 2026-08-12
 
 ### Bug fixes

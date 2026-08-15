@@ -85,7 +85,7 @@ class HomeKitLocalProvider:
         self._client = client
         self._hass = hass
         self._home_id = home_id
-        self._cache: dict[str, dict[str, tuple[Any, datetime, datetime]]] = {}
+        self._cache: dict[str, dict[str, tuple[Any, datetime | None, datetime]]] = {}
         self._accessories: list[dict[str, Any]] = []
         self._unsub_dispatcher: Any | None = None
         self._event_map: dict[tuple[int, int], tuple[str, str]] = {}
@@ -107,6 +107,8 @@ class HomeKitLocalProvider:
         char_type: str,
         value: Any,
         observed_at: datetime | None = None,
+        *,
+        from_poll: bool = False,
     ) -> None:
         """Update the cache, advancing `last_observed_at` even when the value is unchanged.
 
@@ -114,16 +116,22 @@ class HomeKitLocalProvider:
         the state reconciler can tell "stable reading" from "no
         new data". Keep-alive writes (same value) should still call
         this to refresh `last_observed_at`.
+
+        `from_poll=True` for a reading we fetched, False for one the bridge pushed. A fetched
+        first reading may have been constant for weeks, so it is not an observed change.
         """
         now = observed_at or dt_util.utcnow()
         if zone_id not in self._cache:
             self._cache[zone_id] = {}
         prev = self._cache[zone_id].get(char_type)
-        if prev is not None and prev[0] == value:
+        if prev is None:
+            changed_at = None if from_poll else now
+        elif prev[0] == value:
             # Same value: keep last_changed_at, advance last_observed_at only.
-            self._cache[zone_id][char_type] = (prev[0], prev[1], now)
+            changed_at = prev[1]
         else:
-            self._cache[zone_id][char_type] = (value, now, now)
+            changed_at = now
+        self._cache[zone_id][char_type] = (value, changed_at, now)
 
     def get_temperature(
         self, zone_id: str,
@@ -511,7 +519,7 @@ class HomeKitLocalProvider:
                         continue
                     old_entry = self._cache.get(zone_id, {}).get(char_type)
                     old_value = old_entry[0] if old_entry else None
-                    self.update_cache(zone_id, char_type, value)
+                    self.update_cache(zone_id, char_type, value, from_poll=True)
                     updated_zones.add(zone_id)
                     if value != old_value:
                         changes_found += 1

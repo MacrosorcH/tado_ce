@@ -23,6 +23,10 @@ Thank you to everyone who supported the project through [Buy Me a Coffee](https:
 
 Community contributors who helped shape each release through bug reports, feature requests, testing, feedback, and code.
 
+### v4.3.3
+
+- **[@davidjirovec](https://github.com/davidjirovec)** — Reported that switching a zone off arrives as two separate changes rather than one ([#332](https://github.com/hiall-fyi/tado_ce/issues/332)), and did the work that made it actionable: a recorder timeline with the context IDs on both changes, the same sequence reproduced twice hours apart, and the two functions responsible named from reading the source. He was also careful to separate it from an older report that looks similar, which is what stopped it being closed as a duplicate. Both of his source readings held up, and one of them was worse than he put it: the helper takes the target it is handed and throws it away. Following his shape into the local-control path then turned up the same gap there, so both are fixed together, and it showed that v4.3.2 had introduced that half four days earlier.
+
 ### v4.3.2
 
 - **[@Flavien](https://github.com/Flavien)** — Opened [#330](https://github.com/hiall-fyi/tado_ce/pull/330) with three HomeKit sync problems, each traced to the line that produces it and each with a patch. Two of them are the first two fixes in this release. The reverting-temperature one had been live since v4.0.2 and my own notes recorded it as already fixed, so it was never going to surface from my side: it needed someone to sit with the symptom and follow it into the write path. He also found the same omission in the air-conditioning code, so the heating and AC halves are fixed together rather than one now and one later. The third of his three is a real problem too, but the patch reopens a subtler one, so it is deferred to v5.0.0 where the fix can be shaped properly.

@@ -1127,9 +1127,7 @@ class TadoACClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdat
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set the AC mode (OFF / AUTO / cooling / heating / etc.)."""
-        # A zone showing AUTO can still carry a TADO_MODE/TIMER overlay, so an
-        # AUTO request must clear a present overlay rather than no-op on mode
-        # equality (mirrors the heating path's skip_for_auto).
+        # The API reports overlayType MANUAL for any overlay whatever its termination.
         skip_for_auto = hvac_mode == HVACMode.AUTO and self._overlay_type is not None
         if not skip_for_auto and ActionGuard.should_skip_hvac_mode(
             hvac_mode, self._attr_hvac_mode,
@@ -1680,14 +1678,15 @@ class TadoACClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdat
             duration_minutes=duration_minutes, overlay=overlay,
             hass=self.hass, zone_id=self._zone_id, entry_id=self._entry_id,
         )
+        written_mode = TADO_TO_HA_HVAC_MODE.get(setting["mode"], HVACMode.COOL)
 
         try:
             await api_call_with_rollback(
                 self,
                 client.set_zone_overlay(self._zone_id, setting, termination),
-                hvac_mode=self._attr_hvac_mode or HVACMode.COOL,
-                hvac_action=self._calculate_hvac_action(),
-                target_temp=temperature,
+                hvac_mode=written_mode,
+                hvac_action=self._calculate_hvac_action(hvac_mode=written_mode),
+                target_temp=(setting.get("temperature") or {}).get("celsius"),
                 reason=f"set timer at {temperature}°C",
                 capture_source="set_timer",
             )

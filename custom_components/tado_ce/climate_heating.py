@@ -174,7 +174,9 @@ class TadoClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdateC
         """Return the entity type tag for state-capture routing."""
         return self._entity_type
 
-    def _calculate_hvac_action(self, target_temp: float | None = None) -> HVACAction:
+    def _calculate_hvac_action(
+        self, target_temp: float | None = None, hvac_mode: HVACMode | None = None,
+    ) -> HVACAction:
         """Calculate hvac_action for heating zone.
 
         Priority: OFF mode > optimistic target_temp > expected action >
@@ -182,14 +184,16 @@ class TadoClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdateC
         target_temp branch must run before _expected_hvac_action so a
         new optimistic update overrides a stale expected action.
         """
+        mode = hvac_mode if hvac_mode is not None else self._attr_hvac_mode
+
         # OFF mode always returns OFF
-        if self._attr_hvac_mode == HVACMode.OFF:
+        if mode == HVACMode.OFF:
             return HVACAction.OFF
 
         # If target_temp is provided (optimistic call), assume HEATING
         # This MUST be checked before _expected_hvac_action to ensure new
         # optimistic updates override stale expected actions
-        if target_temp is not None and self._attr_hvac_mode == HVACMode.HEAT:
+        if target_temp is not None and mode == HVACMode.HEAT:
             return HVACAction.HEATING
 
         # If we have optimistic state with expected action, use it
@@ -203,7 +207,7 @@ class TadoClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdateC
 
         # Temperature-aware fallback for HEAT mode
         # This handles the case where API hasn't updated heating_power yet
-        if self._attr_hvac_mode == HVACMode.HEAT:
+        if mode == HVACMode.HEAT:
             target = self._attr_target_temperature
             current = self._attr_current_temperature
             if target is not None and current is not None:
@@ -681,10 +685,7 @@ class TadoClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdateC
             api_target_temp = (setting.get("temperature") or {}).get("celsius")
 
             # Calculate hvac_action
-            old_hvac_mode = self._attr_hvac_mode
-            self._attr_hvac_mode = api_hvac_mode
-            api_hvac_action = self._calculate_hvac_action()
-            self._attr_hvac_mode = old_hvac_mode
+            api_hvac_action = self._calculate_hvac_action(hvac_mode=api_hvac_mode)
 
             # Apply state
             self._apply_optimistic_or_api_state(
@@ -854,11 +855,11 @@ class TadoClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdateC
                 hvac_mode=HVACMode.HEAT,
                 hvac_action=self._calculate_hvac_action(target_temp=temperature),
                 target_temp=temperature,
+                rollback_target_temp=old_temp,
                 reason=f"Set temperature to {temperature}°C",
                 capture_source="set_temperature",
             )
         except HomeAssistantError:
-            self._attr_target_temperature = old_temp
             if raise_on_failure:
                 raise
             return
@@ -1002,16 +1003,28 @@ class TadoClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdateC
             )
         return local_success
 
+    def _resolve_heat_target(self) -> float:
+        """Pick the target for a mode-only HEAT request; a 5°C only counts as the user's inside HEAT."""
+        target = self._attr_target_temperature
+        if target == OPEN_WINDOW_DEFAULT_TEMP and self._attr_hvac_mode != HVACMode.HEAT:
+            return 20.0
+        return target or 20.0
+
     async def _apply_optimistic_hvac_mode_write(
         self, hvac_mode: HVACMode, hvac_action: HVACAction,
+        *, target_temp: float | None = None,
     ) -> None:
         """Apply the optimistic mode the cloud path already applies, so the card updates now."""
         self._attr_hvac_mode = hvac_mode
         self._attr_hvac_action = hvac_action
         self._overlay_type = "MANUAL"  # type: ignore[assignment]
+        expected: dict[str, Any] = {"hvac_mode": hvac_mode, "hvac_action": hvac_action}
+        if target_temp is not None:
+            self._attr_target_temperature = target_temp
+            expected["target_temperature"] = target_temp
         await set_optimistic_fields(
             self, self.coordinator,
-            expected={"hvac_mode": hvac_mode, "hvac_action": hvac_action},
+            expected=expected,
         )
         self.async_write_ha_state()
         if self.coordinator.state_reconciler:
@@ -1020,9 +1033,7 @@ class TadoClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdateC
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new HVAC mode."""
-        # A zone showing AUTO can still carry a TADO_MODE/TIMER overlay (mode is
-        # derived HEAT only for MANUAL), so an AUTO request must clear a present
-        # overlay rather than no-op on mode equality.
+        # The API reports overlayType MANUAL for any overlay whatever its termination.
         skip_for_auto = hvac_mode == HVACMode.AUTO and self._overlay_type is not None
         # Action Guard: skip if mode already matches current state
         if not skip_for_auto and ActionGuard.should_skip_hvac_mode(
@@ -1040,6 +1051,7 @@ class TadoClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdateC
         client = self.coordinator.api_client
 
         if hvac_mode == HVACMode.HEAT:
+            temp = self._resolve_heat_target()
             local_success = await self._try_homekit_hvac_mode_write(1, "HEAT")
             if local_success:
                 self.coordinator.record_homekit_write_saved(self._zone_id)
@@ -1049,21 +1061,21 @@ class TadoClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdateC
                     self._zone_name,
                 )
 
-                temp = self._attr_target_temperature or 20
                 self._attr_hvac_mode = HVACMode.HEAT
                 new_hvac_action = self._calculate_hvac_action(target_temp=temp)
-                await self._apply_optimistic_hvac_mode_write(HVACMode.HEAT, new_hvac_action)
+                await self._apply_optimistic_hvac_mode_write(
+                    HVACMode.HEAT, new_hvac_action, target_temp=temp,
+                )
                 return
 
             # Cloud fallback
-            temp = self._attr_target_temperature or 20
             setting = {
                 "type": "HEATING",
                 "power": "ON",
                 "temperature": {"celsius": temp},
             }
             termination = get_zone_overlay_termination(self.hass, self._zone_id, entry_id=self._entry_id)
-            new_hvac_action = self._calculate_hvac_action(target_temp=temp)
+            new_hvac_action = self._calculate_hvac_action(target_temp=temp, hvac_mode=HVACMode.HEAT)
             await api_call_with_rollback(
                 self,
                 client.set_zone_overlay(self._zone_id, setting, termination),
@@ -1085,7 +1097,9 @@ class TadoClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdateC
                     self._zone_name,
                 )
 
-                await self._apply_optimistic_hvac_mode_write(HVACMode.OFF, HVACAction.OFF)
+                await self._apply_optimistic_hvac_mode_write(
+                    HVACMode.OFF, HVACAction.OFF, target_temp=OPEN_WINDOW_DEFAULT_TEMP,
+                )
                 return
 
             # Cloud fallback
@@ -1099,6 +1113,7 @@ class TadoClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdateC
                 client.set_zone_overlay(self._zone_id, setting, termination),
                 hvac_mode=HVACMode.OFF,
                 hvac_action=HVACAction.OFF,
+                target_temp=OPEN_WINDOW_DEFAULT_TEMP,
                 reason="Set OFF mode",
                 capture_source="set_hvac_mode",
             )
@@ -1149,7 +1164,7 @@ class TadoClimate(PerEntityAvailabilityMixin, CoordinatorEntity["TadoDataUpdateC
                 self,
                 client.set_zone_overlay(self._zone_id, setting, termination),
                 hvac_mode=HVACMode.HEAT,
-                hvac_action=self._calculate_hvac_action(target_temp=temperature),
+                hvac_action=self._calculate_hvac_action(target_temp=temperature, hvac_mode=HVACMode.HEAT),
                 target_temp=temperature,
                 reason=f"set timer at {temperature}°C {term_desc}",
                 capture_source="set_timer",

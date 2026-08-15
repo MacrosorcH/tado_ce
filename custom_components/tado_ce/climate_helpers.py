@@ -318,23 +318,40 @@ async def api_call_with_rollback(
     hvac_action: HVACAction,
     overlay_type: str | None = "MANUAL",
     target_temp: float | None = None,
+    rollback_target_temp: float | None = None,
     reason: str,
     capture_source: str | None = None,
 ) -> bool:
-    """Climate-flavoured optimistic-write + rollback shim around `_attempt_with_rollback`."""
-    _ = target_temp
+    """Climate-flavoured optimistic-write + rollback shim around `_attempt_with_rollback`.
+
+    Pass `rollback_target_temp` when the caller already applied the new target, since the plan
+    captures the attribute after that.
+    """
+    optimistic: dict[str, Any] = {
+        "_attr_hvac_mode": hvac_mode,
+        "_attr_hvac_action": hvac_action,
+        "_overlay_type": overlay_type,
+    }
+    rollback: dict[str, Any] = {
+        "_attr_hvac_mode": entity._attr_hvac_mode,
+        "_attr_hvac_action": entity._attr_hvac_action,
+        "_overlay_type": entity._overlay_type,
+    }
+    expected: dict[str, Any] = {"hvac_mode": hvac_mode, "hvac_action": hvac_action}
+
+    if target_temp is not None:
+        optimistic["_attr_target_temperature"] = target_temp
+        expected["target_temperature"] = target_temp
+        rollback["_attr_target_temperature"] = (
+            rollback_target_temp
+            if rollback_target_temp is not None
+            else entity._attr_target_temperature
+        )
+
     plan = RollbackPlan(
-        optimistic={
-            "_attr_hvac_mode": hvac_mode,
-            "_attr_hvac_action": hvac_action,
-            "_overlay_type": overlay_type,
-        },
-        rollback={
-            "_attr_hvac_mode": entity._attr_hvac_mode,
-            "_attr_hvac_action": entity._attr_hvac_action,
-            "_overlay_type": entity._overlay_type,
-        },
-        expected={"hvac_mode": hvac_mode, "hvac_action": hvac_action},
+        optimistic=optimistic,
+        rollback=rollback,
+        expected=expected,
         preserved_attrs=(
             {
                 "fan_mode": getattr(entity, "_attr_fan_mode", None),
